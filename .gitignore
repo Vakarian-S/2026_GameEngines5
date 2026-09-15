@@ -1,0 +1,24 @@
+# Build output
+x64/
+x86/
+Debug/
+Release/
+x64/**/*.obj
+x86/**/*.obj
+Debug/**/*.obj
+Release/**/*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+
+# Rider
+.idea/
+*.DotSettings.user
+
+# Runtime logs
+GameEngineLog.txt
