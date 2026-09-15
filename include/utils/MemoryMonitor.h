@@ -1,4 +1,6 @@
 #pragma once
+#include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
@@ -44,11 +46,13 @@ void EnableConsoleColors();
  * @param function
  * @param size
  * @param alignment
+ * @param live bytes still allocated after this operation
  */
 inline void LogOperation(const std::string_view prefixColor, const std::string_view operation,
                          const std::string_view functionColor, const std::string_view function,
                          const std::optional<std::size_t> size = std::nullopt,
-                         const std::optional<std::size_t> alignment = std::nullopt)
+                         const std::optional<std::size_t> alignment = std::nullopt,
+                         const std::optional<std::size_t> live = std::nullopt)
 {
     char buffer[256];
     const char* const end = buffer + sizeof(buffer) - 1; // leave room for '\0'
@@ -67,6 +71,11 @@ inline void LogOperation(const std::string_view prefixColor, const std::string_v
         out = std::format_to_n(out, end - out, " | alignment = {}{}{}",
                                MemColor::Value, *alignment, MemColor::Reset).out;
     }
+    if (live)
+    {
+        out = std::format_to_n(out, end - out, " | live = {}{} bytes{}",
+                               MemColor::Value, *live, MemColor::Reset).out;
+    }
     *out = '\0';
 
     std::fputs(buffer, stdout);
@@ -74,7 +83,37 @@ inline void LogOperation(const std::string_view prefixColor, const std::string_v
 }
 
 
+/**
+ * A copy of the heap counters at one point in time
+ */
+struct MemoryStats
+{
+    // Running totals, only grow. 64-bit so they can't wrap on x86 builds.
+    std::uint64_t allocationCount = 0;
+    std::uint64_t freeCount = 0;
+    std::uint64_t bytesAllocated = 0;
+    std::uint64_t bytesFreed = 0;
+
+    // "Right now" amounts of memory
+    std::size_t peakLiveBytes = 0;
+    std::size_t largestAllocation = 0;
+
+    std::size_t LiveBytes() const { return static_cast<std::size_t>(bytesAllocated - bytesFreed); }
+    std::uint64_t LiveBlocks() const { return allocationCount - freeCount; }
+};
+
+
 class MemoryMonitor
 {
 public:
+    /**
+     * @return a copy of the current counters
+     */
+    static MemoryStats GetStats();
+
+    /**
+     * Prints the counters since the baseline. Peak and largest always cover the whole program.
+     * @param baseline stats saved earlier with GetStats(), for example at the start of main
+     */
+    static void Report(const MemoryStats& baseline = {});
 };

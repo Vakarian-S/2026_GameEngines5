@@ -20,6 +20,11 @@ void EnableConsoleColors()
 
 namespace
 {
+    /* Counters */
+    // constinit: set to zero before any code runs, so allocations before main are counted safely
+    constinit MemoryStats stats{};
+
+
     /**
      * Stored in front of every block, used to access the number of bytes on delete
      */
@@ -29,7 +34,7 @@ namespace
     };
 
     /**
-     * Allocates a block with a Header in front and logs the operation
+     * Allocates a block with a Header in front, updates the counters and logs the operation
      * @param size bytes requested by the caller, not counting the Header
      * @param functionColor
      * @param function
@@ -37,15 +42,22 @@ namespace
      */
     void* Allocate(const std::size_t size, const std::string_view functionColor, const std::string_view function)
     {
-        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size);
         auto* header = static_cast<Header*>(std::malloc(sizeof(Header) + size));
         if (!header) throw std::bad_alloc();
         header->numBytes = size;
+
+        ++stats.allocationCount;
+        stats.bytesAllocated += size;
+        const std::size_t live = stats.LiveBytes();
+        if (live > stats.peakLiveBytes) stats.peakLiveBytes = live;
+        if (size > stats.largestAllocation) stats.largestAllocation = size;
+
+        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, live);
         return header + 1;
     }
 
     /**
-     * Frees a block made by Allocate, reads its size from the Header and logs the operation
+     * Frees a block made by Allocate, reads its size from the Header, updates the counters and logs the operation
      * @param block pointer returned by Allocate, can be nullptr
      * @param functionColor
      * @param function
@@ -54,9 +66,66 @@ namespace
     {
         if (!block) return;
         Header* header = static_cast<Header*>(block) - 1;
-        LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes);
+
+        ++stats.freeCount;
+        stats.bytesFreed += header->numBytes;
+
+        LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes, std::nullopt,
+                     stats.LiveBytes());
         std::free(header);
     }
+
+    /**
+     * Prints one line of the report, without allocating
+     * @param label
+     * @param value
+     * @param unit text printed after the value, for example " bytes"
+     */
+    template <typename T>
+    void PrintStat(const std::string_view label, const T value, const std::string_view unit = "")
+    {
+        char buffer[128];
+        const auto result = std::format_to_n(buffer, sizeof(buffer) - 1, "{:<20}: {}{}{}{}\n",
+                                             label, MemColor::Value, value, MemColor::Reset, unit);
+        *result.out = '\0';
+        std::fputs(buffer, stdout);
+    }
+}
+
+
+MemoryStats MemoryMonitor::GetStats()
+{
+    return stats;
+}
+
+void MemoryMonitor::Report(const MemoryStats& baseline)
+{
+    // Copy first so every line reads the same numbers
+    const MemoryStats now = stats;
+
+    const std::uint64_t allocations = now.allocationCount - baseline.allocationCount;
+    const std::uint64_t frees = now.freeCount - baseline.freeCount;
+    const std::uint64_t bytesAllocated = now.bytesAllocated - baseline.bytesAllocated;
+    const std::uint64_t bytesFreed = now.bytesFreed - baseline.bytesFreed;
+
+    // Signed: code after the baseline can free memory that was allocated before it
+    const std::int64_t liveBytes = static_cast<std::int64_t>(bytesAllocated) - static_cast<std::int64_t>(bytesFreed);
+    const std::int64_t liveBlocks = static_cast<std::int64_t>(allocations) - static_cast<std::int64_t>(frees);
+
+    char title[64];
+    *std::format_to_n(title, sizeof(title) - 1, "{}-- Memory Report --{}\n", MemColor::Section, MemColor::Reset).out
+        = '\0';
+    std::fputs(title, stdout);
+
+    PrintStat("Allocations", allocations);
+    PrintStat("Frees", frees);
+    PrintStat("Bytes allocated", bytesAllocated, " bytes");
+    PrintStat("Bytes freed", bytesFreed, " bytes");
+    PrintStat("Live bytes", liveBytes, " bytes");
+    PrintStat("Live blocks", liveBlocks);
+    PrintStat("Average allocation", allocations ? bytesAllocated / allocations : 0, " bytes");
+    PrintStat("Peak live bytes", now.peakLiveBytes, " bytes (whole program)");
+    PrintStat("Largest allocation", now.largestAllocation, " bytes (whole program)");
 }
 
 
