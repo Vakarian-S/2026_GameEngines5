@@ -89,6 +89,19 @@ struct MemoryStats
     std::uint64_t LiveBlocks() const { return allocationCount - freeCount; }
 };
 
+/**
+ * What ReportLeaks() finds
+ */
+struct LeakSummary
+{
+    /** Blocks listed */
+    std::size_t listed = 0;
+    /** Total bytes of the blocks listed */
+    std::size_t bytes = 0;
+    /** True if the walk hit a damaged block and stopped early */
+    bool damaged = false;
+};
+
 
 class MemoryMonitor
 {
@@ -128,4 +141,13 @@ public:
      * @param baseline stats saved earlier with GetStats(), for example at the start of main
      */
     static void Report(const MemoryStats& baseline = {});
+
+    /**
+     * Prints every block still alive that was allocated after the baseline, newest first.
+     * Always prints, even with logging off. Debug only: Release has no leak list and returns zeros.
+     * @param baseline stats saved earlier with GetStats(). The default lists every live block,
+     *                 including the runtime's own from before main.
+     * @return how many blocks and bytes were listed
+     */
+    static LeakSummary ReportLeaks(const MemoryStats& baseline = {});
 };

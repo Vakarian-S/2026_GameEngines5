@@ -23,6 +23,8 @@ namespace
     constexpr const char* Pass = "\x1b[1;32m";
     constexpr const char* Fail = "\x1b[1;91m";
     constexpr const char* Dim = "\x1b[90m";
+    /** Bold bright cyan, for the test case headers */
+    constexpr const char* Title = "\x1b[1;96m";
     constexpr const char* Reset = "\x1b[0m";
 
     void Expect(const bool ok, const char* what)
@@ -33,9 +35,15 @@ namespace
                     ok ? Pass : Fail, ok ? "ok" : "FAIL", Reset, what);
     }
 
-    void Section(const char* name)
+    /**
+     * Prints the header that starts each test case, so they stand out from the reports
+     * @param name
+     * @param description what the test checks, in plain words
+     */
+    void Section(const char* name, const char* description)
     {
-        std::printf("\n%s-- %s --%s\n", Dim, name, Reset);
+        std::printf("\n%s==================== TEST CASE: %s ====================%s\n", Title, name, Reset);
+        std::printf("%s\n", description);
     }
 
     /**
@@ -52,7 +60,8 @@ namespace
 
     void TestHeaderShape()
     {
-        Section("header shape");
+        Section("header shape",
+                "We check that the hidden label in front of every block has the size we planned.");
 
         /* Debug: the leak list fields round up to 64 on x64 and 32 on Win32, measured by probe */
         const std::size_t size = MemoryMonitor::HeaderOverhead();
@@ -67,7 +76,8 @@ namespace
 
     void TestCleanRoundTrip()
     {
-        Section("correct code raises nothing");
+        Section("correct code raises nothing",
+                "We make and delete memory the normal way, and check that nothing gets flagged.");
 
         const MemoryStats before = MemoryMonitor::GetStats();
         delete new int(1);
@@ -84,7 +94,8 @@ namespace
 
     void TestAlignedRoundTrip()
     {
-        Section("over-aligned types round trip");
+        Section("over-aligned types round trip",
+                "We make objects that must start on a 64 byte boundary, and check that they do.");
 
         struct alignas(64) CacheLine { std::uint64_t counter; };
 
@@ -107,7 +118,8 @@ namespace
 
     void TestSmallAlignmentRoundTrip()
     {
-        Section("alignments at or below the header size");
+        Section("alignments at or below the header size",
+                "Same idea with 16 and 32 byte boundaries. A label of the wrong size would crash here.");
 
         /*
          * Here the header size goes straight to _aligned_malloc. A header that is not a
@@ -134,8 +146,6 @@ namespace
     }
 
 
-    /* ============================== Deliberate mistakes ============================== */
-
     bool SkipUnlessChecked()
     {
         if (MemoryMonitor::HasCheckedHeaders()) return false;
@@ -143,9 +153,56 @@ namespace
         return true;
     }
 
+
+    /* ============================== Leak list ============================== */
+
+    void TestLeakListing()
+    {
+        Section("leak list",
+                "We make 3 blocks and delete 1, and check that the leak report lists the other 2.");
+        if (SkipUnlessChecked()) return;
+
+        struct alignas(64) CacheLine { std::uint64_t counter; };
+
+        /*
+         * The runtime already has live blocks from before main. Listing exactly 2 below also
+         * proves the baseline keeps those out.
+         */
+        const MemoryStats before = MemoryMonitor::GetStats();
+
+        /* Plain and aligned blocks both join the list. It now reads: c, b, a, older blocks */
+        int* a = new int(1);
+        char* b = new char[20];
+        auto* c = new CacheLine;
+
+        /* b sits in the middle, so its neighbors must be hooked together */
+        delete[] b;
+
+        const MemoryStats beforeReport = MemoryMonitor::GetStats();
+        const LeakSummary two = MemoryMonitor::ReportLeaks(before);
+        const MemoryStats afterReport = MemoryMonitor::GetStats();
+
+        Expect(two.listed == 2, "the two live blocks are listed");
+        Expect(two.bytes == sizeof(int) + sizeof(CacheLine), "their bytes add up");
+        Expect(!two.damaged, "the walk finished");
+        Expect(afterReport.allocationCount == beforeReport.allocationCount, "the report allocates nothing");
+
+        /* a is the oldest of the three, then c is the front of the list */
+        delete a;
+        delete c;
+
+        const LeakSummary none = MemoryMonitor::ReportLeaks(before);
+        Expect(none.listed == 0, "nothing listed once everything is freed");
+        Expect(none.bytes == 0, "no bytes listed either");
+    }
+
+
+    /* ============================== Deliberate mistakes ============================== */
+
     void TestDoubleFree()
     {
-        Section("double free");
+        Section("double free",
+                "We delete the same memory twice on purpose, and check that the second delete is refused.");
         if (SkipUnlessChecked()) return;
 
         /* The report covers the whole test */
@@ -166,7 +223,8 @@ namespace
 
     void TestUnderrunHitsMagic()
     {
-        Section("small underrun, grid[-1]");
+        Section("small underrun, grid[-1]",
+                "We write one step before a block on purpose, and check that delete notices the damage.");
         if (SkipUnlessChecked()) return;
 
         /* Taken before the allocation, so the report shows the leak */
@@ -187,7 +245,8 @@ namespace
 
     void TestNonHeapPointer()
     {
-        Section("delete of something that never came from new");
+        Section("delete of something that never came from new",
+                "We delete memory that new never gave out, and check that the monitor refuses it.");
         if (SkipUnlessChecked()) return;
 
         /*
@@ -208,7 +267,8 @@ namespace
 
     void TestWrongDeleteForm()
     {
-        Section("aligned block freed by the plain delete");
+        Section("aligned block freed by the plain delete",
+                "We free special aligned memory with the normal delete, and check it still goes back the right way.");
 
         /* The report covers the whole test */
         const MemoryStats start = MemoryMonitor::GetStats();
@@ -227,7 +287,8 @@ namespace
 
     void TestWrongAlignmentValue()
     {
-        Section("aligned block freed with the wrong alignment");
+        Section("aligned block freed with the wrong alignment",
+                "We free aligned memory while passing the wrong alignment, and check it still goes back the right way.");
 
         /* The report covers the whole test */
         const MemoryStats start = MemoryMonitor::GetStats();
@@ -260,6 +321,8 @@ int main()
     TestCleanRoundTrip();
     TestAlignedRoundTrip();
     TestSmallAlignmentRoundTrip();
+    /* Before the mistakes: TestUnderrunHitsMagic leaves a damaged block in the list for good */
+    TestLeakListing();
     TestDoubleFree();
     TestUnderrunHitsMagic();
     TestNonHeapPointer();

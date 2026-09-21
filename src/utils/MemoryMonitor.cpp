@@ -10,6 +10,8 @@
 /* _aligned_malloc / _aligned_free */
 #include <malloc.h>
 #include <optional>
+/* std::make_signed_t */
+#include <type_traits>
 
 
 namespace
@@ -33,6 +35,7 @@ namespace
 #endif
 
 #if MEMMON_CHECKED_HEADER
+
     /** Stamped on every live block. Any other value means the pointer is not ours. */
     constexpr std::uint32_t LiveMagic = 0xC0FFEEu;
 
@@ -58,8 +61,16 @@ namespace
     constexpr std::size_t HeaderPadWords = HeaderPadBytes / sizeof(std::uint32_t);
 
     /** C++ does not allow an array of size 0, so Pad<0> is an empty type instead */
-    template <std::size_t Words> struct Pad { std::uint32_t words[Words]; };
-    template <> struct Pad<0> {};
+    template <std::size_t Words>
+    struct Pad
+    {
+        std::uint32_t words[Words];
+    };
+
+    template <>
+    struct Pad<0>
+    {
+    };
 #endif
 
     /**
@@ -104,6 +115,12 @@ namespace
 #endif
     };
 
+#if MEMMON_CHECKED_HEADER
+    /** First item in our list of allocated headers for the leak list */
+    constinit Header* liveHead = nullptr;
+#endif
+
+
     static_assert(sizeof(Header) >= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
     static_assert((sizeof(Header) & (sizeof(Header) - 1)) == 0, "Header size must be a power of two");
 #if MEMMON_CHECKED_HEADER
@@ -112,6 +129,8 @@ namespace
     static_assert(offsetof(Header, magic) + sizeof(Header::magic) == sizeof(Header),
                   "magic must be the last bytes of the header, so a small underrun lands on it");
 #endif
+
+    /* ============================== Utility ============================== */
 
     enum class BlockCheck { Ok, NotOurs, AlreadyFreed };
 
@@ -171,6 +190,46 @@ namespace
     {
         return alignment > sizeof(Header) ? alignment : sizeof(Header);
     }
+
+    /**
+     * Runs on every new block, puts the new linked allocation at the front of our leak list
+     */
+    void LinkBlock([[maybe_unused]] Header* header) noexcept
+    {
+#if MEMMON_CHECKED_HEADER
+        header->next = liveHead;
+        if (liveHead) liveHead->prev = header;
+        liveHead = header;
+        header->serial = static_cast<std::size_t>(stats.allocationCount);
+#endif
+    }
+
+    /**
+     * Runs on every delete. It takes the box out and hooks its two neighbors to each other.
+     */
+    void UnlinkBlock([[maybe_unused]] Header* header) noexcept
+    {
+#if MEMMON_CHECKED_HEADER
+        if (header->prev) header->prev->next = header->next;
+        if (header->next) header->next->prev = header->prev;
+        if (header == liveHead) liveHead = header->next;
+#endif
+    }
+
+#if MEMMON_CHECKED_HEADER
+    /**
+     * True if a block's serial came after the baseline.
+     * Subtracting first keeps it right even when serial rolls over, like reading a clock face.
+     * That holds while the baseline is less than half the counter's range old: never a problem
+     * on x64, about 2 billion allocations on Win32.
+     * @param serial the block's serial
+     * @param baseline allocationCount from the baseline, cut to the same size as serial
+     */
+    bool IsAfter(const std::size_t serial, const std::size_t baseline) noexcept
+    {
+        return static_cast<std::make_signed_t<std::size_t>>(serial - baseline) > 0;
+    }
+#endif
 
 
     /* ============================== Printing ============================== */
@@ -312,6 +371,49 @@ namespace
         std::fputc('\n', stdout);
     }
 
+#if MEMMON_CHECKED_HEADER
+    /**
+     * Prints one leaked block for ReportLeaks. Must not allocate, same as LogOperation.
+     * The address is the pointer the caller got from new, not the header's.
+     * @param header
+     */
+    void LogLeak(const Header* header) noexcept
+    {
+        char buffer[256];
+        const char* const end = buffer + sizeof(buffer) - 1;
+        char* out = buffer;
+
+        out = std::format_to_n(out, end - out, "{}Leak:{}      | address = {}{}{}",
+                               MemColor::Fail, MemColor::Reset,
+                               MemColor::Value, static_cast<const void*>(header + 1), MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, " | size = {}{} bytes{}",
+                               MemColor::Value, header->numBytes, MemColor::Reset).out;
+        if (header->alignment)
+        {
+            out = std::format_to_n(out, end - out, " | alignment = {}{}{}",
+                                   MemColor::Value, header->alignment, MemColor::Reset).out;
+        }
+
+        if (header->file)
+        {
+            /* Only the file name: a full path can be long enough to cut the line off */
+            const std::string_view path = header->file;
+            const std::size_t slash = path.find_last_of("/\\");
+            const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+            out = std::format_to_n(out, end - out, " | {}{}:{}{}",
+                                   MemColor::Check, name, header->line, MemColor::Reset).out;
+        }
+        else
+        {
+            out = std::format_to_n(out, end - out, " | {}(unknown){}", MemColor::Section, MemColor::Reset).out;
+        }
+        *out = '\0';
+
+        std::fputs(buffer, stdout);
+        std::fputc('\n', stdout);
+    }
+#endif
+
 
     /* ============================== Counting ============================== */
 
@@ -361,6 +463,7 @@ namespace
         InitHeader(header, size, 0);
 
         const std::size_t live = CountAllocation(size);
+        LinkBlock(header);
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, live);
         return header + 1;
     }
@@ -388,6 +491,7 @@ namespace
         InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment);
 
         const std::size_t live = CountAllocation(size);
+        LinkBlock(reinterpret_cast<Header*>(block) - 1);
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, live);
         return block;
     }
@@ -427,6 +531,8 @@ namespace
             ++stats.mismatchCount;
             LogMismatch(block, expectedAlignment, alignment, function);
         }
+
+        UnlinkBlock(header);
 
         const std::size_t live = CountFree(header->numBytes);
         LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes,
@@ -504,6 +610,39 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
     const std::uint64_t mismatches = now.mismatchCount - baseline.mismatchCount;
     if (badBlocks) PrintStat("Refused frees", badBlocks, " (bad or already freed)");
     if (mismatches) PrintStat("Wrong operator", mismatches, " (freed through the wrong delete)");
+}
+
+LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& baseline)
+{
+    char title[64];
+    *std::format_to_n(title, sizeof(title) - 1, "{}-- Leak Report --{}\n", MemColor::Section, MemColor::Reset).out
+        = '\0';
+    std::fputs(title, stdout);
+
+    LeakSummary summary;
+
+#if MEMMON_CHECKED_HEADER
+    /* A default baseline means "list everything", so there is nothing to compare against */
+    const bool everything = baseline.allocationCount == 0;
+    const auto since = static_cast<std::size_t>(baseline.allocationCount);
+
+    for (const Header* header = liveHead; header; header = header->next)
+    {
+        /* Newest first, so the first block from before the baseline means all the rest are too */
+        if (!everything && !IsAfter(header->serial, since)) break;
+
+        LogLeak(header);
+        ++summary.listed;
+        summary.bytes += header->numBytes;
+    }
+
+    PrintStat("Leaked blocks", summary.listed);
+    PrintStat("Leaked bytes", summary.bytes, " bytes");
+#else
+    PrintStat("Leak list", "needs a Debug build");
+#endif
+
+    return summary;
 }
 
 
