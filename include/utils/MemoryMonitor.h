@@ -1,13 +1,11 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <format>
 #include <new>
-#include <optional>
 #include <string_view>
 
+
+// ============================== Console colors ==============================
 
 /**
  * Color Codes for making the terminal easier to read, each Function and Action has its own color
@@ -30,58 +28,14 @@ namespace MemColor
     inline constexpr std::string_view AlignedArray = "\x1b[95m"; // bright magenta
     inline constexpr std::string_view SizedAligned = "\x1b[34m"; // blue
     inline constexpr std::string_view SizedAlignedArray = "\x1b[94m"; // bright blue
+
+    // Alignment checks
+    inline constexpr std::string_view Ok = "\x1b[1;32m"; // bold green
+    inline constexpr std::string_view Fail = "\x1b[1;91m"; // bold bright red
+    inline constexpr std::string_view Check = "\x1b[96m"; // bright cyan
 }
 
-/**
- * Enables Console Colors on terminal
- */
-void EnableConsoleColors();
-
-
-/**
- * Logs allocation and deletion using console colors
- * @param prefixColor
- * @param operation
- * @param functionColor
- * @param function
- * @param size
- * @param alignment
- * @param live bytes still allocated after this operation
- */
-inline void LogOperation(const std::string_view prefixColor, const std::string_view operation,
-                         const std::string_view functionColor, const std::string_view function,
-                         const std::optional<std::size_t> size = std::nullopt,
-                         const std::optional<std::size_t> alignment = std::nullopt,
-                         const std::optional<std::size_t> live = std::nullopt)
-{
-    char buffer[256];
-    const char* const end = buffer + sizeof(buffer) - 1; // leave room for '\0'
-    char* out = buffer;
-
-    out = std::format_to_n(out, end - out, "{}Operation: {:<7}{}| {}{:<37}{}",
-                           prefixColor, operation, MemColor::Reset,
-                           functionColor, function, MemColor::Reset).out;
-    if (size)
-    {
-        out = std::format_to_n(out, end - out, "| size = {}{} bytes{}",
-                               MemColor::Value, *size, MemColor::Reset).out;
-    }
-    if (alignment)
-    {
-        out = std::format_to_n(out, end - out, " | alignment = {}{}{}",
-                               MemColor::Value, *alignment, MemColor::Reset).out;
-    }
-    if (live)
-    {
-        out = std::format_to_n(out, end - out, " | live = {}{} bytes{}",
-                               MemColor::Value, *live, MemColor::Reset).out;
-    }
-    *out = '\0';
-
-    std::fputs(buffer, stdout);
-    std::fputc('\n', stdout);
-}
-
+// ============================== Public API ==============================
 
 /**
  * A copy of the heap counters at one point in time
@@ -98,6 +52,7 @@ struct MemoryStats
     std::size_t peakLiveBytes = 0;
     std::size_t largestAllocation = 0;
 
+    // The cast is safe: live memory can never be larger than the address space, so it always fits in size_t
     std::size_t LiveBytes() const { return static_cast<std::size_t>(bytesAllocated - bytesFreed); }
     std::uint64_t LiveBlocks() const { return allocationCount - freeCount; }
 };
