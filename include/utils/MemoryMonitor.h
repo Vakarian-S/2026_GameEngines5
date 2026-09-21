@@ -5,59 +5,87 @@
 #include <string_view>
 
 
-// ============================== Console colors ==============================
+/* ============================== Console colors ============================== */
 
 /**
  * Color Codes for making the terminal easier to read, each Function and Action has its own color
  */
 namespace MemColor
 {
+    /** Back to the default color */
     inline constexpr std::string_view Reset = "\x1b[0m";
-    inline constexpr std::string_view Section = "\x1b[90m"; // dim gray
-    inline constexpr std::string_view Value = "\x1b[1;97m"; // bold white
+    /** Dim gray */
+    inline constexpr std::string_view Section = "\x1b[90m";
+    /** Bold white */
+    inline constexpr std::string_view Value = "\x1b[1;97m";
 
-    inline constexpr std::string_view NewPrefix = "\x1b[1;32m"; // bold green
-    inline constexpr std::string_view DeletePrefix = "\x1b[1;31m"; // bold red
+    /** Bold green */
+    inline constexpr std::string_view NewPrefix = "\x1b[1;32m";
+    /** Bold red */
+    inline constexpr std::string_view DeletePrefix = "\x1b[1;31m";
 
-    // Scalar overloads use the normal color, array overloads use the bright one.
-    inline constexpr std::string_view Plain = "\x1b[36m"; // cyan
-    inline constexpr std::string_view PlainArray = "\x1b[96m"; // bright cyan
-    inline constexpr std::string_view Sized = "\x1b[33m"; // yellow
-    inline constexpr std::string_view SizedArray = "\x1b[93m"; // bright yellow
-    inline constexpr std::string_view Aligned = "\x1b[35m"; // magenta
-    inline constexpr std::string_view AlignedArray = "\x1b[95m"; // bright magenta
-    inline constexpr std::string_view SizedAligned = "\x1b[34m"; // blue
-    inline constexpr std::string_view SizedAlignedArray = "\x1b[94m"; // bright blue
+    /* Scalar overloads use the normal color, array overloads use the bright one. */
 
-    // Alignment checks
-    inline constexpr std::string_view Ok = "\x1b[1;32m"; // bold green
-    inline constexpr std::string_view Fail = "\x1b[1;91m"; // bold bright red
-    inline constexpr std::string_view Check = "\x1b[96m"; // bright cyan
+    /** Cyan */
+    inline constexpr std::string_view Plain = "\x1b[36m";
+    /** Bright cyan */
+    inline constexpr std::string_view PlainArray = "\x1b[96m";
+    /** Yellow */
+    inline constexpr std::string_view Sized = "\x1b[33m";
+    /** Bright yellow */
+    inline constexpr std::string_view SizedArray = "\x1b[93m";
+    /** Magenta */
+    inline constexpr std::string_view Aligned = "\x1b[35m";
+    /** Bright magenta */
+    inline constexpr std::string_view AlignedArray = "\x1b[95m";
+    /** Blue */
+    inline constexpr std::string_view SizedAligned = "\x1b[34m";
+    /** Bright blue */
+    inline constexpr std::string_view SizedAlignedArray = "\x1b[94m";
+
+    /* Alignment checks */
+
+    /** Bold green */
+    inline constexpr std::string_view Ok = "\x1b[1;32m";
+    /** Bold bright red */
+    inline constexpr std::string_view Fail = "\x1b[1;91m";
+    /** Bright cyan */
+    inline constexpr std::string_view Check = "\x1b[96m";
 }
 
-// ============================== Public API ==============================
+/* ============================== Public API ============================== */
 
 /**
  * A copy of the heap counters at one point in time
  */
 struct MemoryStats
 {
-    // Running totals, only grow. 64-bit so they can't wrap on x86 builds.
+    /* Running totals, they only grow. 64-bit so they can't wrap on Win32. */
+
+    /** Total calls to new */
     std::uint64_t allocationCount = 0;
+    /** Total calls to delete that really freed */
     std::uint64_t freeCount = 0;
+    /** Total bytes asked for */
     std::uint64_t bytesAllocated = 0;
+    /** Total bytes given back */
     std::uint64_t bytesFreed = 0;
 
-    // "Right now" amounts of memory
+    /** Most memory alive at once */
     std::size_t peakLiveBytes = 0;
+    /** Biggest single block */
     std::size_t largestAllocation = 0;
 
-    // Problems the monitor caught and refused to act on. Both stay 0 for correct code.
-    std::uint64_t badBlockCount = 0; // frees refused because the block's check value was wrong
-    std::uint64_t mismatchCount = 0; // frees that arrived through the wrong operator
+    /* Problems the monitor caught. Both stay 0 for correct code. */
 
-    // The cast is safe: live memory can never be larger than the address space, so it always fits in size_t
+    /** Frees refused because the block's stamp was wrong */
+    std::uint64_t badBlockCount = 0;
+    /** Frees that came through the wrong delete */
+    std::uint64_t mismatchCount = 0;
+
+    /** Bytes still allocated. The cast is safe: live memory always fits in size_t. */
     std::size_t LiveBytes() const { return static_cast<std::size_t>(bytesAllocated - bytesFreed); }
+    /** Blocks still allocated */
     std::uint64_t LiveBlocks() const { return allocationCount - freeCount; }
 };
 

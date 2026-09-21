@@ -1,29 +1,31 @@
 #include "utils/MemoryMonitor.h"
 
 #include <algorithm>
+/* std::bit_ceil */
+#include <bit>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
-#include <malloc.h> // _aligned_malloc / _aligned_free
+/* _aligned_malloc / _aligned_free */
+#include <malloc.h>
 #include <optional>
 
 
 namespace
 {
-    // ============================== Counters ==============================
+    /* ============================== Counters ============================== */
 
-    // constinit: set to zero before any code runs, so allocations before main are counted safely
+    /** constinit sets these before any code runs, so allocations made before main are safe to count */
     constinit MemoryStats stats{};
 
-    // Starts on with constinit, so the allocations the runtime makes before main are printed too.
+    /** On from the start, so the runtime's allocations before main are logged too */
     constinit bool loggingEnabled = true;
 
 
-    // ============================== Block layout ==============================
+    /* ============================== Block layout ============================== */
 
-    // Debug blocks carry extra fields for checking. Release stays lean.
-    // Nothing crosses between builds, so the two sizes can differ safely.
+    /* Debug headers carry extra fields for checking. Release keeps the header small. */
 #ifdef _DEBUG
 #define MEMMON_CHECKED_HEADER 1
 #else
@@ -31,48 +33,73 @@ namespace
 #endif
 
 #if MEMMON_CHECKED_HEADER
-    /**
-     * Written into every block at allocation, replaced at free. One field doing two jobs:
-     * any other value means the pointer did not come from here, and FreedMagic means it was
-     * already deleted once.
-     */
+    /** Stamped on every live block. Any other value means the pointer is not ours. */
     constexpr std::uint32_t LiveMagic = 0xC0FFEEu;
+
+    /** Stamped on the way out, so a second delete of the same block can be caught */
     constexpr std::uint32_t FreedMagic = 0xDEAD5EEDu;
 
-    // The next power of two that holds the extra fields. Not negotiable: HeaderSpace can hand
-    // sizeof(Header) straight to _aligned_malloc, which kills the process on a non power of two.
-    constexpr std::size_t CheckedHeaderSize = 2 * __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+    /**
+     * Bytes used by the Debug fields: 3 pointers, 3 size_t and 2 uint32.
+     * 56 on x64, 32 on Win32.
+     */
+    constexpr std::size_t CheckedFieldBytes =
+        3 * sizeof(void*) + 3 * sizeof(std::size_t) + 2 * sizeof(std::uint32_t);
 
-    // Filler that pushes magic to the very end of the header
-    // 
-    // The Header struct contains: numBytes (size_t), alignment (size_t), reserved (uint32_t[]), magic (uint32_t)
-    // We know the total size must be CheckedHeaderSize (a power of two, large enough for all fields).
-    // We need to calculate how many uint32_t elements fit in the reserved array.
-    //
-    // Math breakdown:
-    //   - Start with CheckedHeaderSize (total bytes available)
-    //   - Subtract 2 * sizeof(size_t) for numBytes and alignment fields
-    //   - Subtract sizeof(uint32_t) for the magic field at the end
-    //   - Divide the remaining bytes by sizeof(uint32_t) to get the array count
-    //
-    // This ensures magic sits at the very end: any small underrun will hit it instead of random padding.
+    /**
+     * Rounded up to a power of two: 64 on x64, 32 on Win32.
+     * It MUST be a power of two, or _aligned_malloc kills the process.
+     */
+    constexpr std::size_t CheckedHeaderSize = std::bit_ceil(CheckedFieldBytes);
 
-    constexpr std::size_t HeaderPadWords =
-        (CheckedHeaderSize - 2 * sizeof(std::size_t) - sizeof(std::uint32_t)) / sizeof(std::uint32_t);
+    /** Spare bytes, filled so that magic ends up last: 2 words on x64, 0 on Win32 */
+    constexpr std::size_t HeaderPadBytes = CheckedHeaderSize - CheckedFieldBytes;
+    static_assert(HeaderPadBytes % sizeof(std::uint32_t) == 0);
+    constexpr std::size_t HeaderPadWords = HeaderPadBytes / sizeof(std::uint32_t);
+
+    /** C++ does not allow an array of size 0, so Pad<0> is an empty type instead */
+    template <std::size_t Words> struct Pad { std::uint32_t words[Words]; };
+    template <> struct Pad<0> {};
 #endif
 
     /**
-     * Stored in front of every block, used to access the number of bytes on delete.
-     * alignas(__STDCPP_DEFAULT_NEW_ALIGNMENT__) makes it at least 16 on x64 and 8 on x86.
-     * alignment is 0 for a malloc block and the real value for an _aligned_malloc one, so delete
-     * can pick the matching free without trusting the caller.
+     * The label stored in front of every block. The caller never sees it.
      */
     struct alignas(__STDCPP_DEFAULT_NEW_ALIGNMENT__) Header
     {
+#if MEMMON_CHECKED_HEADER
+        /** The live block before this one in the leak list */
+        Header* prev;
+
+        /** The live block after this one in the leak list */
+        Header* next;
+
+        /** Source file of the new, nullptr if unknown */
+        const char* file;
+#endif
+        /** Bytes the caller asked for */
         std::size_t numBytes;
+
+        /** 0 = malloc block, otherwise _aligned_malloc with this alignment */
         std::size_t alignment;
 #if MEMMON_CHECKED_HEADER
-        std::uint32_t reserved[HeaderPadWords];
+        /** Allocation number, used to list only leaks after a baseline */
+        std::size_t serial;
+
+        /** Source line of the new, 0 if unknown */
+        std::uint32_t line;
+
+        /**
+         * Filler, keeps magic last.
+         *
+         * [[msvc::no_unique_address]]: normally every field takes at least 1 byte, even an
+         * empty one, so an empty Pad<0> would still cost 1 byte plus padding and push magic
+         * off the end. This attribute lets an empty field take 0 bytes.
+         * It is MSVC's spelling of the standard [[no_unique_address]], which MSVC ignores.
+         */
+        [[msvc::no_unique_address]] Pad<HeaderPadWords> reserved;
+
+        /** LiveMagic or FreedMagic. Last, so writing just before the block hits it */
         std::uint32_t magic;
 #endif
     };
@@ -80,7 +107,8 @@ namespace
     static_assert(sizeof(Header) >= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
     static_assert((sizeof(Header) & (sizeof(Header) - 1)) == 0, "Header size must be a power of two");
 #if MEMMON_CHECKED_HEADER
-    static_assert(sizeof(Header) == CheckedHeaderSize);
+    /* Fails if the fields change, or if the compiler adds hidden padding between them */
+    static_assert(sizeof(Header) == CheckedHeaderSize, "Header fields no longer add up to CheckedHeaderSize");
     static_assert(offsetof(Header, magic) + sizeof(Header::magic) == sizeof(Header),
                   "magic must be the last bytes of the header, so a small underrun lands on it");
 #endif
@@ -88,8 +116,7 @@ namespace
     enum class BlockCheck { Ok, NotOurs, AlreadyFreed };
 
     /**
-     * Reads the check value a block was stamped with.
-     * A truly wild pointer can still fault on this read, before there is anything to report.
+     * Reads the block's stamp. A pointer to unmapped memory still crashes on this read.
      * @param header
      */
     BlockCheck CheckHeader([[maybe_unused]] const Header* header) noexcept
@@ -104,7 +131,7 @@ namespace
     }
 
     /**
-     * Fills in a fresh header
+     * Fills in a new header
      * @param header
      * @param size bytes the caller asked for
      * @param alignment 0 for a malloc block, the real value for an _aligned_malloc one
@@ -114,13 +141,18 @@ namespace
         header->numBytes = size;
         header->alignment = alignment;
 #if MEMMON_CHECKED_HEADER
+        /* Not linked or tagged yet */
+        header->prev = nullptr;
+        header->next = nullptr;
+        header->file = nullptr;
+        header->serial = 0;
+        header->line = 0;
         header->magic = LiveMagic;
 #endif
     }
 
     /**
-     * Clears the check value on the way out, so a second delete of the same pointer is caught
-     * instead of guessed at
+     * Stamps the block as freed, so a second delete of it is caught
      * @param header
      */
     void MarkFreed([[maybe_unused]] Header* header) noexcept
@@ -131,9 +163,8 @@ namespace
     }
 
     /**
-     * Bytes reserved in front of the caller's memory for an aligned block.
-     * It is the alignment itself, so the caller's pointer stays a multiple of it,
-     * but never smaller than the Header. Both values are powers of two, so the result is one too.
+     * Bytes in front of an aligned block: the alignment, or the header size if that is bigger.
+     * Both are powers of two, so the result is one too.
      * @param alignment
      */
     std::size_t HeaderSpace(const std::size_t alignment)
@@ -142,23 +173,19 @@ namespace
     }
 
 
-    // ============================== Printing ==============================
+    /* ============================== Printing ============================== */
 
     /**
-     * Logs allocation and deletion using console colors.
+     * Prints one colored line for a new or a delete.
      *
-     * Not std::format and not std::cout, because this runs inside operator new and must not touch the heap:
-     * - std::format returns a std::string, and a string of this length allocates, which calls operator new again,
-     *   which logs again... forever. format_to_n writes into the stack buffer below instead, so nothing is allocated.
-     * - std::cout allocates its buffer on first use, and it is gone during static destruction. fputs uses the C
-     *   stdio buffer, which the runtime sets up before main and keeps until the very end.
+     * This runs inside operator new, so it must never allocate, or it calls itself forever.
+     * That is why it writes into a stack buffer with format_to_n and prints with fputs:
+     * - std::format returns a std::string, which allocates.
+     * - std::cout allocates on first use, and is already gone while statics are destroyed.
+     * Lines longer than 256 characters are cut off.
      *
-     * The cost is the fixed buffer: anything past 256 characters is cut off.
-     *
-     * Numbers must use a plain {} here. In a Debug build MSVC allocates 16 bytes for any other base
-     * ({:x}, {:b}, {:o}) and for padded numbers ({:08}, {:>8}), because those go through an internal temporary.
-     * That allocation would land inside operator new and recurse straight back into this function.
-     * Padding a string, like {:<37} below, is free and safe.
+     * Numbers must use a plain {}. In Debug, MSVC allocates for {:x}, {:b}, {:o} and for padded
+     * numbers like {:08}. Padding a string, like {:<37}, is fine.
      * @param prefixColor
      * @param operation
      * @param functionColor
@@ -176,7 +203,8 @@ namespace
         if (!loggingEnabled) return;
 
         char buffer[256];
-        const char* const end = buffer + sizeof(buffer) - 1; // leave room for '\0'
+        /* Leave room for '\0' */
+        const char* const end = buffer + sizeof(buffer) - 1;
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Operation: {:<7}{}| {}{:<37}{}",
@@ -221,17 +249,18 @@ namespace
 
 
     /**
-     * Prints a free the monitor refused to carry out. Always prints, even with logging off
-     * Same stack-buffer rules as LogOperation, nothing in here may allocate.
-     * @param block the pointer that was handed to delete
+     * Prints a free the monitor refused. Always prints, even with logging off.
+     * Must not allocate, same as LogOperation.
+     * @param block the pointer handed to delete
      * @param check what was wrong with it
      * @param function the operator it came through
      */
     void LogBadBlock(const void* block, const BlockCheck check, const std::string_view function) noexcept
     {
-        // AlreadyFreed only survive    s while nothing has reused the block. The CRT usually writes its
-        // own free list over it straight away, so a real double free normally shows up as the
-        // vaguer message below. Both mean the same thing: do not touch this pointer.
+        /*
+         * "already freed once" rarely shows: the CRT usually overwrites a freed block right away,
+         * so a double free normally gets the second message. Both mean: do not touch this pointer.
+         */
         const std::string_view reason = check == BlockCheck::AlreadyFreed
                                             ? "already freed once"
                                             : "bad check value: freed twice, or not from here";
@@ -254,11 +283,11 @@ namespace
     }
 
     /**
-     * Prints a free that came through the wrong operator. The block is still freed correctly,
-     * because the header knows what it is. Always prints, for the same reason as above.
+     * Prints a free that came through the wrong delete. The block is still freed the right way,
+     * because the header knows what it is. Always prints, even with logging off.
      * @param block
-     * @param expected what the calling operator assumed
-     * @param actual what the block really is, 0 meaning a plain malloc block
+     * @param expected the alignment the delete assumed
+     * @param actual the block's real alignment, 0 for a malloc block
      * @param function
      */
     void LogMismatch(const void* block, const std::size_t expected, const std::size_t actual,
@@ -284,7 +313,7 @@ namespace
     }
 
 
-    // ============================== Counting ==============================
+    /* ============================== Counting ============================== */
 
     /**
      * Adds one allocation to the counters
@@ -303,9 +332,9 @@ namespace
     }
 
     /**
-     * Adds one deallocation to the counters
+     * Adds one free to the counters
      * @param size
-     * @return bytes still allocated after this deallocation
+     * @return bytes still allocated after this free
      */
     std::size_t CountFree(const std::size_t size)
     {
@@ -315,20 +344,21 @@ namespace
     }
 
 
-    // ============================== Allocate / Free ==============================
+    /* ============================== Allocate / Free ============================== */
 
     /**
-     * Allocates a block with a Header in front, updates the counters and logs the operation
-     * @param size bytes requested by the caller, not counting the Header
+     * Allocates a block with a header in front, counts it and logs it
+     * @param size bytes the caller asked for, header not included
      * @param functionColor
      * @param function
-     * @return pointer to the memory just past the Header
+     * @return pointer just past the header
      */
     void* Allocate(const std::size_t size, const std::string_view functionColor, const std::string_view function)
     {
         auto* header = static_cast<Header*>(std::malloc(sizeof(Header) + size));
         if (!header) throw std::bad_alloc();
-        InitHeader(header, size, 0); // 0 marks it as a plain malloc block
+        /* 0 marks it as a plain malloc block */
+        InitHeader(header, size, 0);
 
         const std::size_t live = CountAllocation(size);
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, live);
@@ -336,26 +366,26 @@ namespace
     }
 
     /**
-     * Same as Allocate, for types that need more alignment than malloc's 16 bytes.
-     * Layout: [ padding ... | Header ][ caller's memory ], the gap is HeaderSpace(alignment) bytes.
-     * @param size bytes requested by the caller
-     * @param alignment the caller's pointer is a multiple of this
+     * Same as Allocate, for types that need more alignment than the default.
+     * Layout: [ gap ... | header ][ caller's memory ]. The gap is HeaderSpace(alignment) bytes.
+     * @param size bytes the caller asked for
+     * @param alignment the returned pointer is a multiple of this
      * @param functionColor
      * @param function
-     * @return pointer to the memory just past the Header, aligned as asked
+     * @return pointer just past the header, aligned as asked
      */
     void* AllocateAligned(const std::size_t size, const std::size_t alignment,
                           const std::string_view functionColor, const std::string_view function)
     {
         const std::size_t space = HeaderSpace(alignment);
 
-        // Align the whole block to space, so base + space is a multiple of both space and alignment
+        /* Aligning the whole block to space keeps base + space aligned too */
         auto* base = static_cast<std::byte*>(_aligned_malloc(space + size, space));
         if (!base) throw std::bad_alloc();
 
+        /* The header sits right before the caller's memory */
         std::byte* block = base + space;
         InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment);
-        // Header sits right before the caller's memory
 
         const std::size_t live = CountAllocation(size);
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, live);
@@ -363,20 +393,19 @@ namespace
     }
 
     /**
-     * Frees a block made by Allocate or AllocateAligned, updates the counters and logs the operation.
+     * Frees a block from Allocate or AllocateAligned, counts it and logs it.
      *
-     * The header decides which free to call, never the caller. That is the whole point: a block
-     * freed through the wrong operator, or with an alignment that does not match the one it was
-     * given, still goes back to the right place.
+     * The header picks free or _aligned_free, never the caller. So a block freed through the
+     * wrong delete still goes back the right way.
      *
-     * A block whose check value is wrong is reported and then left alone. Leaking one block is
-     * recoverable, handing a bad pointer to free is not.
+     * A block with a bad stamp is reported and not freed. Leaking one block is safe,
+     * freeing a bad pointer is not.
      *
-     * @param block pointer returned by Allocate or AllocateAligned, can be nullptr
+     * @param block pointer from Allocate or AllocateAligned, can be nullptr
      * @param functionColor
      * @param function
-     * @param expectedAlignment what the calling operator assumes, 0 for the plain deletes.
-     *                          Only used to report a disagreement, never to find the memory.
+     * @param expectedAlignment what the calling delete assumes, 0 for the plain ones.
+     *                          Only used to report a mismatch.
      */
     void Free(void* block, const std::string_view functionColor, const std::string_view function,
               const std::size_t expectedAlignment) noexcept
@@ -388,7 +417,8 @@ namespace
         {
             ++stats.badBlockCount;
             LogBadBlock(block, check, function);
-            return; // leaking one block beats corrupting the heap
+            /* Leaking one block beats corrupting the heap */
+            return;
         }
 
         const std::size_t alignment = header->alignment;
@@ -410,7 +440,7 @@ namespace
 }
 
 
-// ============================== Public API ==============================
+/* ============================== Public API ============================== */
 
 MemoryStats MemoryMonitor::GetStats()
 {
@@ -439,7 +469,7 @@ bool MemoryMonitor::HasCheckedHeaders()
 
 void MemoryMonitor::Report(const MemoryStats& baseline)
 {
-    // Copy first so every line reads the same numbers
+    /* Copy first so every line reads the same numbers */
     const MemoryStats now = stats;
 
     const std::uint64_t allocations = now.allocationCount - baseline.allocationCount;
@@ -447,7 +477,7 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
     const std::uint64_t bytesAllocated = now.bytesAllocated - baseline.bytesAllocated;
     const std::uint64_t bytesFreed = now.bytesFreed - baseline.bytesFreed;
 
-    // Signed: code after the baseline can free memory that was allocated before it
+    /* Signed: code after the baseline can free memory allocated before it */
     const std::int64_t liveBytes = static_cast<std::int64_t>(bytesAllocated) - static_cast<std::int64_t>(bytesFreed);
     const std::int64_t liveBlocks = static_cast<std::int64_t>(allocations) - static_cast<std::int64_t>(frees);
 
@@ -469,7 +499,7 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
     PrintStat("Peak live bytes", now.peakLiveBytes, " bytes (whole program)");
     PrintStat("Largest allocation", now.largestAllocation, " bytes (whole program)");
 
-    // Only shown when something went wrong
+    /* Only shown when something went wrong */
     const std::uint64_t badBlocks = now.badBlockCount - baseline.badBlockCount;
     const std::uint64_t mismatches = now.mismatchCount - baseline.mismatchCount;
     if (badBlocks) PrintStat("Refused frees", badBlocks, " (bad or already freed)");
@@ -477,7 +507,7 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
 }
 
 
-// ============================== Operator replacements: new ==============================
+/* ============================== Operator replacements: new ============================== */
 
 void* operator new(std::size_t _Size)
 {
@@ -500,7 +530,7 @@ void* operator new[](std::size_t _Size, std::align_val_t _Al)
 }
 
 
-// ============================== Operator replacements: delete ==============================
+/* ============================== Operator replacements: delete ============================== */
 
 void operator delete(void* _Block) noexcept
 {
@@ -522,7 +552,7 @@ void operator delete[](void* _Block, std::size_t _Size) noexcept
     Free(_Block, MemColor::SizedArray, "delete[](void*, size_t)", 0);
 }
 
-// Aligned overloads: they pass their alignment only so Free can report a mismatch. The header picks the free function.
+/* The aligned deletes pass their alignment only so Free can report a mismatch */
 void operator delete(void* _Block, std::align_val_t _Al) noexcept
 {
     Free(_Block, MemColor::Aligned, "delete(void*, align_val_t)",
@@ -550,14 +580,16 @@ void operator delete[](void* _Block, std::size_t _Size,
 }
 
 
-// ============================== Not replaced yet ==============================
+/* ============================== Not replaced yet ============================== */
 
-// TODO: missing nothrow overloads (MSVC forwards these to the ones above, but other compilers may not)
-// void* operator new(std::size_t _Size, const std::nothrow_t&) noexcept
-// void* operator new[](std::size_t _Size, const std::nothrow_t&) noexcept
-// void* operator new(std::size_t _Size, std::align_val_t _Al, const std::nothrow_t&) noexcept
-// void* operator new[](std::size_t _Size, std::align_val_t _Al, const std::nothrow_t&) noexcept
-// void operator delete(void* _Block, const std::nothrow_t&) noexcept
-// void operator delete[](void* _Block, const std::nothrow_t&) noexcept
-// void operator delete(void* _Block, std::align_val_t _Al, const std::nothrow_t&) noexcept
-// void operator delete[](void* _Block, std::align_val_t _Al, const std::nothrow_t&) noexcept
+/*
+ * TODO: the nothrow overloads. MSVC forwards them to the ones above, other compilers may not.
+ * void* operator new(std::size_t _Size, const std::nothrow_t&) noexcept
+ * void* operator new[](std::size_t _Size, const std::nothrow_t&) noexcept
+ * void* operator new(std::size_t _Size, std::align_val_t _Al, const std::nothrow_t&) noexcept
+ * void* operator new[](std::size_t _Size, std::align_val_t _Al, const std::nothrow_t&) noexcept
+ * void operator delete(void* _Block, const std::nothrow_t&) noexcept
+ * void operator delete[](void* _Block, const std::nothrow_t&) noexcept
+ * void operator delete(void* _Block, std::align_val_t _Al, const std::nothrow_t&) noexcept
+ * void operator delete[](void* _Block, std::align_val_t _Al, const std::nothrow_t&) noexcept
+ */

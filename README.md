@@ -171,7 +171,7 @@ delete[] grid;    // Refused:
 
 #### 11. Tells you the cost of the header
 
-Every block has a header in front of it. It is 16 bytes on x64 Release, 32 on x64 Debug (half that on Win32). You can ask for the size, and ask if this build checks blocks.
+Every block has a header in front of it. It is 16 bytes on x64 Release, 64 on x64 Debug (half that on Win32). You can ask for the size, and ask if this build checks blocks.
 
 ```cpp
 std::size_t overhead = MemoryMonitor::HeaderOverhead();   // bytes per block
