@@ -27,15 +27,7 @@ namespace
 
     /* ============================== Block layout ============================== */
 
-    /* Debug headers carry extra fields for checking. Release keeps the header small. */
-#ifdef _DEBUG
-#define MEMMON_CHECKED_HEADER 1
-#else
-#define MEMMON_CHECKED_HEADER 0
-#endif
-
 #if MEMMON_CHECKED_HEADER
-
     /** Stamped on every live block. Any other value means the pointer is not ours. */
     constexpr std::uint32_t LiveMagic = 0xC0FFEEu;
 
@@ -154,18 +146,20 @@ namespace
      * @param header
      * @param size bytes the caller asked for
      * @param alignment 0 for a malloc block, the real value for an _aligned_malloc one
+      * @param file source file of the new, nullptr if unknown
+     * @param line source line of the new, 0 if unknown
      */
-    void InitHeader(Header* header, const std::size_t size, const std::size_t alignment) noexcept
+    void InitHeader(Header* header, const std::size_t size, const std::size_t alignment,
+                    [[maybe_unused]] const char* file, [[maybe_unused]] const std::uint32_t line) noexcept
     {
         header->numBytes = size;
         header->alignment = alignment;
 #if MEMMON_CHECKED_HEADER
-        /* Not linked or tagged yet */
         header->prev = nullptr;
         header->next = nullptr;
-        header->file = nullptr;
+        header->file = file;
         header->serial = 0;
-        header->line = 0;
+        header->line = line;
         header->magic = LiveMagic;
 #endif
     }
@@ -453,14 +447,17 @@ namespace
      * @param size bytes the caller asked for, header not included
      * @param functionColor
      * @param function
+     * @param file source file of the new, nullptr if unknown
+     * @param line source line of the new, 0 if unknown
      * @return pointer just past the header
      */
-    void* Allocate(const std::size_t size, const std::string_view functionColor, const std::string_view function)
+    void* Allocate(const std::size_t size, const std::string_view functionColor, const std::string_view function,
+                   const char* file = nullptr, const std::uint32_t line = 0)
     {
         auto* header = static_cast<Header*>(std::malloc(sizeof(Header) + size));
         if (!header) throw std::bad_alloc();
         /* 0 marks it as a plain malloc block */
-        InitHeader(header, size, 0);
+        InitHeader(header, size, 0, file, line);
 
         const std::size_t live = CountAllocation(size);
         LinkBlock(header);
@@ -475,10 +472,13 @@ namespace
      * @param alignment the returned pointer is a multiple of this
      * @param functionColor
      * @param function
+     * @param file source file of the new, nullptr if unknown
+     * @param line source line of the new, 0 if unknown
      * @return pointer just past the header, aligned as asked
      */
     void* AllocateAligned(const std::size_t size, const std::size_t alignment,
-                          const std::string_view functionColor, const std::string_view function)
+                          const std::string_view functionColor, const std::string_view function,
+                          const char* file = nullptr, const std::uint32_t line = 0)
     {
         const std::size_t space = HeaderSpace(alignment);
 
@@ -488,7 +488,7 @@ namespace
 
         /* The header sits right before the caller's memory */
         std::byte* block = base + space;
-        InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment);
+        InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment, file, line);
 
         const std::size_t live = CountAllocation(size);
         LinkBlock(reinterpret_cast<Header*>(block) - 1);
@@ -645,6 +645,22 @@ LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& basel
     return summary;
 }
 
+AllocationSite MemoryMonitor::GetAllocationSite([[maybe_unused]] const void* block)
+{
+#if MEMMON_CHECKED_HEADER
+    if (!block) return {};
+
+    const Header* header = static_cast<const Header*>(block) - 1;
+
+    /* A bad stamp means the rest of the header cannot be trusted either */
+    if (CheckHeader(header) != BlockCheck::Ok) return {};
+
+    return {header->file, header->line};
+#else
+    return {};
+#endif
+}
+
 
 /* ============================== Operator replacements: new ============================== */
 
@@ -717,6 +733,57 @@ void operator delete[](void* _Block, std::size_t _Size,
     Free(_Block, MemColor::SizedAlignedArray, "delete[](void*, size_t, align_val_t)",
          static_cast<std::size_t>(_Al));
 }
+
+/* ============================== File-tagged new / delete (Debug only) ============================== */
+
+#if MEMMON_CHECKED_HEADER
+void* operator new(std::size_t _Size, const char* file, int line)
+{
+    return Allocate(_Size, MemColor::Plain, "new(size_t) file-tagged",
+                    file, static_cast<std::uint32_t>(line));
+}
+
+void* operator new[](std::size_t _Size, const char* file, int line)
+{
+    return Allocate(_Size, MemColor::PlainArray, "new[](size_t) file-tagged",
+                    file, static_cast<std::uint32_t>(line));
+}
+
+void* operator new(std::size_t _Size, std::align_val_t _Al, const char* file, int line)
+{
+    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MemColor::Aligned,
+                           "new(size_t, align_val_t) file-tagged", file, static_cast<std::uint32_t>(line));
+}
+
+void* operator new[](std::size_t _Size, std::align_val_t _Al, const char* file, int line)
+{
+    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MemColor::AlignedArray,
+                           "new[](size_t, align_val_t) file-tagged", file, static_cast<std::uint32_t>(line));
+}
+
+/* Only reached when a constructor throws. File and line are not needed to free. */
+void operator delete(void* _Block, const char*, int) noexcept
+{
+    Free(_Block, MemColor::Plain, "delete(void*) file-tagged", 0);
+}
+
+void operator delete[](void* _Block, const char*, int) noexcept
+{
+    Free(_Block, MemColor::PlainArray, "delete[](void*) file-tagged", 0);
+}
+
+void operator delete(void* _Block, std::align_val_t _Al, const char*, int) noexcept
+{
+    Free(_Block, MemColor::Aligned, "delete(void*, align_val_t) file-tagged",
+         static_cast<std::size_t>(_Al));
+}
+
+void operator delete[](void* _Block, std::align_val_t _Al, const char*, int) noexcept
+{
+    Free(_Block, MemColor::AlignedArray, "delete[](void*, align_val_t) file-tagged",
+         static_cast<std::size_t>(_Al));
+}
+#endif
 
 
 /* ============================== Not replaced yet ============================== */

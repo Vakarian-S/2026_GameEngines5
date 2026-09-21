@@ -11,11 +11,24 @@
 #include <cstddef>
 #include <cstdint>
 #include <new>
+#include <string_view>
 
 #include "utils/MemoryMonitor.h"
 
 namespace
 {
+    /** A type whose constructor always fails */
+    struct Explodes
+    {
+        Explodes() { throw 42; }
+    };
+
+    /** The same, for the aligned new and delete */
+    struct alignas(64) ExplodesAligned
+    {
+        ExplodesAligned() { throw 42; }
+    };
+
     int checks = 0;
     int failures = 0;
 
@@ -196,6 +209,92 @@ namespace
         Expect(none.bytes == 0, "no bytes listed either");
     }
 
+    /**
+     * True if the block was made in this file, on the given line
+     * @param block
+     * @param line
+     */
+    bool CameFrom(const void* block, const std::uint32_t line)
+    {
+        const AllocationSite site = MemoryMonitor::GetAllocationSite(block);
+        return site.file != nullptr
+            && std::string_view(site.file).ends_with("MemoryMonitorTests.cpp")
+            && site.line == line;
+    }
+
+    void TestLeakFileNames()
+    {
+        Section("leak list with file names",
+                "We make blocks with MEMMON_NEW and check that the leak report says which file and line made each one.");
+        if (SkipUnlessChecked()) return;
+
+        struct alignas(64) CacheLine { std::uint64_t counter; };
+
+        const MemoryStats before = MemoryMonitor::GetStats();
+
+        /* __LINE__ on the same line as the new gives the same number the header stored */
+        int* a = MEMMON_NEW int(1);     const std::uint32_t lineA = __LINE__;
+        char* b = MEMMON_NEW char[20];  const std::uint32_t lineB = __LINE__;
+        auto* c = MEMMON_NEW CacheLine; const std::uint32_t lineC = __LINE__;
+        int* d = new int(2);
+
+        Expect(CameFrom(a, lineA), "int: right file and line");
+        Expect(CameFrom(b, lineB), "char array: right file and line");
+        Expect(CameFrom(c, lineC), "aligned object: right file and line");
+        Expect(reinterpret_cast<std::uintptr_t>(c) % 64 == 0, "the file-tagged aligned object is 64 byte aligned");
+        Expect(MemoryMonitor::GetAllocationSite(d).file == nullptr, "a plain new has no file");
+
+        const LeakSummary four = MemoryMonitor::ReportLeaks(before);
+        Expect(four.listed == 4, "all 4 are listed");
+
+        delete a;
+        delete[] b;
+        delete c;
+        delete d;
+    }
+
+
+    /* ============================== File-tagged new ============================== */
+
+    /**
+     * Makes a T with MEMMON_NEW, whose constructor throws, and checks that its memory was given back.
+     * In Debug this goes through the file-tagged delete. In Release MEMMON_NEW is a plain new,
+     * so the normal delete does the job and the checks still hold.
+     * @param what the type's name, printed above its checks
+     */
+    template <typename T>
+    void CheckThrowFreesMemory(const char* what)
+    {
+        const MemoryStats before = MemoryMonitor::GetStats();
+        bool caught = false;
+
+        try
+        {
+            [[maybe_unused]] T* never = MEMMON_NEW T;
+        }
+        catch (int)
+        {
+            caught = true;
+        }
+
+        const MemoryStats after = MemoryMonitor::GetStats();
+
+        std::printf("  %s%s%s\n", Dim, what, Reset);
+        Expect(caught, "the exception reached us");
+        Expect(after.allocationCount == before.allocationCount + 1, "one block was made");
+        Expect(after.freeCount == before.freeCount + 1, "and given back");
+        Expect(after.LiveBytes() == before.LiveBytes(), "nothing left live");
+    }
+
+    void TestConstructorThrows()
+    {
+        Section("constructor throws",
+                "We make an object whose constructor fails, and check that its memory is still given back.");
+
+        CheckThrowFreesMemory<Explodes>("plain object");
+        CheckThrowFreesMemory<ExplodesAligned>("64 byte aligned object");
+    }
+
 
     /* ============================== Deliberate mistakes ============================== */
 
@@ -323,6 +422,8 @@ int main()
     TestSmallAlignmentRoundTrip();
     /* Before the mistakes: TestUnderrunHitsMagic leaves a damaged block in the list for good */
     TestLeakListing();
+    TestLeakFileNames();
+    TestConstructorThrows();
     TestDoubleFree();
     TestUnderrunHitsMagic();
     TestNonHeapPointer();

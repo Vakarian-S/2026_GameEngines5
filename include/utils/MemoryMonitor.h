@@ -5,6 +5,44 @@
 #include <string_view>
 
 
+/* ============================== Debug Check ============================== */
+
+/* Debug headers carry extra fields for checking. Release keeps the header small. */
+#ifdef _DEBUG
+#define MEMMON_CHECKED_HEADER 1
+#else
+#define MEMMON_CHECKED_HEADER 0
+#endif
+
+/* ============================== File-tagged new ============================== */
+
+#if MEMMON_CHECKED_HEADER
+/*
+ * new(__FILE__, __LINE__) calls these. They store the file and line in the block's header,
+ * so ReportLeaks can say where a leak came from.
+ */
+void* operator new(std::size_t size, const char* file, int line);
+void* operator new[](std::size_t size, const char* file, int line);
+void* operator new(std::size_t size, std::align_val_t alignment, const char* file, int line);
+void* operator new[](std::size_t size, std::align_val_t alignment, const char* file, int line);
+
+/*
+ * Only called when a constructor throws. C++ then frees the memory with the delete
+ * that takes the same extra inputs as the new.
+ */
+void operator delete(void* block, const char* file, int line) noexcept;
+void operator delete[](void* block, const char* file, int line) noexcept;
+void operator delete(void* block, std::align_val_t alignment, const char* file, int line) noexcept;
+void operator delete[](void* block, std::align_val_t alignment, const char* file, int line) noexcept;
+
+/* Debug - Saves the current File and Line */
+#define MEMMON_NEW new(__FILE__, __LINE__)
+#else
+/* Release - Does nothing */
+#define MEMMON_NEW new
+#endif
+
+
 /* ============================== Console colors ============================== */
 
 /**
@@ -102,6 +140,17 @@ struct LeakSummary
     bool damaged = false;
 };
 
+/**
+ * Where a block was allocated
+ */
+struct AllocationSite
+{
+    /** Source file of the new. nullptr for a plain new, a bad pointer, or in Release. */
+    const char* file = nullptr;
+    /** Source line of the new, 0 when file is nullptr */
+    std::uint32_t line = 0;
+};
+
 
 class MemoryMonitor
 {
@@ -150,4 +199,12 @@ public:
      * @return how many blocks and bytes were listed
      */
     static LeakSummary ReportLeaks(const MemoryStats& baseline = {});
+
+    /**
+     * Reads where a block was allocated. Debug only: Release always returns an empty site.
+     * Like delete, only safe on pointers that came from new.
+     * @param block pointer returned by new
+     * @return file and line, or an empty site if the block was not made with MEMMON_NEW
+     */
+    static AllocationSite GetAllocationSite(const void* block);
 };
