@@ -67,6 +67,18 @@ public:
     static MemoryStats GetStats();
 
     /**
+     * Turns the per-allocation log lines on or off. Counting never stops, only the printing.
+     * Report() is not affected, it always prints.
+     * @param enabled
+     */
+    static void SetLogging(bool enabled);
+
+    /**
+     * @return true if the per-allocation log lines are on
+     */
+    static bool IsLogging();
+
+    /**
      * Prints the counters since the baseline. Peak and largest always cover the whole program.
      * @param baseline stats saved earlier with GetStats(), for example at the start of main
      */

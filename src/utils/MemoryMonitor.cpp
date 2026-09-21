@@ -16,6 +16,9 @@ namespace
     // constinit: set to zero before any code runs, so allocations before main are counted safely
     constinit MemoryStats stats{};
 
+    // Starts on with constinit, so the allocations the runtime makes before main are printed too.
+    constinit bool loggingEnabled = true;
+
 
     // ============================== Block layout ==============================
 
@@ -73,6 +76,8 @@ namespace
                       const std::optional<std::size_t> alignment = std::nullopt,
                       const std::optional<std::size_t> live = std::nullopt)
     {
+        if (!loggingEnabled) return;
+
         char buffer[256];
         const char* const end = buffer + sizeof(buffer) - 1; // leave room for '\0'
         char* out = buffer;
@@ -236,6 +241,16 @@ namespace
 MemoryStats MemoryMonitor::GetStats()
 {
     return stats;
+}
+
+void MemoryMonitor::SetLogging(const bool enabled)
+{
+    loggingEnabled = enabled;
+}
+
+bool MemoryMonitor::IsLogging()
+{
+    return loggingEnabled;
 }
 
 void MemoryMonitor::Report(const MemoryStats& baseline)

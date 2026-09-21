@@ -128,6 +128,7 @@ int main(int argc, char* argv[])
 {
     // The runtime allocates before main, so measure against this point
     const MemoryStats baseline = MemoryMonitor::GetStats();
+    MemoryMonitor::SetLogging(true);
 
     std::cout << MemColor::Section << "-- Build --" << MemColor::Reset << std::endl;
     std::cout << "pointer size                     = " << sizeof(void*) << " bytes" << std::endl;
