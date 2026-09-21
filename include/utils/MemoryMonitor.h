@@ -52,6 +52,10 @@ struct MemoryStats
     std::size_t peakLiveBytes = 0;
     std::size_t largestAllocation = 0;
 
+    // Problems the monitor caught and refused to act on. Both stay 0 for correct code.
+    std::uint64_t badBlockCount = 0; // frees refused because the block's check value was wrong
+    std::uint64_t mismatchCount = 0; // frees that arrived through the wrong operator
+
     // The cast is safe: live memory can never be larger than the address space, so it always fits in size_t
     std::size_t LiveBytes() const { return static_cast<std::size_t>(bytesAllocated - bytesFreed); }
     std::uint64_t LiveBlocks() const { return allocationCount - freeCount; }
@@ -77,6 +81,19 @@ public:
      * @return true if the per-allocation log lines are on
      */
     static bool IsLogging();
+
+    /**
+     * @return bytes the monitor reserves in front of every block. Larger in Debug, which carries
+     *         the extra fields used for checking.
+     */
+    static std::size_t HeaderOverhead();
+
+    /**
+     * Blocks carry a check value in Debug, so double frees and small underruns are caught and refused.
+     * Release drops it, and a bad free goes through unnoticed like it would without the monitor.
+     * @return true if blocks are checked
+     */
+    static bool HasCheckedHeaders();
 
     /**
      * Prints the counters since the baseline. Peak and largest always cover the whole program.

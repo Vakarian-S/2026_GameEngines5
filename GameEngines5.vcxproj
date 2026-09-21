@@ -163,6 +163,16 @@
   <ItemGroup>
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="src\utils\MemoryMonitor.cpp" />
+    <!-- Has its own main(), so it is shown and edited here but built by scripts\run-tests.bat -->
+    <ClCompile Include="tests\MemoryMonitorTests.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="scripts\capture-output.sh" />
+    <None Include="scripts\run-tests.bat" />
+    <None Include="README.md" />
+    <None Include=".gitignore" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\utils\MemoryMonitor.h" />

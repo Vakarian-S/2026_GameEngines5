@@ -22,16 +22,113 @@ namespace
 
     // ============================== Block layout ==============================
 
+    // Debug blocks carry extra fields for checking. Release stays lean.
+    // Nothing crosses between builds, so the two sizes can differ safely.
+#ifdef _DEBUG
+#define MEMMON_CHECKED_HEADER 1
+#else
+#define MEMMON_CHECKED_HEADER 0
+#endif
+
+#if MEMMON_CHECKED_HEADER
     /**
-     * Stored in front of every block, used to access the number of bytes on delete
-     * __STDCPP_DEFAULT_NEW_ALIGNMENT__ That makes it 16 on x64 and 8 on x86
+     * Written into every block at allocation, replaced at free. One field doing two jobs:
+     * any other value means the pointer did not come from here, and FreedMagic means it was
+     * already deleted once.
+     */
+    constexpr std::uint32_t LiveMagic = 0xC0FFEEu;
+    constexpr std::uint32_t FreedMagic = 0xDEAD5EEDu;
+
+    // The next power of two that holds the extra fields. Not negotiable: HeaderSpace can hand
+    // sizeof(Header) straight to _aligned_malloc, which kills the process on a non power of two.
+    constexpr std::size_t CheckedHeaderSize = 2 * __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+
+    // Filler that pushes magic to the very end of the header
+    // 
+    // The Header struct contains: numBytes (size_t), alignment (size_t), reserved (uint32_t[]), magic (uint32_t)
+    // We know the total size must be CheckedHeaderSize (a power of two, large enough for all fields).
+    // We need to calculate how many uint32_t elements fit in the reserved array.
+    //
+    // Math breakdown:
+    //   - Start with CheckedHeaderSize (total bytes available)
+    //   - Subtract 2 * sizeof(size_t) for numBytes and alignment fields
+    //   - Subtract sizeof(uint32_t) for the magic field at the end
+    //   - Divide the remaining bytes by sizeof(uint32_t) to get the array count
+    //
+    // This ensures magic sits at the very end: any small underrun will hit it instead of random padding.
+
+    constexpr std::size_t HeaderPadWords =
+        (CheckedHeaderSize - 2 * sizeof(std::size_t) - sizeof(std::uint32_t)) / sizeof(std::uint32_t);
+#endif
+
+    /**
+     * Stored in front of every block, used to access the number of bytes on delete.
+     * alignas(__STDCPP_DEFAULT_NEW_ALIGNMENT__) makes it at least 16 on x64 and 8 on x86.
+     * alignment is 0 for a malloc block and the real value for an _aligned_malloc one, so delete
+     * can pick the matching free without trusting the caller.
      */
     struct alignas(__STDCPP_DEFAULT_NEW_ALIGNMENT__) Header
     {
         std::size_t numBytes;
+        std::size_t alignment;
+#if MEMMON_CHECKED_HEADER
+        std::uint32_t reserved[HeaderPadWords];
+        std::uint32_t magic;
+#endif
     };
+
     static_assert(sizeof(Header) >= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
     static_assert((sizeof(Header) & (sizeof(Header) - 1)) == 0, "Header size must be a power of two");
+#if MEMMON_CHECKED_HEADER
+    static_assert(sizeof(Header) == CheckedHeaderSize);
+    static_assert(offsetof(Header, magic) + sizeof(Header::magic) == sizeof(Header),
+                  "magic must be the last bytes of the header, so a small underrun lands on it");
+#endif
+
+    enum class BlockCheck { Ok, NotOurs, AlreadyFreed };
+
+    /**
+     * Reads the check value a block was stamped with.
+     * A truly wild pointer can still fault on this read, before there is anything to report.
+     * @param header
+     */
+    BlockCheck CheckHeader([[maybe_unused]] const Header* header) noexcept
+    {
+#if MEMMON_CHECKED_HEADER
+        if (header->magic == LiveMagic) return BlockCheck::Ok;
+        if (header->magic == FreedMagic) return BlockCheck::AlreadyFreed;
+        return BlockCheck::NotOurs;
+#else
+        return BlockCheck::Ok;
+#endif
+    }
+
+    /**
+     * Fills in a fresh header
+     * @param header
+     * @param size bytes the caller asked for
+     * @param alignment 0 for a malloc block, the real value for an _aligned_malloc one
+     */
+    void InitHeader(Header* header, const std::size_t size, const std::size_t alignment) noexcept
+    {
+        header->numBytes = size;
+        header->alignment = alignment;
+#if MEMMON_CHECKED_HEADER
+        header->magic = LiveMagic;
+#endif
+    }
+
+    /**
+     * Clears the check value on the way out, so a second delete of the same pointer is caught
+     * instead of guessed at
+     * @param header
+     */
+    void MarkFreed([[maybe_unused]] Header* header) noexcept
+    {
+#if MEMMON_CHECKED_HEADER
+        header->magic = FreedMagic;
+#endif
+    }
 
     /**
      * Bytes reserved in front of the caller's memory for an aligned block.
@@ -123,6 +220,70 @@ namespace
     }
 
 
+    /**
+     * Prints a free the monitor refused to carry out. Always prints, even with logging off
+     * Same stack-buffer rules as LogOperation, nothing in here may allocate.
+     * @param block the pointer that was handed to delete
+     * @param check what was wrong with it
+     * @param function the operator it came through
+     */
+    void LogBadBlock(const void* block, const BlockCheck check, const std::string_view function) noexcept
+    {
+        // AlreadyFreed only survive    s while nothing has reused the block. The CRT usually writes its
+        // own free list over it straight away, so a real double free normally shows up as the
+        // vaguer message below. Both mean the same thing: do not touch this pointer.
+        const std::string_view reason = check == BlockCheck::AlreadyFreed
+                                            ? "already freed once"
+                                            : "bad check value: freed twice, or not from here";
+
+        char buffer[256];
+        const char* const end = buffer + sizeof(buffer) - 1;
+        char* out = buffer;
+
+        out = std::format_to_n(out, end - out, "{}Refused:   {:<7}{}| {}{:<37}{}",
+                               MemColor::Fail, "free", MemColor::Reset,
+                               MemColor::Check, function, MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, "| address = {}{}{}",
+                               MemColor::Value, block, MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, " | {}{}{}",
+                               MemColor::Fail, reason, MemColor::Reset).out;
+        *out = '\0';
+
+        std::fputs(buffer, stdout);
+        std::fputc('\n', stdout);
+    }
+
+    /**
+     * Prints a free that came through the wrong operator. The block is still freed correctly,
+     * because the header knows what it is. Always prints, for the same reason as above.
+     * @param block
+     * @param expected what the calling operator assumed
+     * @param actual what the block really is, 0 meaning a plain malloc block
+     * @param function
+     */
+    void LogMismatch(const void* block, const std::size_t expected, const std::size_t actual,
+                     const std::string_view function) noexcept
+    {
+        char buffer[256];
+        const char* const end = buffer + sizeof(buffer) - 1;
+        char* out = buffer;
+
+        out = std::format_to_n(out, end - out, "{}Mismatch:  {:<7}{}| {}{:<37}{}",
+                               MemColor::Fail, "free", MemColor::Reset,
+                               MemColor::Check, function, MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, "| address = {}{}{}",
+                               MemColor::Value, block, MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, " | expected align {}{}{}",
+                               MemColor::Value, expected, MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, ", block says {}{}{}",
+                               MemColor::Value, actual, MemColor::Reset).out;
+        *out = '\0';
+
+        std::fputs(buffer, stdout);
+        std::fputc('\n', stdout);
+    }
+
+
     // ============================== Counting ==============================
 
     /**
@@ -167,27 +328,11 @@ namespace
     {
         auto* header = static_cast<Header*>(std::malloc(sizeof(Header) + size));
         if (!header) throw std::bad_alloc();
-        header->numBytes = size;
+        InitHeader(header, size, 0); // 0 marks it as a plain malloc block
 
         const std::size_t live = CountAllocation(size);
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, live);
         return header + 1;
-    }
-
-    /**
-     * Frees a block made by Allocate, reads its size from the Header, updates the counters and logs the operation
-     * @param block pointer returned by Allocate, can be nullptr
-     * @param functionColor
-     * @param function
-     */
-    void Free(void* block, const std::string_view functionColor, const std::string_view function) noexcept
-    {
-        if (!block) return;
-        Header* header = static_cast<Header*>(block) - 1;
-
-        const std::size_t live = CountFree(header->numBytes);
-        LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes, std::nullopt, live);
-        std::free(header);
     }
 
     /**
@@ -209,7 +354,8 @@ namespace
         if (!base) throw std::bad_alloc();
 
         std::byte* block = base + space;
-        (reinterpret_cast<Header*>(block) - 1)->numBytes = size; // Header sits right before the caller's memory
+        InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment);
+        // Header sits right before the caller's memory
 
         const std::size_t live = CountAllocation(size);
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, live);
@@ -217,21 +363,49 @@ namespace
     }
 
     /**
-     * Frees a block made by AllocateAligned
-     * @param block pointer returned by AllocateAligned, can be nullptr
-     * @param alignment the same value the matching new was given
+     * Frees a block made by Allocate or AllocateAligned, updates the counters and logs the operation.
+     *
+     * The header decides which free to call, never the caller. That is the whole point: a block
+     * freed through the wrong operator, or with an alignment that does not match the one it was
+     * given, still goes back to the right place.
+     *
+     * A block whose check value is wrong is reported and then left alone. Leaking one block is
+     * recoverable, handing a bad pointer to free is not.
+     *
+     * @param block pointer returned by Allocate or AllocateAligned, can be nullptr
      * @param functionColor
      * @param function
+     * @param expectedAlignment what the calling operator assumes, 0 for the plain deletes.
+     *                          Only used to report a disagreement, never to find the memory.
      */
-    void FreeAligned(void* block, const std::size_t alignment,
-                     const std::string_view functionColor, const std::string_view function) noexcept
+    void Free(void* block, const std::string_view functionColor, const std::string_view function,
+              const std::size_t expectedAlignment) noexcept
     {
         if (!block) return;
-        const Header* header = static_cast<Header*>(block) - 1;
+        Header* header = static_cast<Header*>(block) - 1;
+
+        if (const BlockCheck check = CheckHeader(header); check != BlockCheck::Ok)
+        {
+            ++stats.badBlockCount;
+            LogBadBlock(block, check, function);
+            return; // leaking one block beats corrupting the heap
+        }
+
+        const std::size_t alignment = header->alignment;
+        if (alignment != expectedAlignment)
+        {
+            ++stats.mismatchCount;
+            LogMismatch(block, expectedAlignment, alignment, function);
+        }
 
         const std::size_t live = CountFree(header->numBytes);
-        LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes, alignment, live);
-        _aligned_free(static_cast<std::byte*>(block) - HeaderSpace(alignment));
+        LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes,
+                     alignment ? std::optional{alignment} : std::nullopt, live);
+
+        MarkFreed(header);
+
+        if (alignment == 0) std::free(header);
+        else _aligned_free(static_cast<std::byte*>(block) - HeaderSpace(alignment));
     }
 }
 
@@ -251,6 +425,16 @@ void MemoryMonitor::SetLogging(const bool enabled)
 bool MemoryMonitor::IsLogging()
 {
     return loggingEnabled;
+}
+
+std::size_t MemoryMonitor::HeaderOverhead()
+{
+    return sizeof(Header);
+}
+
+bool MemoryMonitor::HasCheckedHeaders()
+{
+    return MEMMON_CHECKED_HEADER != 0;
 }
 
 void MemoryMonitor::Report(const MemoryStats& baseline)
@@ -284,6 +468,12 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
     PrintStat("Default new align", __STDCPP_DEFAULT_NEW_ALIGNMENT__);
     PrintStat("Peak live bytes", now.peakLiveBytes, " bytes (whole program)");
     PrintStat("Largest allocation", now.largestAllocation, " bytes (whole program)");
+
+    // Only shown when something went wrong
+    const std::uint64_t badBlocks = now.badBlockCount - baseline.badBlockCount;
+    const std::uint64_t mismatches = now.mismatchCount - baseline.mismatchCount;
+    if (badBlocks) PrintStat("Refused frees", badBlocks, " (bad or already freed)");
+    if (mismatches) PrintStat("Wrong operator", mismatches, " (freed through the wrong delete)");
 }
 
 
@@ -314,46 +504,49 @@ void* operator new[](std::size_t _Size, std::align_val_t _Al)
 
 void operator delete(void* _Block) noexcept
 {
-    Free(_Block, MemColor::Plain, "delete(void*)");
+    Free(_Block, MemColor::Plain, "delete(void*)", 0);
 }
 
 void operator delete(void* _Block, std::size_t _Size) noexcept
 {
-    Free(_Block, MemColor::Sized, "delete(void*, size_t)");
+    Free(_Block, MemColor::Sized, "delete(void*, size_t)", 0);
 }
 
 void operator delete [](void* _Block) noexcept
 {
-    Free(_Block, MemColor::PlainArray, "delete[](void*)");
+    Free(_Block, MemColor::PlainArray, "delete[](void*)", 0);
 }
 
 void operator delete[](void* _Block, std::size_t _Size) noexcept
 {
-    Free(_Block, MemColor::SizedArray, "delete[](void*, size_t)");
+    Free(_Block, MemColor::SizedArray, "delete[](void*, size_t)", 0);
 }
 
-// Aligned overloads: the memory comes from AllocateAligned, so it must go back through _aligned_free.
+// Aligned overloads: they pass their alignment only so Free can report a mismatch. The header picks the free function.
 void operator delete(void* _Block, std::align_val_t _Al) noexcept
 {
-    FreeAligned(_Block, static_cast<std::size_t>(_Al), MemColor::Aligned, "delete(void*, align_val_t)");
+    Free(_Block, MemColor::Aligned, "delete(void*, align_val_t)",
+         static_cast<std::size_t>(_Al));
 }
 
 void operator delete(void* _Block, std::size_t _Size,
                      std::align_val_t _Al) noexcept
 {
-    FreeAligned(_Block, static_cast<std::size_t>(_Al), MemColor::SizedAligned, "delete(void*, size_t, align_val_t)");
+    Free(_Block, MemColor::SizedAligned, "delete(void*, size_t, align_val_t)",
+         static_cast<std::size_t>(_Al));
 }
 
 void operator delete[](void* _Block, std::align_val_t _Al) noexcept
 {
-    FreeAligned(_Block, static_cast<std::size_t>(_Al), MemColor::AlignedArray, "delete[](void*, align_val_t)");
+    Free(_Block, MemColor::AlignedArray, "delete[](void*, align_val_t)",
+         static_cast<std::size_t>(_Al));
 }
 
 void operator delete[](void* _Block, std::size_t _Size,
                        std::align_val_t _Al) noexcept
 {
-    FreeAligned(_Block, static_cast<std::size_t>(_Al), MemColor::SizedAlignedArray,
-                "delete[](void*, size_t, align_val_t)");
+    Free(_Block, MemColor::SizedAlignedArray, "delete[](void*, size_t, align_val_t)",
+         static_cast<std::size_t>(_Al));
 }
 
 

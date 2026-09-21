@@ -22,3 +22,6 @@ Release/**/*.obj
 
 # Runtime logs
 GameEngineLog.txt
+
+# Output snapshots from scripts/capture-output.sh
+baselines/
