@@ -146,7 +146,7 @@ namespace
      * @param header
      * @param size bytes the caller asked for
      * @param alignment 0 for a malloc block, the real value for an _aligned_malloc one
-      * @param file source file of the new, nullptr if unknown
+     * @param file source file of the new, nullptr if unknown
      * @param line source line of the new, 0 if unknown
      */
     void InitHeader(Header* header, const std::size_t size, const std::size_t alignment,
@@ -406,6 +406,27 @@ namespace
         std::fputs(buffer, stdout);
         std::fputc('\n', stdout);
     }
+
+    /**
+     * Prints where the leak walk had to stop. Must not allocate, same as LogOperation.
+     * @param header the block with the bad stamp
+     */
+    void LogDamagedBlock(const Header* header) noexcept
+    {
+        char buffer[256];
+        const char* const end = buffer + sizeof(buffer) - 1;
+        char* out = buffer;
+
+        out = std::format_to_n(out, end - out, "{}Damaged:{}   | address = {}{}{}",
+                               MemColor::Fail, MemColor::Reset,
+                               MemColor::Value, static_cast<const void*>(header + 1), MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, " | {}bad check value, walk stopped: older blocks not listed{}",
+                               MemColor::Fail, MemColor::Reset).out;
+        *out = '\0';
+
+        std::fputs(buffer, stdout);
+        std::fputc('\n', stdout);
+    }
 #endif
 
 
@@ -628,6 +649,14 @@ LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& basel
 
     for (const Header* header = liveHead; header; header = header->next)
     {
+        /* Check the stamp first. A bad one means next cannot be trusted either. */
+        if (CheckHeader(header) != BlockCheck::Ok)
+        {
+            summary.damaged = true;
+            LogDamagedBlock(header);
+            break;
+        }
+
         /* Newest first, so the first block from before the baseline means all the rest are too */
         if (!everything && !IsAfter(header->serial, since)) break;
 

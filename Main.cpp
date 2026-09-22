@@ -230,5 +230,27 @@ int main(int argc, char* argv[])
     MemoryMonitor::Report(baseline);
     MemoryMonitor::ReportLeaks(baseline);
 
+
+    /* ============================== Damaged leak list ============================== */
+
+    /*
+     * Debug only: Release blocks carry no stamp to break.
+     * We overwrite the stamp of one leaked block, like a small underrun would, show that the
+     * leak report stops there safely, then put the stamp back so the program stays healthy.
+     */
+    if (MemoryMonitor::HasCheckedHeaders())
+    {
+        std::cout << MemColor::Section << "-- Damaged leak list --" << MemColor::Reset << std::endl;
+
+        /* volatile stops the optimizer from reasoning about the deliberate write below */
+        int* volatile target = leakedTagged;
+        const int savedStamp = target[-1];
+        target[-1] = 0;
+
+        MemoryMonitor::ReportLeaks(baseline);
+
+        target[-1] = savedStamp;
+    }
+
     return 0;
 }

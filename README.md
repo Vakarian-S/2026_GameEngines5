@@ -1,8 +1,48 @@
 # GameEngines5
 
+## Contents
+
+- [MemoryMonitor](#memorymonitor)
+  - [What it does](#what-it-does)
+    - [1. Catches every `new` and `delete`](#1-catches-every-new-and-delete)
+    - [2. Counts allocations from before `main`](#2-counts-allocations-from-before-main)
+    - [3. Gives you a snapshot of the counters](#3-gives-you-a-snapshot-of-the-counters)
+    - [4. Prints a report since a point you choose](#4-prints-a-report-since-a-point-you-choose)
+    - [5. Logs every call, in color](#5-logs-every-call-in-color)
+    - [6. Lets you turn the log off](#6-lets-you-turn-the-log-off)
+    - [7. Handles over-aligned types](#7-handles-over-aligned-types)
+    - [8. Frees through the right path, even when the caller is wrong](#8-frees-through-the-right-path-even-when-the-caller-is-wrong)
+    - [9. Catches double frees and bad pointers (Debug only)](#9-catches-double-frees-and-bad-pointers-debug-only)
+    - [10. Catches small writes just before a block (Debug only)](#10-catches-small-writes-just-before-a-block-debug-only)
+    - [11. Tells you the cost of the header](#11-tells-you-the-cost-of-the-header)
+    - [12. Never allocates while it logs](#12-never-allocates-while-it-logs)
+    - [13. Lists the blocks that leaked (Debug only)](#13-lists-the-blocks-that-leaked-debug-only)
+    - [14. Names the file and line of a leak, with `MEMMON_NEW` (Debug only)](#14-names-the-file-and-line-of-a-leak-with-memmon_new-debug-only)
+    - [15. Tells you where a block came from (Debug only)](#15-tells-you-where-a-block-came-from-debug-only)
+    - [16. Stops safely at a damaged block (Debug only)](#16-stops-safely-at-a-damaged-block-debug-only)
+  - [What it does not do](#what-it-does-not-do)
+    - [1. It does not replace the `nothrow` overloads](#1-it-does-not-replace-the-nothrow-overloads)
+    - [2. It does not see memory that skips `operator new`](#2-it-does-not-see-memory-that-skips-operator-new)
+    - [3. It does not name the file and line of every leak](#3-it-does-not-name-the-file-and-line-of-every-leak)
+    - [4. It is not thread safe](#4-it-is-not-thread-safe)
+    - [5. It does not check anything in Release, or list leaks there](#5-it-does-not-check-anything-in-release-or-list-leaks-there)
+    - [6. It does not always name a double free as a double free](#6-it-does-not-always-name-a-double-free-as-a-double-free)
+    - [7. It does not survive a truly wild pointer](#7-it-does-not-survive-a-truly-wild-pointer)
+    - [8. It does not catch overruns past the end](#8-it-does-not-catch-overruns-past-the-end)
+    - [9. It does not catch `delete` vs `delete[]` mixups, or a wrong size](#9-it-does-not-catch-delete-vs-delete-mixups-or-a-wrong-size)
+    - [10. It does not catch use after free](#10-it-does-not-catch-use-after-free)
+    - [11. It does not count the header in the byte totals](#11-it-does-not-count-the-header-in-the-byte-totals)
+    - [12. It does not scope the peak and largest block](#12-it-does-not-scope-the-peak-and-largest-block)
+    - [13. It does not print long lines in full, or print to a file](#13-it-does-not-print-long-lines-in-full-or-print-to-a-file)
+    - [14. It does not build outside Windows and MSVC](#14-it-does-not-build-outside-windows-and-msvc)
+    - [15. It does not list blocks behind a damaged one](#15-it-does-not-list-blocks-behind-a-damaged-one)
+    - [16. It is not free in Debug](#16-it-is-not-free-in-debug)
+- [Running the tests](#running-the-tests)
+- [Checking that a refactor changed nothing](#checking-that-a-refactor-changed-nothing)
+
 ## MemoryMonitor
 
-`MemoryMonitor` replaces the global `operator new` and `operator delete`. Every heap allocation in the program goes through it. It counts the bytes, logs each call, and checks each free.
+`MemoryMonitor` replaces the global `operator new` and `operator delete`. Every heap allocation in the program goes through it. It counts the bytes, logs each call, and checks each free. In Debug it also lists the blocks that leaked, and where they were made.
 
 Include it with:
 
@@ -103,7 +143,7 @@ Operation: Delete | delete(void*, size_t)                | size = 4 bytes | live
 
 #### 6. Lets you turn the log off
 
-Logging starts on. You can switch it off for noisy parts. The counters keep running. `Report()`, `Refused:` and `Mismatch:` lines always print.
+Logging starts on. You can switch it off for noisy parts. The counters keep running. `Report()`, `ReportLeaks()`, and the `Refused:`, `Mismatch:` and `Damaged:` lines always print.
 
 ```cpp
 MemoryMonitor::SetLogging(false);
@@ -171,7 +211,7 @@ delete[] grid;    // Refused:
 
 #### 11. Tells you the cost of the header
 
-Every block has a header in front of it. It is 16 bytes on x64 Release, 64 on x64 Debug (half that on Win32). You can ask for the size, and ask if this build checks blocks.
+Every block has a header in front of it. It is 16 bytes on x64 Release and 64 on x64 Debug (half that on Win32). The Debug header is bigger because it also holds the leak list links, the file and line, and an allocation number. You can ask for the size, and ask if this build checks blocks.
 
 ```cpp
 std::size_t overhead = MemoryMonitor::HeaderOverhead();   // bytes per block
@@ -188,6 +228,73 @@ char buffer[256];
 auto end = std::format_to_n(buffer, sizeof(buffer) - 1, "size = {} bytes", size).out;
 *end = '\0';
 std::fputs(buffer, stdout);
+```
+
+#### 13. Lists the blocks that leaked (Debug only)
+
+Every live block sits in a list. `new` adds it, `delete` takes it out. `ReportLeaks()` walks that list and prints each block still alive, newest first. It gives the address, the size and, for aligned blocks, the alignment.
+
+Pass a baseline to see only what leaked after that point. With no baseline it lists every live block, including the runtime's own from before `main`.
+
+```cpp
+const MemoryStats baseline = MemoryMonitor::GetStats();
+
+LoadLevel();
+UnloadLevel();
+
+const LeakSummary leaks = MemoryMonitor::ReportLeaks(baseline);
+if (leaks.listed > 0) { /* something was not freed */ }
+```
+
+```text
+-- Leak Report --
+Leak:      | address = 0x... | size = 64 bytes | alignment = 64 | (unknown)
+Leak:      | address = 0x... | size = 4 bytes | (unknown)
+Leaked blocks       : 2
+Leaked bytes        : 68 bytes
+```
+
+It returns a `LeakSummary` with the number of blocks, their bytes, and whether the walk stopped early. Like `Report()`, it always prints, even with logging off, and it never allocates.
+
+#### 14. Names the file and line of a leak, with `MEMMON_NEW` (Debug only)
+
+Write `MEMMON_NEW` instead of `new`, and the block remembers where it was made. The leak report then shows the file and line instead of `(unknown)`.
+
+```cpp
+Enemy* e = MEMMON_NEW Enemy();       // tagged
+Enemy* f = new Enemy();              // still works, shows (unknown)
+```
+
+```text
+Leak:      | address = 0x... | size = 4 bytes | Main.cpp:227
+```
+
+It works for arrays and over-aligned types too. If a constructor throws, the memory is still given back. In Release, `MEMMON_NEW` is a plain `new`, and nothing is recorded.
+
+#### 15. Tells you where a block came from (Debug only)
+
+`GetAllocationSite()` reads the file and line stored for a pointer. It returns an empty site for a plain `new`, a pointer with a broken check value, or in Release.
+
+```cpp
+int* p = MEMMON_NEW int(1);
+const AllocationSite site = MemoryMonitor::GetAllocationSite(p);
+// site.file ends with "Main.cpp", site.line is the line of the new
+```
+
+Like `delete`, it is only safe on pointers that came from `new`.
+
+#### 16. Stops safely at a damaged block (Debug only)
+
+The leak report checks each block's check value before it moves on to the next one. If a bug wrote over a block's header, the report stops there instead of following a broken pointer. It prints a `Damaged:` line and sets `damaged` in the summary.
+
+```cpp
+int* grid = new int[100];
+grid[-1] = 0;                        // underrun, breaks the check value
+MemoryMonitor::ReportLeaks();
+```
+
+```text
+Damaged:   | address = 0x... | bad check value, walk stopped: older blocks not listed
 ```
 
 ### What it does not do
@@ -209,15 +316,16 @@ void* raw = std::malloc(1024);   // invisible to the monitor
 std::free(raw);
 ```
 
-#### 3. It does not tell you where a leak came from
+#### 3. It does not name the file and line of every leak
 
-It counts leaked bytes and blocks. It does not store a file, a line or a call stack. It cannot list the leaked blocks.
+Only blocks made with `MEMMON_NEW` record where they came from. A plain `new` shows `(unknown)`. That includes every allocation inside `std::vector`, `std::string` and other libraries, because their `new` is written inside the library.
 
 ```cpp
-const MemoryStats baseline = MemoryMonitor::GetStats();
-int* leaked = new int(42);
-MemoryMonitor::Report(baseline);   // "Live blocks : 1", but not which one
+std::vector<int> v(100);             // leak report: (unknown)
+int* p = MEMMON_NEW int(5);          // leak report: Main.cpp:42
 ```
+
+There is no call stack either, only the one file and line.
 
 #### 4. It is not thread safe
 
@@ -229,14 +337,15 @@ std::thread b([] { for (int i = 0; i < 1000; ++i) delete new int; });
 // allocationCount may grow by less than 2000
 ```
 
-#### 5. It does not check anything in Release
+#### 5. It does not check anything in Release, or list leaks there
 
-Release drops the check value to keep the header small. A double free or a bad pointer goes straight to the C runtime, as it would without the monitor. The wrong-operator check (point 8 above) still works.
+Release drops the check value and the leak list to keep the header small. A double free or a bad pointer goes straight to the C runtime, as it would without the monitor. `ReportLeaks()` only prints `needs a Debug build`. The counters, `Report()` and the wrong-operator check (point 8 above) still work.
 
 ```cpp
 int* p = new int(42);
 delete p;
-delete p;   // Debug: Refused. Release: undefined behavior, likely a crash.
+delete p;                            // Debug: Refused. Release: undefined behavior, likely a crash.
+MemoryMonitor::ReportLeaks();        // Release: "Leak list : needs a Debug build"
 ```
 
 #### 6. It does not always name a double free as a double free
@@ -330,6 +439,21 @@ It uses `_aligned_malloc`, `_aligned_free` and `<malloc.h>`. Those are Microsoft
 #include <malloc.h>   // _aligned_malloc / _aligned_free
 ```
 
+#### 15. It does not list blocks behind a damaged one
+
+When the leak report reaches a block with a broken check value, it stops. Every older block behind it stays hidden from that report and from every later one, because the broken block is never freed. The counters in `Report()` still count them.
+
+```cpp
+int* grid = new int[100];
+grid[-1] = 0;                        // grid is now damaged, and delete refuses it
+delete[] grid;
+MemoryMonitor::ReportLeaks();        // stops at grid: older leaks are not listed
+```
+
+#### 16. It is not free in Debug
+
+Every Debug block carries a 64 byte header on x64 (32 on Win32), and every `new` and `delete` updates the leak list. That is fine for finding bugs, but the numbers you measure in Debug are not the ones you get in Release.
+
 ## Running the tests
 
 From the project root in PowerShell:
@@ -344,7 +468,9 @@ This builds and runs the MemoryMonitor tests in Debug and Release, for x64 and W
 .\scripts\run-tests.bat x64 Debug
 ```
 
-Red `Refused:` and `Mismatch:` lines are expected. Those tests make mistakes on purpose. Only `FAIL` means something broke.
+Red `Refused:`, `Mismatch:` and `Damaged:` lines are expected. Those tests make mistakes on purpose. Only `FAIL` means something broke.
+
+Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 59 checks. Release runs 31, because the checks that need a check value or the leak list are skipped there.
 
 ## Checking that a refactor changed nothing
 

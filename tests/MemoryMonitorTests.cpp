@@ -225,7 +225,8 @@ namespace
     void TestLeakFileNames()
     {
         Section("leak list with file names",
-                "We make blocks with MEMMON_NEW and check that the leak report says which file and line made each one.");
+                "We make blocks with MEMMON_NEW and check that the leak report "
+                "says which file and line made each one.");
         if (SkipUnlessChecked()) return;
 
         struct alignas(64) CacheLine { std::uint64_t counter; };
@@ -251,6 +252,49 @@ namespace
         delete[] b;
         delete c;
         delete d;
+    }
+
+    void TestDamagedLeakList()
+    {
+        Section("damaged leak list",
+                "We break one block's label on purpose in the middle of the list, "
+                "and check the leak report stops there safely instead of crashing.");
+        if (SkipUnlessChecked()) return;
+
+        const MemoryStats before = MemoryMonitor::GetStats();
+
+        /* The list now reads: c, b, a, older blocks */
+        int* a = new int(1);
+        int* b = new int(2);
+        int* c = new int(3);
+
+        /* b[-1] is the last 4 bytes of b's header: its stamp. Save it so we can repair it. */
+        int* hidden = static_cast<int*>(Launder(b));
+        const int savedStamp = hidden[-1];
+        hidden[-1] = 0;
+
+        const MemoryStats beforeReport = MemoryMonitor::GetStats();
+        const LeakSummary broken = MemoryMonitor::ReportLeaks(before);
+        const MemoryStats afterReport = MemoryMonitor::GetStats();
+
+        Expect(broken.damaged, "the damage is reported");
+        Expect(broken.listed == 1, "only c, in front of the damage, is listed");
+        Expect(broken.bytes == sizeof(int), "and only its bytes");
+        Expect(afterReport.allocationCount == beforeReport.allocationCount, "the report allocates nothing");
+
+        /* Put the stamp back. If the walk changed nothing, the full list comes back. */
+        hidden[-1] = savedStamp;
+
+        const LeakSummary repaired = MemoryMonitor::ReportLeaks(before);
+        Expect(!repaired.damaged, "after the repair the walk finishes");
+        Expect(repaired.listed == 3, "and lists all 3 blocks");
+
+        delete a;
+        delete b;
+        delete c;
+
+        const LeakSummary none = MemoryMonitor::ReportLeaks(before);
+        Expect(none.listed == 0, "nothing listed once everything is freed");
     }
 
 
@@ -340,6 +384,11 @@ namespace
         /* The block is refused, so this test leaks it on purpose. Refusing is the safe outcome. */
         Expect(after.badBlockCount == before.badBlockCount + 1, "caught at free");
         Expect(after.freeCount == before.freeCount, "not counted as a real free");
+
+        /* The refused block stays in the list with its broken stamp, so the leak walk stops on it */
+        const LeakSummary leaks = MemoryMonitor::ReportLeaks(start);
+        Expect(leaks.damaged, "the leak report stops at the damaged block");
+        Expect(leaks.listed == 0, "nothing is listed past it");
     }
 
     void TestNonHeapPointer()
@@ -387,7 +436,8 @@ namespace
     void TestWrongAlignmentValue()
     {
         Section("aligned block freed with the wrong alignment",
-                "We free aligned memory while passing the wrong alignment, and check it still goes back the right way.");
+                "We free aligned memory while passing the wrong alignment, "
+                "and check it still goes back the right way.");
 
         /* The report covers the whole test */
         const MemoryStats start = MemoryMonitor::GetStats();
@@ -423,6 +473,7 @@ int main()
     /* Before the mistakes: TestUnderrunHitsMagic leaves a damaged block in the list for good */
     TestLeakListing();
     TestLeakFileNames();
+    TestDamagedLeakList();
     TestConstructorThrows();
     TestDoubleFree();
     TestUnderrunHitsMagic();
