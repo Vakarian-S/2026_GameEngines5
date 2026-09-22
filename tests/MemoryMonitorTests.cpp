@@ -307,6 +307,50 @@ namespace
 
     constexpr std::size_t ThreadCount = 4;
     constexpr std::size_t RoundsPerThread = 10000;
+    /** How many times each thread test repeats its whole workload, so one run tries several times */
+    constexpr std::size_t ThreadTestRounds = 3;
+
+    /**
+     * The two gates every thread test uses.
+     *
+     * std::thread allocates its own start data in main and frees it inside the thread once the
+     * work returns. The gates keep both of those outside the window we measure: main takes its
+     * baseline only after every worker is waiting at the start gate, and the workers wait at the
+     * end gate until main has taken its last reading.
+     */
+    struct ThreadGate
+    {
+        std::atomic<std::size_t> atStart{0};
+        std::atomic<bool> go{false};
+        std::atomic<std::size_t> atEnd{0};
+        std::atomic<bool> finish{false};
+
+        /** A worker waits here until main says go */
+        void WorkerStart()
+        {
+            ++atStart;
+            while (!go.load()) std::this_thread::yield();
+        }
+
+        /** A worker waits here until main is done reading */
+        void WorkerEnd()
+        {
+            ++atEnd;
+            while (!finish.load()) std::this_thread::yield();
+        }
+
+        /** Main waits until every worker is at the start gate */
+        void WaitForStart()
+        {
+            while (atStart.load() < ThreadCount) std::this_thread::yield();
+        }
+
+        /** Main waits until every worker has finished its work */
+        void WaitForEnd()
+        {
+            while (atEnd.load() < ThreadCount) std::this_thread::yield();
+        }
+    };
 
     /** Bytes each round makes: an int, a ThreadLine and a char[20] */
     constexpr std::size_t RoundBytes = sizeof(int) + sizeof(ThreadLine) + 20;
@@ -323,153 +367,286 @@ namespace
     void TestThreadedLeakList()
     {
         Section("threads share the counters and the leak list",
-                "4 threads make and delete blocks at the same time. We check that no count is lost "
-                "and that the leak list shows exactly the blocks they kept.");
+                "4 threads make and delete blocks at the same time, 3 times over. We check that no "
+                "count is lost and that the leak list shows exactly the blocks they kept.");
 
-        std::atomic<std::size_t> ready{0};
-        std::atomic<bool> go{false};
-        std::atomic<std::size_t> done{0};
-        std::atomic<bool> finish{false};
-        Kept kept[ThreadCount];
+        /* One counter per check, raised by any round that gets it wrong */
+        std::size_t lostAllocations = 0;
+        std::size_t lostFrees = 0;
+        std::size_t lostAllocatedBytes = 0;
+        std::size_t lostFreedBytes = 0;
+        std::size_t flaggedFrees = 0;
+        std::size_t damagedRounds = 0;
+        std::size_t wrongBlocks = 0;
+        std::size_t wrongBytes = 0;
 
-        /* Waits until the flag is set, and lets other threads run in the meantime */
-        auto waitFor = [](const std::atomic<bool>& flag) { while (!flag.load()) std::this_thread::yield(); };
-
-        auto work = [&](Kept& mine)
+        for (std::size_t round = 0; round < ThreadTestRounds; ++round)
         {
-            ++ready;
-            waitFor(go);
+            ThreadGate gate;
+            Kept kept[ThreadCount];
 
-            for (std::size_t round = 0; round < RoundsPerThread; ++round)
+            auto work = [&gate](Kept& mine)
             {
-                int* a = new int(1);
-                auto* b = new ThreadLine;
-                char* c = new char[20];
+                gate.WorkerStart();
 
-                /* Middle, oldest, then newest: every unlink case, while the other threads link and unlink too */
-                delete b;
-                delete a;
-                delete[] c;
+                for (std::size_t step = 0; step < RoundsPerThread; ++step)
+                {
+                    int* a = new int(1);
+                    auto* b = new ThreadLine;
+                    char* c = new char[20];
+
+                    /* Middle, oldest, then newest: every unlink case, while the other threads work too */
+                    delete b;
+                    delete a;
+                    delete[] c;
+                }
+
+                mine.plain = new int(2);
+                mine.aligned = new ThreadLine;
+
+                gate.WorkerEnd();
+            };
+
+            /* std::thread allocates its start data here, in main, before we take the baseline */
+            std::thread threads[ThreadCount];
+            for (std::size_t i = 0; i < ThreadCount; ++i)
+            {
+                threads[i] = std::thread([&work, &kept, i] { work(kept[i]); });
             }
 
-            mine.plain = new int(2);
-            mine.aligned = new ThreadLine;
+            gate.WaitForStart();
+            const MemoryStats before = MemoryMonitor::GetStats();
+            gate.go = true;
 
-            ++done;
-            waitFor(finish);
-        };
+            gate.WaitForEnd();
+            const MemoryStats after = MemoryMonitor::GetStats();
+            const LeakSummary leaks = MemoryMonitor::ReportLeaks(before);
 
-        /* std::thread allocates its start data here, in main, before we take the baseline */
-        std::thread threads[ThreadCount];
-        for (std::size_t i = 0; i < ThreadCount; ++i) threads[i] = std::thread([&work, &kept, i] { work(kept[i]); });
+            /* Each thread frees its start data after this, outside our measurement */
+            gate.finish = true;
+            for (std::thread& t : threads) t.join();
 
-        while (ready.load() < ThreadCount) std::this_thread::yield();
-        const MemoryStats before = MemoryMonitor::GetStats();
-        go = true;
+            constexpr std::size_t madeInRounds = ThreadCount * RoundsPerThread * 3;
+            if (after.allocationCount - before.allocationCount != madeInRounds + 2 * ThreadCount) ++lostAllocations;
+            if (after.freeCount - before.freeCount != madeInRounds) ++lostFrees;
+            constexpr std::size_t bytesInRounds = ThreadCount * (RoundsPerThread * RoundBytes + KeptBytes);
+            if (after.bytesAllocated - before.bytesAllocated != bytesInRounds) ++lostAllocatedBytes;
+            if (after.bytesFreed - before.bytesFreed != ThreadCount * RoundsPerThread * RoundBytes) ++lostFreedBytes;
+            if (after.badBlockCount != before.badBlockCount || after.mismatchCount != before.mismatchCount)
+            {
+                ++flaggedFrees;
+            }
 
-        while (done.load() < ThreadCount) std::this_thread::yield();
-        const MemoryStats after = MemoryMonitor::GetStats();
-        const LeakSummary leaks = MemoryMonitor::ReportLeaks(before);
+            /* Release has no leak list, the counters above are all it can check */
+            if (MemoryMonitor::HasCheckedHeaders())
+            {
+                if (leaks.damaged) ++damagedRounds;
+                if (leaks.listed != 2 * ThreadCount) ++wrongBlocks;
+                if (leaks.bytes != ThreadCount * KeptBytes) ++wrongBytes;
+            }
 
-        /* Each thread frees its start data after this, outside our measurement */
-        finish = true;
-        for (std::thread& t : threads) t.join();
-
-        constexpr std::size_t madeInRounds = ThreadCount * RoundsPerThread * 3;
-        Expect(after.allocationCount - before.allocationCount == madeInRounds + 2 * ThreadCount,
-               "no allocation lost");
-        Expect(after.freeCount - before.freeCount == madeInRounds, "no free lost");
-        Expect(after.bytesAllocated - before.bytesAllocated == ThreadCount * (RoundsPerThread * RoundBytes + KeptBytes),
-               "no allocated byte lost");
-        Expect(after.bytesFreed - before.bytesFreed == ThreadCount * RoundsPerThread * RoundBytes,
-               "no freed byte lost");
-        Expect(after.badBlockCount == before.badBlockCount && after.mismatchCount == before.mismatchCount,
-               "no free refused or mismatched");
-
-        /* Release has no leak list, the counters above are all it can check */
-        if (MemoryMonitor::HasCheckedHeaders())
-        {
-            Expect(!leaks.damaged, "the leak list is not damaged");
-            Expect(leaks.listed == 2 * ThreadCount, "the list shows exactly the kept blocks");
-            Expect(leaks.bytes == ThreadCount * KeptBytes, "and their bytes");
+            for (const Kept& k : kept)
+            {
+                delete k.plain;
+                delete k.aligned;
+            }
         }
 
-        for (const Kept& k : kept)
+        Expect(lostAllocations == 0, "no allocation lost, in every round");
+        Expect(lostFrees == 0, "no free lost, in every round");
+        Expect(lostAllocatedBytes == 0, "no allocated byte lost, in every round");
+        Expect(lostFreedBytes == 0, "no freed byte lost, in every round");
+        Expect(flaggedFrees == 0, "no free refused or mismatched, in every round");
+
+        if (MemoryMonitor::HasCheckedHeaders())
         {
-            delete k.plain;
-            delete k.aligned;
+            Expect(damagedRounds == 0, "the leak list is never damaged");
+            Expect(wrongBlocks == 0, "every round lists exactly the kept blocks");
+            Expect(wrongBytes == 0, "and their bytes");
         }
     }
 
     /** Every block these threads make has this size, so live bytes stay a multiple of it */
     constexpr std::size_t SnapshotBlockBytes = 32;
-    /** How many readings main checks while the threads run */
-    constexpr std::size_t SnapshotPolls = 100000;
+    /** How many readings main checks per round, while the threads run */
+    constexpr std::size_t SnapshotPolls = 40000;
+    /** How many leak reports main asks for per round, while the threads run */
+    constexpr std::size_t ReportsWhileWorking = 10;
 
     void TestStatsSnapshot()
     {
         Section("counter readings while threads run",
-                "4 threads make and delete blocks while main reads the counters 100000 times. "
-                "We check that no reading is impossible or half updated.");
-
-        std::atomic<std::size_t> ready{0};
-        std::atomic<bool> go{false};
-        std::atomic<bool> stop{false};
-        std::atomic<std::size_t> done{0};
-        std::atomic<bool> finish{false};
-
-        auto waitFor = [](const std::atomic<bool>& flag) { while (!flag.load()) std::this_thread::yield(); };
-
-        auto work = [&]
-        {
-            ++ready;
-            waitFor(go);
-
-            while (!stop.load())
-            {
-                char* block = new char[SnapshotBlockBytes];
-                delete[] block;
-            }
-
-            ++done;
-            waitFor(finish);
-        };
-
-        std::thread threads[ThreadCount];
-        for (std::thread& t : threads) t = std::thread(work);
-
-        while (ready.load() < ThreadCount) std::this_thread::yield();
-        /* Nothing is in flight yet, so this reading is exact */
-        const MemoryStats before = MemoryMonitor::GetStats();
-        go = true;
+                "4 threads make and delete blocks while main reads the counters 40000 times, "
+                "3 times over. We check that no reading is impossible or half updated.");
 
         std::size_t impossibleCounts = 0;
         std::size_t impossibleBytes = 0;
         std::size_t halfUpdated = 0;
 
-        for (std::size_t poll = 0; poll < SnapshotPolls; ++poll)
+        for (std::size_t round = 0; round < ThreadTestRounds; ++round)
         {
-            const MemoryStats now = MemoryMonitor::GetStats();
+            ThreadGate gate;
+            std::atomic<bool> stop{false};
 
-            if (now.freeCount > now.allocationCount) ++impossibleCounts;
-            if (now.bytesFreed > now.bytesAllocated) ++impossibleBytes;
+            auto work = [&gate, &stop]
+            {
+                gate.WorkerStart();
 
-            /* Every block made since the baseline is the same size, so the two deltas must agree */
-            const std::int64_t blocks = static_cast<std::int64_t>(now.LiveBlocks())
-                - static_cast<std::int64_t>(before.LiveBlocks());
-            const std::int64_t bytes = static_cast<std::int64_t>(now.LiveBytes())
-                - static_cast<std::int64_t>(before.LiveBytes());
-            if (bytes != blocks * static_cast<std::int64_t>(SnapshotBlockBytes)) ++halfUpdated;
+                while (!stop.load())
+                {
+                    char* block = new char[SnapshotBlockBytes];
+                    delete[] block;
+                }
+
+                gate.WorkerEnd();
+            };
+
+            std::thread threads[ThreadCount];
+            for (std::thread& t : threads) t = std::thread(work);
+
+            gate.WaitForStart();
+            /* Nothing is in flight yet, so this reading is exact */
+            const MemoryStats before = MemoryMonitor::GetStats();
+            gate.go = true;
+
+            for (std::size_t poll = 0; poll < SnapshotPolls; ++poll)
+            {
+                const MemoryStats now = MemoryMonitor::GetStats();
+
+                if (now.freeCount > now.allocationCount) ++impossibleCounts;
+                if (now.bytesFreed > now.bytesAllocated) ++impossibleBytes;
+
+                /* Every block made since the baseline is the same size, so the two deltas must agree */
+                const std::int64_t blocks = static_cast<std::int64_t>(now.LiveBlocks())
+                    - static_cast<std::int64_t>(before.LiveBlocks());
+                const std::int64_t bytes = static_cast<std::int64_t>(now.LiveBytes())
+                    - static_cast<std::int64_t>(before.LiveBytes());
+                if (bytes != blocks * static_cast<std::int64_t>(SnapshotBlockBytes)) ++halfUpdated;
+            }
+
+            stop = true;
+            gate.WaitForEnd();
+            gate.finish = true;
+            for (std::thread& t : threads) t.join();
         }
-
-        stop = true;
-        while (done.load() < ThreadCount) std::this_thread::yield();
-        finish = true;
-        for (std::thread& t : threads) t.join();
 
         Expect(impossibleCounts == 0, "no reading had more frees than allocations");
         Expect(impossibleBytes == 0, "no reading had more bytes freed than allocated");
         Expect(halfUpdated == 0, "live blocks and live bytes always agree");
+    }
+
+    void TestThreadedReportLeaks()
+    {
+        Section("leak report while threads work",
+                "4 threads make and delete blocks while main asks for the leak report. "
+                "We check that every report is whole and only lists blocks that are really live.");
+        if (SkipUnlessChecked()) return;
+
+        std::size_t damagedReports = 0;
+        std::size_t tooManyBlocks = 0;
+        std::size_t wrongBytes = 0;
+        std::size_t leftOver = 0;
+
+        for (std::size_t round = 0; round < ThreadTestRounds; ++round)
+        {
+            ThreadGate gate;
+            std::atomic<bool> stop{false};
+
+            auto work = [&gate, &stop]
+            {
+                gate.WorkerStart();
+
+                while (!stop.load())
+                {
+                    char* block = new char[SnapshotBlockBytes];
+                    delete[] block;
+                }
+
+                gate.WorkerEnd();
+            };
+
+            std::thread threads[ThreadCount];
+            for (std::thread& t : threads) t = std::thread(work);
+
+            gate.WaitForStart();
+            const MemoryStats before = MemoryMonitor::GetStats();
+            gate.go = true;
+
+            for (std::size_t report = 0; report < ReportsWhileWorking; ++report)
+            {
+                const LeakSummary now = MemoryMonitor::ReportLeaks(before);
+
+                if (now.damaged) ++damagedReports;
+                /* Each thread holds at most one block at a time, so the list cannot be longer */
+                if (now.listed > ThreadCount) ++tooManyBlocks;
+                if (now.bytes != now.listed * SnapshotBlockBytes) ++wrongBytes;
+            }
+
+            stop = true;
+            gate.WaitForEnd();
+
+            /* The threads are parked now, so nothing of theirs is still live */
+            if (MemoryMonitor::ReportLeaks(before).listed != 0) ++leftOver;
+
+            gate.finish = true;
+            for (std::thread& t : threads) t.join();
+        }
+
+        Expect(damagedReports == 0, "no report hit a damaged block");
+        Expect(tooManyBlocks == 0, "no report listed more blocks than the threads can hold");
+        Expect(wrongBytes == 0, "every report's bytes match the blocks it listed");
+        Expect(leftOver == 0, "nothing is left live once the threads stop");
+    }
+
+    void TestThreadedDoubleFree()
+    {
+        Section("threads free the same block at once",
+                "4 threads delete the very same block at the same time. We check that exactly one "
+                "delete goes through and the other three are refused.");
+        if (SkipUnlessChecked()) return;
+
+        std::size_t wrongFreeCount = 0;
+        std::size_t wrongRefusedCount = 0;
+        std::size_t wrongBytesFreed = 0;
+
+        for (std::size_t round = 0; round < ThreadTestRounds; ++round)
+        {
+            ThreadGate gate;
+
+            /*
+             * The losing threads read the header of memory that was just freed. Nothing else
+             * allocates in this window, so the runtime does not hand that memory to anyone else.
+             */
+            int* shared = new int(7);
+
+            auto work = [&gate, shared]
+            {
+                gate.WorkerStart();
+                delete static_cast<int*>(Launder(shared));
+                gate.WorkerEnd();
+            };
+
+            std::thread threads[ThreadCount];
+            for (std::thread& t : threads) t = std::thread(work);
+
+            gate.WaitForStart();
+            const MemoryStats before = MemoryMonitor::GetStats();
+            gate.go = true;
+
+            gate.WaitForEnd();
+            const MemoryStats after = MemoryMonitor::GetStats();
+
+            gate.finish = true;
+            for (std::thread& t : threads) t.join();
+
+            if (after.freeCount - before.freeCount != 1) ++wrongFreeCount;
+            if (after.badBlockCount - before.badBlockCount != ThreadCount - 1) ++wrongRefusedCount;
+            if (after.bytesFreed - before.bytesFreed != sizeof(int)) ++wrongBytesFreed;
+        }
+
+        Expect(wrongFreeCount == 0, "exactly one delete freed the block, in every round");
+        Expect(wrongRefusedCount == 0, "the other three were refused, in every round");
+        Expect(wrongBytesFreed == 0, "the block's bytes were given back once");
     }
 
 
@@ -651,6 +828,8 @@ int main()
     TestDamagedLeakList();
     TestThreadedLeakList();
     TestStatsSnapshot();
+    TestThreadedReportLeaks();
+    TestThreadedDoubleFree();
     TestConstructorThrows();
     TestDoubleFree();
     TestUnderrunHitsMagic();
