@@ -7,11 +7,14 @@
  * This file includes only the public header, so it uses the monitor like any other code would.
  */
 
+#include <atomic>
 #include <cstdio>
 #include <cstddef>
 #include <cstdint>
 #include <new>
 #include <string_view>
+#include <thread>
+
 
 #include "utils/MemoryMonitor.h"
 
@@ -296,6 +299,107 @@ namespace
         const LeakSummary none = MemoryMonitor::ReportLeaks(before);
         Expect(none.listed == 0, "nothing listed once everything is freed");
     }
+    
+    /* ============================== Threads ============================== */
+
+    /** Cache line sized, so the threads run the aligned path too */
+    struct alignas(64) ThreadLine { std::uint64_t counter; };
+
+    constexpr std::size_t ThreadCount = 4;
+    constexpr std::size_t RoundsPerThread = 10000;
+
+    /** Bytes each round makes: an int, a ThreadLine and a char[20] */
+    constexpr std::size_t RoundBytes = sizeof(int) + sizeof(ThreadLine) + 20;
+    /** Bytes each thread keeps at the end, for the leak list: one int and one ThreadLine */
+    constexpr std::size_t KeptBytes = sizeof(int) + sizeof(ThreadLine);
+
+    /** The blocks one thread keeps. Main frees them after the report. */
+    struct Kept
+    {
+        int* plain = nullptr;
+        ThreadLine* aligned = nullptr;
+    };
+
+    void TestThreadedLeakList()
+    {
+        Section("threads share the counters and the leak list",
+                "4 threads make and delete blocks at the same time. We check that no count is lost "
+                "and that the leak list shows exactly the blocks they kept.");
+
+        std::atomic<std::size_t> ready{0};
+        std::atomic<bool> go{false};
+        std::atomic<std::size_t> done{0};
+        std::atomic<bool> finish{false};
+        Kept kept[ThreadCount];
+
+        /* Waits until the flag is set, and lets other threads run in the meantime */
+        auto waitFor = [](const std::atomic<bool>& flag) { while (!flag.load()) std::this_thread::yield(); };
+
+        auto work = [&](Kept& mine)
+        {
+            ++ready;
+            waitFor(go);
+
+            for (std::size_t round = 0; round < RoundsPerThread; ++round)
+            {
+                int* a = new int(1);
+                auto* b = new ThreadLine;
+                char* c = new char[20];
+
+                /* Middle, oldest, then newest: every unlink case, while the other threads link and unlink too */
+                delete b;
+                delete a;
+                delete[] c;
+            }
+
+            mine.plain = new int(2);
+            mine.aligned = new ThreadLine;
+
+            ++done;
+            waitFor(finish);
+        };
+
+        /* std::thread allocates its start data here, in main, before we take the baseline */
+        std::thread threads[ThreadCount];
+        for (std::size_t i = 0; i < ThreadCount; ++i) threads[i] = std::thread([&work, &kept, i] { work(kept[i]); });
+
+        while (ready.load() < ThreadCount) std::this_thread::yield();
+        const MemoryStats before = MemoryMonitor::GetStats();
+        go = true;
+
+        while (done.load() < ThreadCount) std::this_thread::yield();
+        const MemoryStats after = MemoryMonitor::GetStats();
+        const LeakSummary leaks = MemoryMonitor::ReportLeaks(before);
+
+        /* Each thread frees its start data after this, outside our measurement */
+        finish = true;
+        for (std::thread& t : threads) t.join();
+
+        constexpr std::size_t madeInRounds = ThreadCount * RoundsPerThread * 3;
+        Expect(after.allocationCount - before.allocationCount == madeInRounds + 2 * ThreadCount,
+               "no allocation lost");
+        Expect(after.freeCount - before.freeCount == madeInRounds, "no free lost");
+        Expect(after.bytesAllocated - before.bytesAllocated == ThreadCount * (RoundsPerThread * RoundBytes + KeptBytes),
+               "no allocated byte lost");
+        Expect(after.bytesFreed - before.bytesFreed == ThreadCount * RoundsPerThread * RoundBytes,
+               "no freed byte lost");
+        Expect(after.badBlockCount == before.badBlockCount && after.mismatchCount == before.mismatchCount,
+               "no free refused or mismatched");
+
+        /* Release has no leak list, the counters above are all it can check */
+        if (MemoryMonitor::HasCheckedHeaders())
+        {
+            Expect(!leaks.damaged, "the leak list is not damaged");
+            Expect(leaks.listed == 2 * ThreadCount, "the list shows exactly the kept blocks");
+            Expect(leaks.bytes == ThreadCount * KeptBytes, "and their bytes");
+        }
+
+        for (const Kept& k : kept)
+        {
+            delete k.plain;
+            delete k.aligned;
+        }
+    }
 
 
     /* ============================== File-tagged new ============================== */
@@ -474,6 +578,7 @@ int main()
     TestLeakListing();
     TestLeakFileNames();
     TestDamagedLeakList();
+    TestThreadedLeakList();
     TestConstructorThrows();
     TestDoubleFree();
     TestUnderrunHitsMagic();

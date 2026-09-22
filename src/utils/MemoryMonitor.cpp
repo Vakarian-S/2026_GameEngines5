@@ -14,6 +14,19 @@
 #include <type_traits>
 
 
+#if MEMMON_CHECKED_HEADER
+/* SRWLOCK for the leak list. The defines keep windows.h small and stop its min and max macros. */
+/* Lean and Mean just tells c++ to exclude useless some libraries for faster performance */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+
 namespace
 {
     /* ============================== Counters ============================== */
@@ -143,7 +156,32 @@ namespace
 #if MEMMON_CHECKED_HEADER
     /** First item in our list of allocated headers for the leak list */
     constinit Header* liveHead = nullptr;
+
+    /** Guards liveHead and every prev and next. All zeros, so it works before main and never allocates. */
+    constinit SRWLOCK listLock = SRWLOCK_INIT;
 #endif
+
+    /**
+     * Holds the list lock from here to the end of the scope, so every way out releases it.
+     * Nothing done while holding it may allocate: SRWLOCK is not recursive, so a new in there waits forever.
+     * Empty in Release, where there is no list to guard.
+     */
+    struct ListGuard
+    {
+#if MEMMON_CHECKED_HEADER
+        /* Acquires a slim reader/writer (SRW) lock in exclusive mode. */
+        ListGuard() noexcept { AcquireSRWLockExclusive(&listLock); }
+        /* Releases a slim reader/writer (SRW) lock that was acquired in exclusive mode.*/
+        ~ListGuard() { ReleaseSRWLockExclusive(&listLock); }
+#else
+        ListGuard() noexcept
+        {
+        }
+#endif
+        /* A copy would release the lock twice */
+        ListGuard(const ListGuard&) = delete;
+        ListGuard& operator=(const ListGuard&) = delete;
+    };
 
 
     static_assert(sizeof(Header) >= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
@@ -220,6 +258,7 @@ namespace
 
     /**
      * Runs on every new block, puts the new linked allocation at the front of our leak list
+     * Call with a ListGuard held.
      * @param header
      * @param serial the allocation number from CountAllocation, taken in the same atomic step
      */
@@ -235,6 +274,7 @@ namespace
 
     /**
      * Runs on every delete. It takes the box out and hooks its two neighbors to each other.
+     * Call with a ListGuard held.
      */
     void UnlinkBlock([[maybe_unused]] Header* header) noexcept
     {
@@ -545,8 +585,13 @@ namespace
         /* 0 marks it as a plain malloc block */
         InitHeader(header, size, 0, file, line);
 
-        const Counted counted = CountAllocation(size);
-        LinkBlock(header, counted.number);
+        /* Number and link under one lock, so the list stays sorted by number for ReportLeaks */
+        Counted counted{};
+        {
+            ListGuard guard;
+            counted = CountAllocation(size);
+            LinkBlock(header, counted.number);
+        }
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, counted.live);
         return header + 1;
     }
@@ -576,8 +621,12 @@ namespace
         std::byte* block = base + space;
         InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment, file, line);
 
-        const Counted counted = CountAllocation(size);
-        LinkBlock(reinterpret_cast<Header*>(block) - 1, counted.number);
+        Counted counted{};
+        {
+            ListGuard guard;
+            counted = CountAllocation(size);
+            LinkBlock(reinterpret_cast<Header*>(block) - 1, counted.number);
+        }
         LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, counted.live);
         return block;
     }
@@ -603,7 +652,18 @@ namespace
         if (!block) return;
         Header* header = static_cast<Header*>(block) - 1;
 
-        if (const BlockCheck check = CheckHeader(header); check != BlockCheck::Ok)
+        BlockCheck check;
+        {
+            ListGuard guard;
+            check = CheckHeader(header);
+            if (check == BlockCheck::Ok)
+            {
+                UnlinkBlock(header);
+                MarkFreed(header);
+            }
+        }
+
+        if (check != BlockCheck::Ok)
         {
             ++stats.badBlockCount;
             LogBadBlock(block, check, function);
@@ -611,6 +671,7 @@ namespace
             return;
         }
 
+        /* The block is ours alone now: out of the list and stamped freed */
         const std::size_t alignment = header->alignment;
         if (alignment != expectedAlignment)
         {
@@ -618,14 +679,9 @@ namespace
             LogMismatch(block, expectedAlignment, alignment, function);
         }
 
-        UnlinkBlock(header);
-
         const std::size_t live = CountFree(header->numBytes);
         LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes,
                      alignment ? std::optional{alignment} : std::nullopt, live);
-
-        MarkFreed(header);
-
         if (alignment == 0) std::free(header);
         else _aligned_free(static_cast<std::byte*>(block) - HeaderSpace(alignment));
     }
@@ -722,6 +778,7 @@ LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& basel
     const bool everything = baseline.allocationCount == 0;
     const auto since = static_cast<std::size_t>(baseline.allocationCount);
 
+    ListGuard guard;
     for (const Header* header = liveHead; header; header = header->next)
     {
         /* Check the stamp first. A bad one means next cannot be trusted either. */
@@ -745,7 +802,6 @@ LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& basel
 #else
     PrintStat("Leak list", "needs a Debug build");
 #endif
-
     return summary;
 }
 
