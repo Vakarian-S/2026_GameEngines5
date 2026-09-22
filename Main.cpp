@@ -111,6 +111,44 @@ void CheckAlignment(const std::string_view what, const void* address, const std:
 }
 
 /**
+ * Prints where a block was made, in the same columns as the operator log.
+ * Uses the stack buffer pattern from CheckAlignment, so it allocates nothing.
+ * @param what the name of the call that made the block
+ * @param block pointer from new
+ */
+void PrintSite(const std::string_view what, const void* block)
+{
+    const AllocationSite site = MemoryMonitor::GetAllocationSite(block);
+
+    char buffer[256];
+    /* Leave room for '\n' and '\0' */
+    const char* const end = buffer + sizeof(buffer) - 2;
+    char* out = buffer;
+
+    out = std::format_to_n(out, end - out, "{}Made at:   {:<7}{}| {}{:<37}{}",
+                           MemColor::Check, "site", MemColor::Reset,
+                           MemColor::Check, what, MemColor::Reset).out;
+
+    if (site.file)
+    {
+        /* Only the file name: a full path can be long enough to cut the line off */
+        const std::string_view path = site.file;
+        const std::size_t slash = path.find_last_of("/\\");
+        const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+        out = std::format_to_n(out, end - out, "| {}{}:{}{}",
+                               MemColor::Value, name, site.line, MemColor::Reset).out;
+    }
+    else
+    {
+        out = std::format_to_n(out, end - out, "| {}(unknown){}", MemColor::Section, MemColor::Reset).out;
+    }
+    *out++ = '\n';
+    *out = '\0';
+
+    std::fputs(buffer, stdout);
+}
+
+/**
  * Allocates one T and an array of T, checks both addresses, then frees them.
  * The log lines above each check say which operator the compiler picked.
  */
@@ -214,6 +252,25 @@ int main(int argc, char* argv[])
         }
     }
     /* vertices freed its memory at the closing brace above, so the report below shows only real leaks */
+    std::cout << std::endl;
+
+
+    /* ============================== Smart pointers ============================== */
+
+    /*
+     * Smart pointers call the same operators, so every block they make is counted here too.
+     * std::make_unique writes its new inside the standard library, so its blocks say (unknown).
+     * MEMMON_MAKE_UNIQUE makes the same object through our file-tagged new instead.
+     * Both give the memory back at the closing brace, so neither shows up in the leak report.
+     */
+    std::cout << MemColor::Section << "-- Smart pointers --" << MemColor::Reset << std::endl;
+    {
+        const std::unique_ptr<Plain4> plain = std::make_unique<Plain4>();
+        const std::unique_ptr<Plain4> tagged = MEMMON_MAKE_UNIQUE(Plain4);
+
+        PrintSite("std::make_unique<Plain4>()", plain.get());
+        PrintSite("MEMMON_MAKE_UNIQUE(Plain4)", tagged.get());
+    }
     std::cout << std::endl;
 
 

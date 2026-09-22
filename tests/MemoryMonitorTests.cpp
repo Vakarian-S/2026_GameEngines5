@@ -257,6 +257,28 @@ namespace
         delete d;
     }
 
+    void TestTaggedMakeUnique()
+    {
+        Section("MEMMON_MAKE_UNIQUE",
+                "We make a smart pointer with the tagged macro, and check that the object is right, "
+                "that the block knows this file and line, and that it is freed at the closing brace.");
+
+        const MemoryStats before = MemoryMonitor::GetStats();
+        {
+            /* __LINE__ on the same line as the macro gives the number the header stored */
+            const std::unique_ptr<int> p = MEMMON_MAKE_UNIQUE(int, 5); const std::uint32_t line = __LINE__;
+
+            Expect(*p == 5, "the object holds the value we passed");
+
+            if (MemoryMonitor::HasCheckedHeaders()) Expect(CameFrom(p.get(), line), "right file and line");
+            else std::printf("  %sskipped%s Release has no file and line\n", Dim, Reset);
+        }
+        const MemoryStats after = MemoryMonitor::GetStats();
+
+        Expect(after.allocationCount == before.allocationCount + 1, "one block was made");
+        Expect(after.freeCount == before.freeCount + 1, "and given back when the pointer went away");
+    }
+
     void TestDamagedLeakList()
     {
         Section("damaged leak list",
@@ -825,6 +847,7 @@ int main()
     /* Before the mistakes: TestUnderrunHitsMagic leaves a damaged block in the list for good */
     TestLeakListing();
     TestLeakFileNames();
+    TestTaggedMakeUnique();
     TestDamagedLeakList();
     TestThreadedLeakList();
     TestStatsSnapshot();

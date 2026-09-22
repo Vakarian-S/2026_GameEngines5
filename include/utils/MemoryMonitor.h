@@ -1,6 +1,8 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+/* std::unique_ptr, for MEMMON_MAKE_UNIQUE */
+#include <memory>
 #include <new>
 #include <string_view>
 
@@ -37,9 +39,23 @@ void operator delete[](void* block, std::align_val_t alignment, const char* file
 
 /* Debug - Saves the current File and Line */
 #define MEMMON_NEW new(__FILE__, __LINE__)
+
+/**
+ * Like std::make_unique, but the block remembers this file and line, so a leak can name it.
+ * std::make_unique writes its own new inside the standard library, which no file tag can reach.
+ *
+ * One object only. For arrays use std::make_unique<Type[]>(count), which stays untagged.
+ *
+ * Debug: one expression, so the pointer owns the object right away, as safe as make_unique.
+ * Release: plain std::make_unique, since nothing is recorded there anyway.
+ */
+#define MEMMON_MAKE_UNIQUE(Type, ...) std::unique_ptr<Type>(MEMMON_NEW Type(__VA_ARGS__))
 #else
 /* Release - Does nothing */
 #define MEMMON_NEW new
+
+/** Release - the plain std::make_unique */
+#define MEMMON_MAKE_UNIQUE(Type, ...) std::make_unique<Type>(__VA_ARGS__)
 #endif
 
 

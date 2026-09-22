@@ -319,6 +319,17 @@ Leak:      | address = 0x... | size = 4 bytes | Main.cpp:227
 
 It works for arrays and over-aligned types too. If a constructor throws, the memory is still given back. In Release, `MEMMON_NEW` is a plain `new`, and nothing is recorded.
 
+Smart pointers go through the same operators, so they are counted too. `std::make_unique` writes its own `new` inside the standard library, which no file tag can reach, so its blocks say `(unknown)`. `MEMMON_MAKE_UNIQUE` makes the same object through the tagged `new` instead:
+
+```cpp
+auto plain  = std::make_unique<Enemy>(hp, name);   // leak report: (unknown)
+auto tagged = MEMMON_MAKE_UNIQUE(Enemy, hp, name); // leak report: Level.cpp:118
+```
+
+It takes one object, not an array: for arrays use `std::make_unique<Enemy[]>(count)`, which stays untagged. In Debug it is one expression, so the pointer owns the object right away, exactly as safe as `make_unique`. In Release it *is* `std::make_unique`.
+
+There is no `MEMMON_MAKE_SHARED`. `std::make_shared` packs the object and the reference counts into one block, and a tagged version would need two blocks instead. Writing `std::shared_ptr<Enemy>(MEMMON_NEW Enemy)` gets you the file and line at that price, if you want it.
+
 #### 15. Tells you where a block came from (Debug only)
 
 `GetAllocationSite()` reads the file and line stored for a pointer. It returns an empty site for a plain `new`, a pointer with a broken check value, or in Release.
@@ -392,7 +403,9 @@ Only blocks made with `MEMMON_NEW` record where they came from. A plain `new` sh
 
 ```cpp
 std::vector<int> v(100);             // leak report: (unknown)
+auto q = std::make_unique<Thing>();  // leak report: (unknown)
 int* p = MEMMON_NEW int(5);          // leak report: Main.cpp:42
+auto r = MEMMON_MAKE_UNIQUE(Thing);  // leak report: Main.cpp:43
 ```
 
 There is no call stack either, only the one file and line.
@@ -551,7 +564,7 @@ This builds and runs the MemoryMonitor tests in Debug and Release, for x64 and W
 
 Red `Refused:`, `Mismatch:` and `Damaged:` lines are expected. Those tests make mistakes on purpose. Only `FAIL` means something broke.
 
-Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 77 checks. Release runs 39, because the checks that need a check value or the leak list are skipped there.
+Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.
 
 Four of the tests start threads: they hammer the counters and the leak list from 4 threads at once, ask for reports while that happens, and race two frees on the same block. They repeat their work 3 times per run. Timing bugs do not show up every run, so it is worth running the tests a few times in a row.
 
