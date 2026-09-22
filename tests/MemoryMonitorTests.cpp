@@ -401,6 +401,77 @@ namespace
         }
     }
 
+    /** Every block these threads make has this size, so live bytes stay a multiple of it */
+    constexpr std::size_t SnapshotBlockBytes = 32;
+    /** How many readings main checks while the threads run */
+    constexpr std::size_t SnapshotPolls = 100000;
+
+    void TestStatsSnapshot()
+    {
+        Section("counter readings while threads run",
+                "4 threads make and delete blocks while main reads the counters 100000 times. "
+                "We check that no reading is impossible or half updated.");
+
+        std::atomic<std::size_t> ready{0};
+        std::atomic<bool> go{false};
+        std::atomic<bool> stop{false};
+        std::atomic<std::size_t> done{0};
+        std::atomic<bool> finish{false};
+
+        auto waitFor = [](const std::atomic<bool>& flag) { while (!flag.load()) std::this_thread::yield(); };
+
+        auto work = [&]
+        {
+            ++ready;
+            waitFor(go);
+
+            while (!stop.load())
+            {
+                char* block = new char[SnapshotBlockBytes];
+                delete[] block;
+            }
+
+            ++done;
+            waitFor(finish);
+        };
+
+        std::thread threads[ThreadCount];
+        for (std::thread& t : threads) t = std::thread(work);
+
+        while (ready.load() < ThreadCount) std::this_thread::yield();
+        /* Nothing is in flight yet, so this reading is exact */
+        const MemoryStats before = MemoryMonitor::GetStats();
+        go = true;
+
+        std::size_t impossibleCounts = 0;
+        std::size_t impossibleBytes = 0;
+        std::size_t halfUpdated = 0;
+
+        for (std::size_t poll = 0; poll < SnapshotPolls; ++poll)
+        {
+            const MemoryStats now = MemoryMonitor::GetStats();
+
+            if (now.freeCount > now.allocationCount) ++impossibleCounts;
+            if (now.bytesFreed > now.bytesAllocated) ++impossibleBytes;
+
+            /* Every block made since the baseline is the same size, so the two deltas must agree */
+            const std::int64_t blocks = static_cast<std::int64_t>(now.LiveBlocks())
+                - static_cast<std::int64_t>(before.LiveBlocks());
+            const std::int64_t bytes = static_cast<std::int64_t>(now.LiveBytes())
+                - static_cast<std::int64_t>(before.LiveBytes());
+            if (bytes != blocks * static_cast<std::int64_t>(SnapshotBlockBytes)) ++halfUpdated;
+        }
+
+        stop = true;
+        while (done.load() < ThreadCount) std::this_thread::yield();
+        finish = true;
+        for (std::thread& t : threads) t.join();
+
+        Expect(impossibleCounts == 0, "no reading had more frees than allocations");
+        Expect(impossibleBytes == 0, "no reading had more bytes freed than allocated");
+        Expect(halfUpdated == 0, "live blocks and live bytes always agree");
+    }
+
 
     /* ============================== File-tagged new ============================== */
 
@@ -579,6 +650,7 @@ int main()
     TestLeakFileNames();
     TestDamagedLeakList();
     TestThreadedLeakList();
+    TestStatsSnapshot();
     TestConstructorThrows();
     TestDoubleFree();
     TestUnderrunHitsMagic();

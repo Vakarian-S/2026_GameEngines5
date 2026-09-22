@@ -1,5 +1,6 @@
 #include "utils/MemoryMonitor.h"
 
+#include <algorithm>
 #include <atomic>
 /* std::bit_ceil */
 #include <bit>
@@ -14,8 +15,7 @@
 #include <type_traits>
 
 
-#if MEMMON_CHECKED_HEADER
-/* SRWLOCK for the leak list. The defines keep windows.h small and stop its min and max macros. */
+/* SRWLOCK for the counters and the leak list. The defines keep windows.h small and stop its min and max macros. */
 /* Lean and Mean just tells c++ to exclude useless some libraries for faster performance */
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -24,48 +24,34 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#endif
 
 
 namespace
 {
     /* ============================== Counters ============================== */
 
-    /**
-     * The live counters. Each field is its own atomic, so threads can add to it at the same time
-     * without losing a count. GetStats() copies them into a plain MemoryStats.
-     */
-    struct AtomicStats
-    {
-        /** Total calls to new */
-        std::atomic<std::uint64_t> allocationCount{0};
-        /** Total calls to delete that really freed */
-        std::atomic<std::uint64_t> freeCount{0};
-        /** Total bytes asked for */
-        std::atomic<std::uint64_t> bytesAllocated{0};
-        /** Total bytes given back */
-        std::atomic<std::uint64_t> bytesFreed{0};
-
-        /** Bytes alive right now. Its own counter, so each new and delete gets the exact value in one step. */
-        std::atomic<std::size_t> liveBytes{0};
-
-        /** Most memory alive at once */
-        std::atomic<std::size_t> peakLiveBytes{0};
-        /** Biggest single block */
-        std::atomic<std::size_t> largestAllocation{0};
-
-        /** Frees refused because the block's stamp was wrong */
-        std::atomic<std::uint64_t> badBlockCount{0};
-        /** Frees that came through the wrong delete */
-        std::atomic<std::uint64_t> mismatchCount{0};
-    };
-
-    /* A counter that is not lock-free has a hidden lock inside. These fail the build if that ever happens. */
-    static_assert(std::atomic<std::uint64_t>::is_always_lock_free, "64-bit counters must be lock-free");
-    static_assert(std::atomic<std::size_t>::is_always_lock_free, "size_t counters must be lock-free");
-
     /** constinit sets these before any code runs, so allocations made before main are safe to count */
-    constinit AtomicStats stats{};
+    constinit MemoryStats stats{};
+
+    /** Guards every counter and the whole leak list. All zeros, so it works before main and never allocates. */
+    constinit SRWLOCK monitorLock = SRWLOCK_INIT;
+
+    /**
+     * Holds the monitor lock from here to the end of the scope, so every way out releases it.
+     * It guards the counters and the leak list, in both builds.
+     * Nothing done while holding it may allocate: SRWLOCK is not recursive, so a new in there waits forever.
+     * The log line is printed while it is held, which also keeps two threads from splitting a line.
+     */
+    struct MonitorGuard
+    {
+        /* Takes the lock for writing, so only one thread at a time is inside */
+        MonitorGuard() noexcept { AcquireSRWLockExclusive(&monitorLock); }
+        ~MonitorGuard() { ReleaseSRWLockExclusive(&monitorLock); }
+
+        /* A copy would release the lock twice */
+        MonitorGuard(const MonitorGuard&) = delete;
+        MonitorGuard& operator=(const MonitorGuard&) = delete;
+    };
 
     /** On from the start, so the runtime's allocations before main are logged too */
     constinit std::atomic<bool> loggingEnabled{true};
@@ -156,32 +142,7 @@ namespace
 #if MEMMON_CHECKED_HEADER
     /** First item in our list of allocated headers for the leak list */
     constinit Header* liveHead = nullptr;
-
-    /** Guards liveHead and every prev and next. All zeros, so it works before main and never allocates. */
-    constinit SRWLOCK listLock = SRWLOCK_INIT;
 #endif
-
-    /**
-     * Holds the list lock from here to the end of the scope, so every way out releases it.
-     * Nothing done while holding it may allocate: SRWLOCK is not recursive, so a new in there waits forever.
-     * Empty in Release, where there is no list to guard.
-     */
-    struct ListGuard
-    {
-#if MEMMON_CHECKED_HEADER
-        /* Acquires a slim reader/writer (SRW) lock in exclusive mode. */
-        ListGuard() noexcept { AcquireSRWLockExclusive(&listLock); }
-        /* Releases a slim reader/writer (SRW) lock that was acquired in exclusive mode.*/
-        ~ListGuard() { ReleaseSRWLockExclusive(&listLock); }
-#else
-        ListGuard() noexcept
-        {
-        }
-#endif
-        /* A copy would release the lock twice */
-        ListGuard(const ListGuard&) = delete;
-        ListGuard& operator=(const ListGuard&) = delete;
-    };
 
 
     static_assert(sizeof(Header) >= __STDCPP_DEFAULT_NEW_ALIGNMENT__);
@@ -258,9 +219,9 @@ namespace
 
     /**
      * Runs on every new block, puts the new linked allocation at the front of our leak list
-     * Call with a ListGuard held.
+     * Call with a MonitorGuard held.
      * @param header
-     * @param serial the allocation number from CountAllocation, taken in the same atomic step
+     * @param serial the allocation number from CountAllocation, taken in the same locked step
      */
     void LinkBlock([[maybe_unused]] Header* header, [[maybe_unused]] const std::uint64_t serial) noexcept
     {
@@ -274,7 +235,7 @@ namespace
 
     /**
      * Runs on every delete. It takes the box out and hooks its two neighbors to each other.
-     * Call with a ListGuard held.
+     * Call with a MonitorGuard held.
      */
     void UnlinkBlock([[maybe_unused]] Header* header) noexcept
     {
@@ -310,7 +271,7 @@ namespace
      * That is why it writes into a stack buffer with format_to_n and prints with fputs:
      * - std::format returns a std::string, which allocates.
      * - std::cout allocates on first use, and is already gone while statics are destroyed.
-     * Lines longer than 256 characters are cut off.
+     * Lines longer than 254 characters are cut off, so the newline and the '\0' always fit.
      *
      * Numbers must use a plain {}. In Debug, MSVC allocates for {:x}, {:b}, {:o} and for padded
      * numbers like {:08}. Padding a string, like {:<37}, is fine.
@@ -331,8 +292,8 @@ namespace
         if (!loggingEnabled.load()) return;
 
         char buffer[256];
-        /* Leave room for '\0' */
-        const char* const end = buffer + sizeof(buffer) - 1;
+        /* Leave room for '\n' and '\0' */
+        const char* const end = buffer + sizeof(buffer) - 2;
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Operation: {:<7}{}| {}{:<37}{}",
@@ -353,10 +314,10 @@ namespace
             out = std::format_to_n(out, end - out, " | live = {}{} bytes{}",
                                    MemColor::Value, *live, MemColor::Reset).out;
         }
+        *out++ = '\n';
         *out = '\0';
 
         std::fputs(buffer, stdout);
-        std::fputc('\n', stdout);
     }
 
     /**
@@ -394,7 +355,8 @@ namespace
                                             : "bad check value: freed twice, or not from here";
 
         char buffer[256];
-        const char* const end = buffer + sizeof(buffer) - 1;
+        /* Leave room for '\n' and '\0' */
+        const char* const end = buffer + sizeof(buffer) - 2;
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Refused:   {:<7}{}| {}{:<37}{}",
@@ -404,10 +366,10 @@ namespace
                                MemColor::Value, block, MemColor::Reset).out;
         out = std::format_to_n(out, end - out, " | {}{}{}",
                                MemColor::Fail, reason, MemColor::Reset).out;
+        *out++ = '\n';
         *out = '\0';
 
         std::fputs(buffer, stdout);
-        std::fputc('\n', stdout);
     }
 
     /**
@@ -422,7 +384,8 @@ namespace
                      const std::string_view function) noexcept
     {
         char buffer[256];
-        const char* const end = buffer + sizeof(buffer) - 1;
+        /* Leave room for '\n' and '\0' */
+        const char* const end = buffer + sizeof(buffer) - 2;
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Mismatch:  {:<7}{}| {}{:<37}{}",
@@ -434,10 +397,10 @@ namespace
                                MemColor::Value, expected, MemColor::Reset).out;
         out = std::format_to_n(out, end - out, ", block says {}{}{}",
                                MemColor::Value, actual, MemColor::Reset).out;
+        *out++ = '\n';
         *out = '\0';
 
         std::fputs(buffer, stdout);
-        std::fputc('\n', stdout);
     }
 
 #if MEMMON_CHECKED_HEADER
@@ -449,7 +412,8 @@ namespace
     void LogLeak(const Header* header) noexcept
     {
         char buffer[256];
-        const char* const end = buffer + sizeof(buffer) - 1;
+        /* Leave room for '\n' and '\0' */
+        const char* const end = buffer + sizeof(buffer) - 2;
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Leak:{}      | address = {}{}{}",
@@ -476,10 +440,10 @@ namespace
         {
             out = std::format_to_n(out, end - out, " | {}(unknown){}", MemColor::Section, MemColor::Reset).out;
         }
+        *out++ = '\n';
         *out = '\0';
 
         std::fputs(buffer, stdout);
-        std::fputc('\n', stdout);
     }
 
     /**
@@ -489,7 +453,8 @@ namespace
     void LogDamagedBlock(const Header* header) noexcept
     {
         char buffer[256];
-        const char* const end = buffer + sizeof(buffer) - 1;
+        /* Leave room for '\n' and '\0' */
+        const char* const end = buffer + sizeof(buffer) - 2;
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Damaged:{}   | address = {}{}{}",
@@ -497,10 +462,10 @@ namespace
                                MemColor::Value, static_cast<const void*>(header + 1), MemColor::Reset).out;
         out = std::format_to_n(out, end - out, " | {}bad check value, walk stopped: older blocks not listed{}",
                                MemColor::Fail, MemColor::Reset).out;
+        *out++ = '\n';
         *out = '\0';
 
         std::fputs(buffer, stdout);
-        std::fputc('\n', stdout);
     }
 #endif
 
@@ -519,50 +484,33 @@ namespace
     };
 
     /**
-     * Raises target to value if value is bigger.
-     * Another thread can change target between our read and our write. compare_exchange only
-     * writes if target still holds what we read. If not, it puts the fresh value in seen,
-     * and we try again.
-     * @param target
-     * @param value
-     */
-    void RaiseTo(std::atomic<std::size_t>& target, const std::size_t value) noexcept
-    {
-        std::size_t seen = target.load();
-        while (seen < value)
-        {
-            /* On success we are done. On failure, seen now holds the newer value, so check again. */
-            if (target.compare_exchange_weak(seen, value)) break;
-        }
-    }
-
-    /**
-     * Adds one allocation to the counters
+     * Adds one allocation to the counters. Call with a MonitorGuard held.
      * @param size
      * @return the live bytes after this allocation, and its number
      */
     Counted CountAllocation(const std::size_t size) noexcept
     {
-        /* fetch_add returns the value from before the add, so + 1 gives this allocation's own number */
-        const std::uint64_t number = stats.allocationCount.fetch_add(1) + 1;
-        stats.bytesAllocated.fetch_add(size);
-        const std::size_t live = stats.liveBytes.fetch_add(size) + size;
+        ++stats.allocationCount;
+        stats.bytesAllocated += size;
 
-        RaiseTo(stats.peakLiveBytes, live);
-        RaiseTo(stats.largestAllocation, size);
-        return {live, number};
+        const std::size_t live = stats.LiveBytes();
+        stats.peakLiveBytes = std::max(live, stats.peakLiveBytes);
+        stats.largestAllocation = std::max(size, stats.largestAllocation);
+
+        /* The number and the link happen under the same lock, so the list stays sorted by number */
+        return {live, stats.allocationCount};
     }
 
     /**
-     * Adds one free to the counters
+     * Adds one free to the counters. Call with a MonitorGuard held.
      * @param size
      * @return bytes still allocated after this free
      */
     std::size_t CountFree(const std::size_t size) noexcept
     {
-        stats.freeCount.fetch_add(1);
-        stats.bytesFreed.fetch_add(size);
-        return stats.liveBytes.fetch_sub(size) - size;
+        ++stats.freeCount;
+        stats.bytesFreed += size;
+        return stats.LiveBytes();
     }
 
 
@@ -585,14 +533,13 @@ namespace
         /* 0 marks it as a plain malloc block */
         InitHeader(header, size, 0, file, line);
 
-        /* Number and link under one lock, so the list stays sorted by number for ReportLeaks */
-        Counted counted{};
+        /* The malloc above runs without the lock, so threads can take memory from the heap side by side */
         {
-            ListGuard guard;
-            counted = CountAllocation(size);
+            MonitorGuard guard;
+            const Counted counted = CountAllocation(size);
             LinkBlock(header, counted.number);
+            LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, counted.live);
         }
-        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, counted.live);
         return header + 1;
     }
 
@@ -621,13 +568,12 @@ namespace
         std::byte* block = base + space;
         InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment, file, line);
 
-        Counted counted{};
         {
-            ListGuard guard;
-            counted = CountAllocation(size);
+            MonitorGuard guard;
+            const Counted counted = CountAllocation(size);
             LinkBlock(reinterpret_cast<Header*>(block) - 1, counted.number);
+            LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, counted.live);
         }
-        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, counted.live);
         return block;
     }
 
@@ -652,36 +598,36 @@ namespace
         if (!block) return;
         Header* header = static_cast<Header*>(block) - 1;
 
-        BlockCheck check;
+        /* Declared out here, so the free at the end of the function can still see it */
+        std::size_t alignment = 0;
         {
-            ListGuard guard;
-            check = CheckHeader(header);
-            if (check == BlockCheck::Ok)
+            MonitorGuard guard;
+
+            if (const BlockCheck check = CheckHeader(header); check != BlockCheck::Ok)
             {
-                UnlinkBlock(header);
-                MarkFreed(header);
+                ++stats.badBlockCount;
+                LogBadBlock(block, check, function);
+                /* Leaking one block beats corrupting the heap. The guard releases the lock on the way out. */
+                return;
             }
+
+            alignment = header->alignment;
+            if (alignment != expectedAlignment)
+            {
+                ++stats.mismatchCount;
+                LogMismatch(block, expectedAlignment, alignment, function);
+            }
+
+            UnlinkBlock(header);
+
+            const std::size_t live = CountFree(header->numBytes);
+            LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes,
+                         alignment ? std::optional{alignment} : std::nullopt, live);
+
+            MarkFreed(header);
         }
 
-        if (check != BlockCheck::Ok)
-        {
-            ++stats.badBlockCount;
-            LogBadBlock(block, check, function);
-            /* Leaking one block beats corrupting the heap */
-            return;
-        }
-
-        /* The block is ours alone now: out of the list and stamped freed */
-        const std::size_t alignment = header->alignment;
-        if (alignment != expectedAlignment)
-        {
-            ++stats.mismatchCount;
-            LogMismatch(block, expectedAlignment, alignment, function);
-        }
-
-        const std::size_t live = CountFree(header->numBytes);
-        LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes,
-                     alignment ? std::optional{alignment} : std::nullopt, live);
+        /* The block is out of the list and stamped freed, so it is ours alone to give back */
         if (alignment == 0) std::free(header);
         else _aligned_free(static_cast<std::byte*>(block) - HeaderSpace(alignment));
     }
@@ -692,17 +638,9 @@ namespace
 
 MemoryStats MemoryMonitor::GetStats()
 {
-    /* One load per field. They are not all from the same moment yet, step 4 fixes that. */
-    MemoryStats copy;
-    copy.allocationCount = stats.allocationCount.load();
-    copy.freeCount = stats.freeCount.load();
-    copy.bytesAllocated = stats.bytesAllocated.load();
-    copy.bytesFreed = stats.bytesFreed.load();
-    copy.peakLiveBytes = stats.peakLiveBytes.load();
-    copy.largestAllocation = stats.largestAllocation.load();
-    copy.badBlockCount = stats.badBlockCount.load();
-    copy.mismatchCount = stats.mismatchCount.load();
-    return copy;
+    /* The copy is made under the lock, so every field comes from the same moment */
+    MonitorGuard guard;
+    return stats;
 }
 
 void MemoryMonitor::SetLogging(const bool enabled)
@@ -778,7 +716,7 @@ LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& basel
     const bool everything = baseline.allocationCount == 0;
     const auto since = static_cast<std::size_t>(baseline.allocationCount);
 
-    ListGuard guard;
+    MonitorGuard guard;
     for (const Header* header = liveHead; header; header = header->next)
     {
         /* Check the stamp first. A bad one means next cannot be trusted either. */
