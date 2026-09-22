@@ -1,6 +1,6 @@
 #include "utils/MemoryMonitor.h"
 
-#include <algorithm>
+#include <atomic>
 /* std::bit_ceil */
 #include <bit>
 #include <cstddef>
@@ -18,8 +18,41 @@ namespace
 {
     /* ============================== Counters ============================== */
 
+    /**
+     * The live counters. Each field is its own atomic, so threads can add to it at the same time
+     * without losing a count. GetStats() copies them into a plain MemoryStats.
+     */
+    struct AtomicStats
+    {
+        /** Total calls to new */
+        std::atomic<std::uint64_t> allocationCount{0};
+        /** Total calls to delete that really freed */
+        std::atomic<std::uint64_t> freeCount{0};
+        /** Total bytes asked for */
+        std::atomic<std::uint64_t> bytesAllocated{0};
+        /** Total bytes given back */
+        std::atomic<std::uint64_t> bytesFreed{0};
+
+        /** Bytes alive right now. Its own counter, so each new and delete gets the exact value in one step. */
+        std::atomic<std::size_t> liveBytes{0};
+
+        /** Most memory alive at once */
+        std::atomic<std::size_t> peakLiveBytes{0};
+        /** Biggest single block */
+        std::atomic<std::size_t> largestAllocation{0};
+
+        /** Frees refused because the block's stamp was wrong */
+        std::atomic<std::uint64_t> badBlockCount{0};
+        /** Frees that came through the wrong delete */
+        std::atomic<std::uint64_t> mismatchCount{0};
+    };
+
+    /* A counter that is not lock-free has a hidden lock inside. These fail the build if that ever happens. */
+    static_assert(std::atomic<std::uint64_t>::is_always_lock_free, "64-bit counters must be lock-free");
+    static_assert(std::atomic<std::size_t>::is_always_lock_free, "size_t counters must be lock-free");
+
     /** constinit sets these before any code runs, so allocations made before main are safe to count */
-    constinit MemoryStats stats{};
+    constinit AtomicStats stats{};
 
     /** On from the start, so the runtime's allocations before main are logged too */
     constinit bool loggingEnabled = true;
@@ -187,14 +220,16 @@ namespace
 
     /**
      * Runs on every new block, puts the new linked allocation at the front of our leak list
+     * @param header
+     * @param serial the allocation number from CountAllocation, taken in the same atomic step
      */
-    void LinkBlock([[maybe_unused]] Header* header) noexcept
+    void LinkBlock([[maybe_unused]] Header* header, [[maybe_unused]] const std::uint64_t serial) noexcept
     {
 #if MEMMON_CHECKED_HEADER
         header->next = liveHead;
         if (liveHead) liveHead->prev = header;
         liveHead = header;
-        header->serial = static_cast<std::size_t>(stats.allocationCount);
+        header->serial = static_cast<std::size_t>(serial);
 #endif
     }
 
@@ -433,19 +468,49 @@ namespace
     /* ============================== Counting ============================== */
 
     /**
+     * What CountAllocation hands back
+     */
+    struct Counted
+    {
+        /** Bytes still allocated after this allocation */
+        std::size_t live;
+        /** This allocation's number, 1 for the first one. Becomes the block's serial. */
+        std::uint64_t number;
+    };
+
+    /**
+     * Raises target to value if value is bigger.
+     * Another thread can change target between our read and our write. compare_exchange only
+     * writes if target still holds what we read. If not, it puts the fresh value in seen,
+     * and we try again.
+     * @param target
+     * @param value
+     */
+    void RaiseTo(std::atomic<std::size_t>& target, const std::size_t value) noexcept
+    {
+        std::size_t seen = target.load();
+        while (seen < value)
+        {
+            /* On success we are done. On failure, seen now holds the newer value, so check again. */
+            if (target.compare_exchange_weak(seen, value)) break;
+        }
+    }
+
+    /**
      * Adds one allocation to the counters
      * @param size
-     * @return bytes still allocated after this allocation
+     * @return the live bytes after this allocation, and its number
      */
-    std::size_t CountAllocation(const std::size_t size)
+    Counted CountAllocation(const std::size_t size) noexcept
     {
-        ++stats.allocationCount;
-        stats.bytesAllocated += size;
+        /* fetch_add returns the value from before the add, so + 1 gives this allocation's own number */
+        const std::uint64_t number = stats.allocationCount.fetch_add(1) + 1;
+        stats.bytesAllocated.fetch_add(size);
+        const std::size_t live = stats.liveBytes.fetch_add(size) + size;
 
-        const std::size_t live = stats.LiveBytes();
-        stats.peakLiveBytes = std::max(live, stats.peakLiveBytes);
-        stats.largestAllocation = std::max(size, stats.largestAllocation);
-        return live;
+        RaiseTo(stats.peakLiveBytes, live);
+        RaiseTo(stats.largestAllocation, size);
+        return {live, number};
     }
 
     /**
@@ -453,11 +518,11 @@ namespace
      * @param size
      * @return bytes still allocated after this free
      */
-    std::size_t CountFree(const std::size_t size)
+    std::size_t CountFree(const std::size_t size) noexcept
     {
-        ++stats.freeCount;
-        stats.bytesFreed += size;
-        return stats.LiveBytes();
+        stats.freeCount.fetch_add(1);
+        stats.bytesFreed.fetch_add(size);
+        return stats.liveBytes.fetch_sub(size) - size;
     }
 
 
@@ -480,9 +545,9 @@ namespace
         /* 0 marks it as a plain malloc block */
         InitHeader(header, size, 0, file, line);
 
-        const std::size_t live = CountAllocation(size);
-        LinkBlock(header);
-        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, live);
+        const Counted counted = CountAllocation(size);
+        LinkBlock(header, counted.number);
+        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, counted.live);
         return header + 1;
     }
 
@@ -511,9 +576,9 @@ namespace
         std::byte* block = base + space;
         InitHeader(reinterpret_cast<Header*>(block) - 1, size, alignment, file, line);
 
-        const std::size_t live = CountAllocation(size);
-        LinkBlock(reinterpret_cast<Header*>(block) - 1);
-        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, live);
+        const Counted counted = CountAllocation(size);
+        LinkBlock(reinterpret_cast<Header*>(block) - 1, counted.number);
+        LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, counted.live);
         return block;
     }
 
@@ -571,7 +636,17 @@ namespace
 
 MemoryStats MemoryMonitor::GetStats()
 {
-    return stats;
+    /* One load per field. They are not all from the same moment yet, step 4 fixes that. */
+    MemoryStats copy;
+    copy.allocationCount = stats.allocationCount.load();
+    copy.freeCount = stats.freeCount.load();
+    copy.bytesAllocated = stats.bytesAllocated.load();
+    copy.bytesFreed = stats.bytesFreed.load();
+    copy.peakLiveBytes = stats.peakLiveBytes.load();
+    copy.largestAllocation = stats.largestAllocation.load();
+    copy.badBlockCount = stats.badBlockCount.load();
+    copy.mismatchCount = stats.mismatchCount.load();
+    return copy;
 }
 
 void MemoryMonitor::SetLogging(const bool enabled)
@@ -597,7 +672,7 @@ bool MemoryMonitor::HasCheckedHeaders()
 void MemoryMonitor::Report(const MemoryStats& baseline)
 {
     /* Copy first so every line reads the same numbers */
-    const MemoryStats now = stats;
+    const MemoryStats now = GetStats();
 
     const std::uint64_t allocations = now.allocationCount - baseline.allocationCount;
     const std::uint64_t frees = now.freeCount - baseline.freeCount;
