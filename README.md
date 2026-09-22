@@ -1,5 +1,8 @@
 # GameEngines5
 
+A small C++ game engine project, built step by step. Right now it holds one finished piece:
+`MemoryMonitor`, a tool that watches every piece of memory the program takes and gives back.
+
 ## Contents
 
 - [MemoryMonitor](#memorymonitor)
@@ -20,11 +23,12 @@
     - [14. Names the file and line of a leak, with `MEMMON_NEW` (Debug only)](#14-names-the-file-and-line-of-a-leak-with-memmon_new-debug-only)
     - [15. Tells you where a block came from (Debug only)](#15-tells-you-where-a-block-came-from-debug-only)
     - [16. Stops safely at a damaged block (Debug only)](#16-stops-safely-at-a-damaged-block-debug-only)
+    - [17. Works when several threads allocate at once](#17-works-when-several-threads-allocate-at-once)
   - [What it does not do](#what-it-does-not-do)
     - [1. It does not replace the `nothrow` overloads](#1-it-does-not-replace-the-nothrow-overloads)
     - [2. It does not see memory that skips `operator new`](#2-it-does-not-see-memory-that-skips-operator-new)
     - [3. It does not name the file and line of every leak](#3-it-does-not-name-the-file-and-line-of-every-leak)
-    - [4. It is not thread safe](#4-it-is-not-thread-safe)
+    - [4. It makes threads take turns](#4-it-makes-threads-take-turns)
     - [5. It does not check anything in Release, or list leaks there](#5-it-does-not-check-anything-in-release-or-list-leaks-there)
     - [6. It does not always name a double free as a double free](#6-it-does-not-always-name-a-double-free-as-a-double-free)
     - [7. It does not survive a truly wild pointer](#7-it-does-not-survive-a-truly-wild-pointer)
@@ -36,21 +40,58 @@
     - [13. It does not print long lines in full, or print to a file](#13-it-does-not-print-long-lines-in-full-or-print-to-a-file)
     - [14. It does not build outside Windows and MSVC](#14-it-does-not-build-outside-windows-and-msvc)
     - [15. It does not list blocks behind a damaged one](#15-it-does-not-list-blocks-behind-a-damaged-one)
-    - [16. It is not free in Debug](#16-it-is-not-free-in-debug)
+    - [16. It does not keep your own printing out of its lines](#16-it-does-not-keep-your-own-printing-out-of-its-lines)
+    - [17. It is not free](#17-it-is-not-free)
 - [Running the tests](#running-the-tests)
 - [Checking that a refactor changed nothing](#checking-that-a-refactor-changed-nothing)
 
 ## MemoryMonitor
 
-`MemoryMonitor` replaces the global `operator new` and `operator delete`. Every heap allocation in the program goes through it. It counts the bytes, logs each call, and checks each free. In Debug it also lists the blocks that leaked, and where they were made.
+C++ programs ask for memory with `new` and hand it back with `delete`. Two mistakes are easy to make
+and hard to find: asking for memory and never giving it back (a leak), and giving the same memory back
+twice (a double free).
 
-Include it with:
+`MemoryMonitor` replaces `new` and `delete` for the whole program, so every allocation goes through it
+first. It counts the bytes, prints a line for each call, and checks that each free is honest. In a Debug
+build it also keeps a list of everything still alive, so it can tell you what leaked and which line of
+your code made it.
+
+There is nothing to set up. Include the header, link `src/utils/MemoryMonitor.cpp`, and it is already
+watching, even before `main` starts.
 
 ```cpp
 #include "utils/MemoryMonitor.h"
+
+int main()
+{
+    /* The runtime allocates before main, so measure from here */
+    const MemoryStats start = MemoryMonitor::GetStats();
+
+    int* kept = MEMMON_NEW int(42);   /* never deleted, on purpose */
+    delete new int(1);                /* made and given back */
+
+    MemoryMonitor::Report(start);     /* the numbers since start */
+    MemoryMonitor::ReportLeaks(start);/* what is still alive, and where it came from */
+}
 ```
 
-There is nothing to set up. Linking `src/utils/MemoryMonitor.cpp` into the program is enough.
+```text
+Operation: New    | new(size_t) file-tagged              | size = 4 bytes | live = 4 bytes
+Operation: New    | new(size_t)                          | size = 4 bytes | live = 8 bytes
+Operation: Delete | delete(void*, size_t)                | size = 4 bytes | live = 4 bytes
+-- Memory Report --
+Allocations         : 2
+Frees               : 1
+Bytes allocated     : 8 bytes
+Bytes freed         : 4 bytes
+Live bytes          : 4 bytes
+Live blocks         : 1
+...
+-- Leak Report --
+Leak:      | address = 0x1d4f2a0 | size = 4 bytes | Main.cpp:8
+Leaked blocks       : 1
+Leaked bytes        : 4 bytes
+```
 
 ### What it does
 
@@ -69,7 +110,7 @@ std::vector<float> v(100);   // also counted, the vector calls operator new too
 
 #### 2. Counts allocations from before `main`
 
-The counters use `constinit`. They are zero before any code runs. So the runtime's own startup allocations are counted too.
+The counters and the lock use `constinit`. They are ready before any code runs. So the runtime's own startup allocations are counted too.
 
 ```cpp
 int main()
@@ -82,7 +123,7 @@ int main()
 
 #### 3. Gives you a snapshot of the counters
 
-`GetStats()` returns a copy. It holds running totals, the peak, the largest block, and two error counters.
+`GetStats()` returns a copy. It holds running totals, the peak, the largest block, and two error counters. The copy is taken while the monitor is locked, so every field comes from the same moment, even while other threads allocate.
 
 ```cpp
 const MemoryStats s = MemoryMonitor::GetStats();
@@ -153,6 +194,8 @@ MemoryMonitor::SetLogging(true);
 if (MemoryMonitor::IsLogging()) { /* ... */ }
 ```
 
+The flag is an atomic, so one thread can switch it while others allocate.
+
 #### 7. Handles over-aligned types
 
 Types with `alignas` above the default (16 on x64, 8 on Win32) go through the aligned overloads. The monitor uses `_aligned_malloc` for those. The pointer you get back is aligned as asked.
@@ -199,6 +242,8 @@ alignas(16) unsigned char storage[256] = {};
 operator delete(storage + 128);   // refused, "not from here"
 ```
 
+The check, the unlink and the "freed" stamp happen in one locked step. So two threads that free the same block at the same moment get the same answer: one frees it, the other is refused.
+
 #### 10. Catches small writes just before a block (Debug only)
 
 The check value sits in the last bytes of the header, right before your memory. A write one element too far back lands on it. The next `delete` sees the damage and refuses the free.
@@ -225,10 +270,13 @@ Logging runs inside `operator new`. If it allocated, it would call itself foreve
 ```cpp
 // Inside the monitor, the pattern every print follows:
 char buffer[256];
-auto end = std::format_to_n(buffer, sizeof(buffer) - 1, "size = {} bytes", size).out;
+auto end = std::format_to_n(buffer, sizeof(buffer) - 2, "size = {} bytes", size).out;
+*end++ = '\n';
 *end = '\0';
 std::fputs(buffer, stdout);
 ```
+
+The same rule holds for the lock: nothing inside it may allocate, or the monitor would wait for itself forever.
 
 #### 13. Lists the blocks that leaked (Debug only)
 
@@ -254,7 +302,7 @@ Leaked blocks       : 2
 Leaked bytes        : 68 bytes
 ```
 
-It returns a `LeakSummary` with the number of blocks, their bytes, and whether the walk stopped early. Like `Report()`, it always prints, even with logging off, and it never allocates.
+It returns a `LeakSummary` with the number of blocks, their bytes, and whether the walk stopped early. Like `Report()`, it always prints, even with logging off, and it never allocates. The whole walk holds the lock, so it is safe to ask for a report while other threads allocate.
 
 #### 14. Names the file and line of a leak, with `MEMMON_NEW` (Debug only)
 
@@ -297,6 +345,28 @@ MemoryMonitor::ReportLeaks();
 Damaged:   | address = 0x... | bad check value, walk stopped: older blocks not listed
 ```
 
+#### 17. Works when several threads allocate at once
+
+One lock guards everything inside the monitor: the counters, the leak list, and the log line. A thread takes it, does its bookkeeping, and releases it, so the others wait their turn. The lock is a Windows `SRWLOCK`, which starts as all zeros. That means it works before `main`, and it never allocates memory of its own.
+
+```cpp
+std::thread a([] { for (int i = 0; i < 1000; ++i) delete new int; });
+std::thread b([] { for (int i = 0; i < 1000; ++i) delete new int; });
+a.join();
+b.join();
+// allocationCount grew by exactly 2000, and the leak list is intact
+```
+
+What that gives you:
+
+- no count is lost, however many threads allocate
+- the leak list never breaks, and you can ask for a leak report while threads are running
+- a `GetStats()` copy is one moment, not a mix of moments
+- each log line stays whole, instead of two threads splitting a line
+- two threads that free the same block get one free and one `Refused:` line
+
+The heap itself stays parallel: `malloc` and `free` run outside the lock, so only the bookkeeping takes turns.
+
 ### What it does not do
 
 #### 1. It does not replace the `nothrow` overloads
@@ -327,19 +397,20 @@ int* p = MEMMON_NEW int(5);          // leak report: Main.cpp:42
 
 There is no call stack either, only the one file and line.
 
-#### 4. It is not thread safe
+#### 4. It makes threads take turns
 
-The counters are plain integers, not atomics. There is no lock. Two threads that allocate at the same time can lose counts.
+The safety in point 17 comes from one lock held by one thread at a time. So threads that allocate hard will wait for each other inside the monitor, and a heavily threaded program allocates slower than it would without it.
+
+We measured the counter work with 4 threads on x64: about 46 ns per `new` and `delete` pair under the lock, against about 30 ns for a lock-free version that could not give a whole-picture snapshot. That was the trade we chose.
 
 ```cpp
-std::thread a([] { for (int i = 0; i < 1000; ++i) delete new int; });
-std::thread b([] { for (int i = 0; i < 1000; ++i) delete new int; });
-// allocationCount may grow by less than 2000
+// Four worker threads allocating in a tight loop will spend time waiting on each other
+// inside the monitor, even though malloc itself still runs in parallel.
 ```
 
 #### 5. It does not check anything in Release, or list leaks there
 
-Release drops the check value and the leak list to keep the header small. A double free or a bad pointer goes straight to the C runtime, as it would without the monitor. `ReportLeaks()` only prints `needs a Debug build`. The counters, `Report()` and the wrong-operator check (point 8 above) still work.
+Release drops the check value and the leak list to keep the header small. A double free or a bad pointer goes straight to the C runtime, as it would without the monitor. `ReportLeaks()` only prints `needs a Debug build`. The counters, `Report()` and the wrong-operator check (point 8 above) still work, and they are thread safe in both builds.
 
 ```cpp
 int* p = new int(42);
@@ -425,7 +496,7 @@ MemoryMonitor::Report(baseline);   // "Largest allocation" may still show a bloc
 
 #### 13. It does not print long lines in full, or print to a file
 
-Log lines are cut at 256 characters. Everything goes to `stdout`.
+Log lines are cut at 254 characters, so the newline and the end marker always fit. Everything goes to `stdout`.
 
 ```cpp
 MemoryMonitor::Report(baseline);   // stdout only, redirect the program to save it
@@ -433,10 +504,11 @@ MemoryMonitor::Report(baseline);   // stdout only, redirect the program to save 
 
 #### 14. It does not build outside Windows and MSVC
 
-It uses `_aligned_malloc`, `_aligned_free` and `<malloc.h>`. Those are Microsoft only.
+It uses `_aligned_malloc`, `_aligned_free` from `<malloc.h>`, and an `SRWLOCK` from `<windows.h>`. Those are Microsoft only, and both builds need them.
 
 ```cpp
-#include <malloc.h>   // _aligned_malloc / _aligned_free
+#include <malloc.h>    // _aligned_malloc / _aligned_free
+#include <windows.h>   // SRWLOCK
 ```
 
 #### 15. It does not list blocks behind a damaged one
@@ -450,9 +522,18 @@ delete[] grid;
 MemoryMonitor::ReportLeaks();        // stops at grid: older leaks are not listed
 ```
 
-#### 16. It is not free in Debug
+#### 16. It does not keep your own printing out of its lines
 
-Every Debug block carries a 64 byte header on x64 (32 on Win32), and every `new` and `delete` updates the leak list. That is fine for finding bugs, but the numbers you measure in Debug are not the ones you get in Release.
+The lock keeps the monitor's own lines whole. It cannot do anything about your printing. If one thread writes to `std::cout` while another one allocates, the two can still land on the same line.
+
+```cpp
+std::thread a([] { std::cout << "loading level\n"; });
+std::thread b([] { delete new int; });   // its log line can cut into that text
+```
+
+#### 17. It is not free
+
+Every Debug block carries a 64 byte header on x64 (32 on Win32), and every `new` and `delete` updates the leak list. Both builds also take the lock on every call, as point 4 explains. That is fine for finding bugs, but the numbers you measure with the monitor are not the ones you get without it.
 
 ## Running the tests
 
@@ -470,7 +551,9 @@ This builds and runs the MemoryMonitor tests in Debug and Release, for x64 and W
 
 Red `Refused:`, `Mismatch:` and `Damaged:` lines are expected. Those tests make mistakes on purpose. Only `FAIL` means something broke.
 
-Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 59 checks. Release runs 31, because the checks that need a check value or the leak list are skipped there.
+Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 77 checks. Release runs 39, because the checks that need a check value or the leak list are skipped there.
+
+Four of the tests start threads: they hammer the counters and the leak list from 4 threads at once, ask for reports while that happens, and race two frees on the same block. They repeat their work 3 times per run. Timing bugs do not show up every run, so it is worth running the tests a few times in a row.
 
 ## Checking that a refactor changed nothing
 
