@@ -68,7 +68,7 @@ namespace
     constinit AtomicStats stats{};
 
     /** On from the start, so the runtime's allocations before main are logged too */
-    constinit bool loggingEnabled = true;
+    constinit std::atomic<bool> loggingEnabled{true};
 
 
     /* ============================== Block layout ============================== */
@@ -328,7 +328,7 @@ namespace
                       const std::optional<std::size_t> alignment = std::nullopt,
                       const std::optional<std::size_t> live = std::nullopt)
     {
-        if (!loggingEnabled) return;
+        if (!loggingEnabled.load()) return;
 
         char buffer[256];
         /* Leave room for '\0' */
@@ -707,12 +707,12 @@ MemoryStats MemoryMonitor::GetStats()
 
 void MemoryMonitor::SetLogging(const bool enabled)
 {
-    loggingEnabled = enabled;
+    loggingEnabled.store(enabled);
 }
 
 bool MemoryMonitor::IsLogging()
 {
-    return loggingEnabled;
+    return loggingEnabled.load();
 }
 
 std::size_t MemoryMonitor::HeaderOverhead()
