@@ -6,6 +6,21 @@
 
 include_guard(GLOBAL)
 
+# The folder name for the target architecture, x64 or Win32.
+#
+# A Visual Studio generator hands it over. Every other generator leaves
+# CMAKE_VS_PLATFORM_NAME empty, including the NMake Makefiles that Rider reaches for when it
+# is left to choose. Empty used to collapse bin/<platform>/<configuration> into
+# bin/<configuration> and skip the 32 bit settings below without saying anything, so the
+# pointer size answers when the generator will not.
+if(CMAKE_VS_PLATFORM_NAME)
+    set(GE5_PLATFORM "${CMAKE_VS_PLATFORM_NAME}")
+elseif(CMAKE_SIZEOF_VOID_P EQUAL 4)
+    set(GE5_PLATFORM "Win32")
+else()
+    set(GE5_PLATFORM "x64")
+endif()
+
 #
 # Applies the shared build settings to one target.
 #
@@ -32,7 +47,7 @@ function(ge5_apply_common_settings target)
     )
 
     # The old project defined WIN32 on the 32 bit builds only. Kept, so nothing shifts.
-    if(CMAKE_VS_PLATFORM_NAME STREQUAL "Win32")
+    if(GE5_PLATFORM STREQUAL "Win32")
         target_compile_definitions(${target} PRIVATE WIN32)
     endif()
 
@@ -50,7 +65,7 @@ function(ge5_apply_common_settings target)
 
     # 32 bit MSBuild builds kept the frame pointer. /O2 would drop it otherwise, so this
     # one is not cosmetic in Release.
-    if(CMAKE_VS_PLATFORM_NAME STREQUAL "Win32")
+    if(GE5_PLATFORM STREQUAL "Win32")
         target_compile_options(${target} PRIVATE /Oy-)
     endif()
 

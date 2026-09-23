@@ -25,11 +25,6 @@ cd "$PROJECT_DIR" || exit 1
 
 command -v cmake > /dev/null 2>&1 || { echo "cmake not found on PATH" >&2; exit 1; }
 
-# Pinned, both of them. This machine has two sets of Build Tools installed, and a snapshot
-# is only worth comparing against another one built by the same compiler.
-GENERATOR="Visual Studio 17 2022"
-TOOLSET="v143"
-
 OUT_DIR="baselines/$LABEL"
 mkdir -p "$OUT_DIR"
 
@@ -47,12 +42,14 @@ normalize() {
 }
 
 # One build tree per platform, each holding both configurations. Written once and reused.
+#
+# The preset names are the platform names. CMakePresets.json is where the generator, the
+# toolset and the build directory are pinned, and that pinning is the point: a snapshot is
+# only worth comparing against another one built by the same compiler.
 configure_tree() {
     local platform="$1"
-    local tree="build/cmake-$platform"
-    [ -f "$tree/CMakeCache.txt" ] && return 0
-    cmake -S . -B "$tree" -G "$GENERATOR" -A "$platform" -T "$TOOLSET" \
-        > "$OUT_DIR/configure-$platform.log" 2>&1
+    [ -f "build/cmake-$platform/CMakeCache.txt" ] && return 0
+    cmake --preset "$platform" > "$OUT_DIR/configure-$platform.log" 2>&1
 }
 
 failed=0

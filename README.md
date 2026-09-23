@@ -7,6 +7,7 @@ A small C++ game engine project, built step by step. Right now it holds one fini
 
 - [Layout](#layout)
   - [Building](#building)
+  - [Opening it in an IDE](#opening-it-in-an-ide)
   - [Taking MemoryMonitor into another project](#taking-memorymonitor-into-another-project)
   - [The vendored libraries](#the-vendored-libraries)
 - [MemoryMonitor](#memorymonitor)
@@ -71,17 +72,28 @@ Programs and libraries go to `bin/<platform>/<configuration>/`.
 CMake, one build tree per platform, each holding both configurations:
 
 ```powershell
-cmake -S . -B build/cmake-x64   -G "Visual Studio 17 2022" -A x64   -T v143
-cmake -S . -B build/cmake-Win32 -G "Visual Studio 17 2022" -A Win32 -T v143
-cmake --build build/cmake-x64 --config Debug
+cmake --preset x64
+cmake --build --preset x64-Debug
 ```
 
-The toolset is pinned on purpose. A machine with more than one set of Build Tools installed will
-otherwise pick whichever is newest, and the saved output snapshots were built with `v143`.
+The presets are `x64` and `Win32`, and the build and test presets add the configuration:
+`x64-Debug`, `x64-Release`, `Win32-Debug`, `Win32-Release`.
 
-`build/cmake-x64/GameEngines5.sln` is generated, so Visual Studio still has a solution to open.
-Rider and Visual Studio can also open `CMakeLists.txt` directly. Either way the file to edit is
-`CMakeLists.txt`, never the generated project files.
+`CMakePresets.json` pins the generator, the toolset and the build directory. The toolset is
+pinned on purpose. A machine with more than one set of Build Tools installed will otherwise take
+whichever is newest, and the saved output snapshots were built with `v143`.
+
+### Opening it in an IDE
+
+Open `CMakeLists.txt`, not a solution file. Rider and Visual Studio both read
+`CMakePresets.json`, so the profile list offers `x64` and `Win32` already filled in. Pick one of
+those rather than letting the IDE invent a profile of its own: left to choose, it picks its own
+build directory and whichever compiler is newest, and then a demo run out of the IDE can differ
+from `scripts/capture-output.sh` for no visible reason.
+
+`build/cmake-x64/GameEngines5.sln` is generated, so Visual Studio has a solution to open if you
+want one. Never change project settings inside it. It is rewritten on every reconfigure, and it
+is not in version control. `CMakeLists.txt` is the file to edit.
 
 ### Taking MemoryMonitor into another project
 
@@ -623,7 +635,7 @@ prefixes each line of the program's own output with `1:`.
 To run the tests without the script, against a tree that is already configured:
 
 ```powershell
-ctest --test-dir build/cmake-x64 -C Debug -V
+ctest --preset x64-Debug
 ```
 
 To run one configuration only:

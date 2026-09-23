@@ -1,0 +1,96 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "x64",
+      "displayName": "x64",
+      "description": "64 bit. Visual Studio 2022 generator, v143 toolset, Debug and Release in one tree.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      },
+      "toolset": {
+        "value": "v143",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/cmake-x64"
+    },
+    {
+      "name": "Win32",
+      "displayName": "Win32",
+      "description": "32 bit. Same generator and toolset as x64. SDL3 calls this folder x86.",
+      "generator": "Visual Studio 17 2022",
+      "architecture": {
+        "value": "Win32",
+        "strategy": "set"
+      },
+      "toolset": {
+        "value": "v143",
+        "strategy": "set"
+      },
+      "binaryDir": "${sourceDir}/build/cmake-Win32"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x64-Debug",
+      "configurePreset": "x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "x64-Release",
+      "configurePreset": "x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "Win32-Debug",
+      "configurePreset": "Win32",
+      "configuration": "Debug"
+    },
+    {
+      "name": "Win32-Release",
+      "configurePreset": "Win32",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "x64-Debug",
+      "configurePreset": "x64",
+      "configuration": "Debug",
+      "output": {
+        "verbosity": "verbose"
+      }
+    },
+    {
+      "name": "x64-Release",
+      "configurePreset": "x64",
+      "configuration": "Release",
+      "output": {
+        "verbosity": "verbose"
+      }
+    },
+    {
+      "name": "Win32-Debug",
+      "configurePreset": "Win32",
+      "configuration": "Debug",
+      "output": {
+        "verbosity": "verbose"
+      }
+    },
+    {
+      "name": "Win32-Release",
+      "configurePreset": "Win32",
+      "configuration": "Release",
+      "output": {
+        "verbosity": "verbose"
+      }
+    }
+  ]
+}

@@ -10,10 +10,10 @@ REM   scripts\run-tests.bat x64 Debug  just one
 
 set "PROJ=%~dp0.."
 
-REM The generator and the toolset are pinned. This machine has two sets of Build Tools
-REM installed, and the saved snapshots were built with v143.
-set "GENERATOR=Visual Studio 17 2022"
-set "TOOLSET=v143"
+REM cmake --preset and ctest --preset read CMakePresets.json from the current directory,
+REM so run from the project root whatever directory the script was called from. setlocal
+REM puts the old one back on the way out.
+cd /d "%PROJ%"
 
 where cmake >nul 2>&1
 if errorlevel 1 (
@@ -45,9 +45,11 @@ echo.
 echo ================= %CFG%-%PLAT% =================
 
 REM One build tree per platform, each holding both configurations. Written once and reused.
+REM The preset names are the platform names, and CMakePresets.json holds the generator, the
+REM toolset and the build directory, so an IDE configures the same way this script does.
 if exist "%TREE%\CMakeCache.txt" goto :configured
 
-cmake -S "%PROJ%" -B "%TREE%" -G "%GENERATOR%" -A %PLAT% -T %TOOLSET%
+cmake --preset %PLAT%
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo   CONFIGURE FAILED
@@ -57,7 +59,7 @@ if not "%RC%"=="0" (
 
 :configured
 
-cmake --build "%TREE%" --config %CFG% --target MemoryMonitorTests
+cmake --build --preset %PLAT%-%CFG% --target MemoryMonitorTests
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo   BUILD FAILED
@@ -65,12 +67,13 @@ if not "%RC%"=="0" (
     goto :eof
 )
 
-REM -V so the checks and their counts are printed, not just "Passed".
+REM The test preset asks for verbose output, so the checks and their counts are printed
+REM rather than just "Passed".
 REM
 REM CTest is what makes the exit code safe here. The tests return a large negative number
 REM when they crash, and "if errorlevel 1" means "1 or more", so the old hand written check
 REM had to compare against 0 instead. CTest treats a crash as a failure by itself.
-ctest --test-dir "%TREE%" -C %CFG% -V
+ctest --preset %PLAT%-%CFG%
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo   ^<-- %CFG%-%PLAT% did not finish cleanly, exit %RC%

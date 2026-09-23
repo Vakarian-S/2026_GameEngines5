@@ -5,12 +5,13 @@
 #
 # Configure one build tree per platform, each holding both configurations:
 #
-#   cmake -S . -B build/cmake-x64   -G "Visual Studio 17 2022" -A x64   -T v143
-#   cmake -S . -B build/cmake-Win32 -G "Visual Studio 17 2022" -A Win32 -T v143
-#   cmake --build build/cmake-x64 --config Debug
+#   cmake --preset x64
+#   cmake --build --preset x64-Debug
 #
-# The toolset is pinned on purpose. This machine has two sets of Build Tools installed and
-# the saved demo output was captured with v143.
+# CMakePresets.json holds the generator, the toolset and the build directory, so an IDE picks
+# the same ones the scripts do. The toolset is pinned on purpose: a machine with more than one
+# set of Build Tools installed will otherwise take whichever is newest, and the saved demo
+# output was captured with v143.
 
 cmake_minimum_required(VERSION 3.25)
 
@@ -39,9 +40,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CommonSettings)
 
 # Programs and libraries land here, one folder per platform and configuration, exactly where
-# MSBuild put them. The $<CONFIG> is written out so CMake does not append a second config
-# folder of its own.
-set(GE5_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin/${CMAKE_VS_PLATFORM_NAME}/$<CONFIG>")
+# MSBuild put them. GE5_PLATFORM comes from CommonSettings.cmake and holds x64 or Win32 under
+# any generator. The $<CONFIG> is written out so CMake does not append a second config folder
+# of its own.
+set(GE5_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin/${GE5_PLATFORM}/$<CONFIG>")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
