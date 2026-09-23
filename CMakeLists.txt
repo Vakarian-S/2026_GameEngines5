@@ -115,6 +115,25 @@ ge5_apply_common_settings(MathLibrary)
 
 if(GE5_PLATFORM STREQUAL "x64")
 
+    # Vulkan comes from the installed SDK and is never vendored. There is nothing to ship
+    # either: vulkan-1.dll already sits in System32, put there by the graphics driver, and the
+    # validation layers are found by the loader wherever the SDK installed them.
+    find_package(Vulkan QUIET)
+    if(NOT Vulkan_FOUND)
+        message(FATAL_ERROR
+            "The Vulkan SDK was not found. Install it from https://vulkan.lunarg.com, then open "
+            "a new terminal so that VULKAN_SDK is set.
+"
+            "GameEngines5 is the only target that needs it. MemoryMonitorDemo and "
+            "MemoryMonitorTests build without it, and the Win32 preset skips the engine "
+            "altogether.")
+    endif()
+    if(NOT Vulkan_GLSLC_EXECUTABLE)
+        message(FATAL_ERROR
+            "The Vulkan SDK was found at ${Vulkan_INCLUDE_DIR} but glslc.exe was not. Shaders "
+            "cannot be compiled without it. A full SDK install ships it under Bin.")
+    endif()
+
     # SDL3 is built from source at a pinned tag rather than vendored as binaries, so a fresh
     # clone of this repository builds without a prepared machine. Shared, because that is how
     # SDL ships and what it recommends.
@@ -152,8 +171,53 @@ if(GE5_PLATFORM STREQUAL "x64")
 
     # Its own headers, reached as "core/Window.h" and "utils/MemoryMonitor.h"
     target_include_directories(GameEngines5 PRIVATE include)
-    target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3)
+    target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3 Vulkan::Vulkan)
+
+    # glm defaults to the OpenGL depth range of -1 to 1. Vulkan's is 0 to 1, and a projection
+    # matrix built for the wrong one is wrong quietly: things still draw, at the wrong depth.
+    # GLM_FORCE_RADIANS only removes a deprecated degrees path, but it is worth being explicit.
+    target_compile_definitions(GameEngines5 PRIVATE
+        GLM_FORCE_DEPTH_ZERO_TO_ONE
+        GLM_FORCE_RADIANS
+    )
+
     ge5_apply_common_settings(GameEngines5)
+
+    # Shaders. Drop a .vert or .frag into shaders/ and the next build compiles it to SPIR-V, the
+    # same way a new .cpp under src/ is picked up. Change one shader and only that one is
+    # compiled again, because each has its own rule keyed on its own file.
+    #
+    # The SPIR-V keeps the folder layout it had under shaders/, and keeps the stage in its name:
+    # triangle.vert becomes shaders/triangle.vert.spv. Dropping the stage would make
+    # triangle.vert and triangle.frag fight over one output file.
+    file(GLOB_RECURSE SHADER_SOURCES CONFIGURE_DEPENDS
+        "shaders/*.vert"
+        "shaders/*.frag"
+        "shaders/*.comp"
+        "shaders/*.geom"
+        "shaders/*.tesc"
+        "shaders/*.tese"
+    )
+
+    set(SPIRV_FILES "")
+    foreach(shader IN LISTS SHADER_SOURCES)
+        file(RELATIVE_PATH shader_relative "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "${shader}")
+        set(spirv "${GE5_OUTPUT_DIR}/shaders/${shader_relative}.spv")
+        get_filename_component(spirv_directory "${spirv}" DIRECTORY)
+        add_custom_command(
+            OUTPUT "${spirv}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${spirv_directory}"
+            COMMAND "${Vulkan_GLSLC_EXECUTABLE}" "${shader}" -o "${spirv}"
+            DEPENDS "${shader}"
+            COMMENT "glslc shaders/${shader_relative}"
+            VERBATIM
+        )
+        list(APPEND SPIRV_FILES "${spirv}")
+    endforeach()
+
+    # SOURCES puts the shaders in the IDE tree, where they can be opened and edited.
+    add_custom_target(Shaders DEPENDS ${SPIRV_FILES} SOURCES ${SHADER_SOURCES})
+    add_dependencies(GameEngines5 Shaders)
 
 else()
 
