@@ -23,13 +23,12 @@ fi
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_DIR" || exit 1
 
-MSBUILD="/c/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe"
-if [ ! -f "$MSBUILD" ]; then
-    MSBUILD="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
-        -products '*' -latest -requires Microsoft.Component.MSBuild \
-        -find 'MSBuild\**\Bin\MSBuild.exe' 2>/dev/null | head -1)"
-fi
-[ -f "$MSBUILD" ] || { echo "MSBuild not found" >&2; exit 1; }
+command -v cmake > /dev/null 2>&1 || { echo "cmake not found on PATH" >&2; exit 1; }
+
+# Pinned, both of them. This machine has two sets of Build Tools installed, and a snapshot
+# is only worth comparing against another one built by the same compiler.
+GENERATOR="Visual Studio 17 2022"
+TOOLSET="v143"
 
 OUT_DIR="baselines/$LABEL"
 mkdir -p "$OUT_DIR"
@@ -47,6 +46,15 @@ normalize() {
     sed -E 's/\x1b\[[0-9;]*m//g; s/address = 0x[0-9a-fA-F]+/address = 0xADDR/g'
 }
 
+# One build tree per platform, each holding both configurations. Written once and reused.
+configure_tree() {
+    local platform="$1"
+    local tree="build/cmake-$platform"
+    [ -f "$tree/CMakeCache.txt" ] && return 0
+    cmake -S . -B "$tree" -G "$GENERATOR" -A "$platform" -T "$TOOLSET" \
+        > "$OUT_DIR/configure-$platform.log" 2>&1
+}
+
 failed=0
 
 for entry in "${CONFIGS[@]}"; do
@@ -54,9 +62,15 @@ for entry in "${CONFIGS[@]}"; do
     name="${config}-${platform}"
     printf '%-16s ' "$name"
 
-    if ! "$MSBUILD" MemoryMonitorDemo.vcxproj -t:Rebuild \
-            -p:Configuration="$config" -p:Platform="$platform" \
-            -v:minimal -nologo > "$OUT_DIR/$name.build.log" 2>&1; then
+    if ! configure_tree "$platform"; then
+        echo "CONFIGURE FAILED  (see $OUT_DIR/configure-$platform.log)"
+        failed=1
+        continue
+    fi
+
+    # --clean-first, so this is a rebuild and nothing stale can survive into the snapshot
+    if ! cmake --build "build/cmake-$platform" --config "$config" \
+            --target MemoryMonitorDemo --clean-first > "$OUT_DIR/$name.build.log" 2>&1; then
         echo "BUILD FAILED  (see $OUT_DIR/$name.build.log)"
         failed=1
         continue

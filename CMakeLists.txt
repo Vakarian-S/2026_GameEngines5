@@ -1,0 +1,137 @@
+# GameEngines5
+#
+# Five targets: two static libraries and three programs. Each program has its own main(),
+# which is why each one is its own target.
+#
+# Configure one build tree per platform, each holding both configurations:
+#
+#   cmake -S . -B build/cmake-x64   -G "Visual Studio 17 2022" -A x64   -T v143
+#   cmake -S . -B build/cmake-Win32 -G "Visual Studio 17 2022" -A Win32 -T v143
+#   cmake --build build/cmake-x64 --config Debug
+#
+# The toolset is pinned on purpose. This machine has two sets of Build Tools installed and
+# the saved demo output was captured with v143.
+
+cmake_minimum_required(VERSION 3.25)
+
+project(GameEngines5 LANGUAGES CXX)
+
+if(NOT MSVC)
+    message(FATAL_ERROR
+        "MemoryMonitor uses SRWLOCK and _aligned_malloc, which are Microsoft only. "
+        "See \"It does not build outside Windows and MSVC\" in README.md.")
+endif()
+
+# Four configurations existed and four survive. CMake would otherwise add RelWithDebInfo
+# and MinSizeRel, which nothing here has ever been built with.
+if(CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
+endif()
+
+# CMake hands MSVC /DWIN32 and /D_WINDOWS on every platform. The old build defined WIN32 on
+# 32 bit only and never defined _WINDOWS, so they are taken out here and WIN32 is put back
+# per platform in ge5_apply_common_settings.
+string(REGEX REPLACE "[-/]D[ ]*WIN32" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+string(REGEX REPLACE "[-/]D[ ]*_WINDOWS" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+string(STRIP "${CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(CommonSettings)
+
+# Programs and libraries land here, one folder per platform and configuration, exactly where
+# MSBuild put them. The $<CONFIG> is written out so CMake does not append a second config
+# folder of its own.
+set(GE5_OUTPUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/bin/${CMAKE_VS_PLATFORM_NAME}/$<CONFIG>")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
+set(CMAKE_PDB_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
+
+# Start the IDE on something that runs.
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT GameEngines5)
+
+
+# ============================== MemoryMonitor ==============================
+#
+# Two files and nothing else. Anything that links this gets the replaced operator new and
+# operator delete, so long as it also calls into the library somewhere. A linker only takes
+# the parts of a static library that something asks for.
+
+add_library(MemoryMonitor STATIC
+    src/utils/MemoryMonitor.cpp
+    include/utils/MemoryMonitor.h
+)
+target_include_directories(MemoryMonitor PUBLIC include)
+ge5_apply_common_settings(MemoryMonitor)
+
+
+# ============================== MathLibrary ==============================
+#
+# The headers are split out into their own interface target. MemoryMonitorDemo needs to
+# reach Vector.h but must not link the library, and this says so in one line.
+
+add_library(MathLibraryHeaders INTERFACE)
+target_include_directories(MathLibraryHeaders INTERFACE
+    external/MathLibrary/include
+    external/glm
+)
+
+# Globbed because these headers are browsing material for the IDE. They compile nothing:
+# the three .cpp files below are the build, and they are listed by hand.
+file(GLOB MATHLIBRARY_HEADERS CONFIGURE_DEPENDS "external/MathLibrary/include/*.h")
+
+add_library(MathLibrary STATIC
+    # DebugUtlities.cpp needs glm, vendored next door under external/glm
+    external/MathLibrary/include/DebugUtlities.cpp
+    external/MathLibrary/include/Fourier.cpp
+    external/MathLibrary/include/Randomizer.cpp
+    ${MATHLIBRARY_HEADERS}
+)
+target_link_libraries(MathLibrary PUBLIC MathLibraryHeaders)
+ge5_apply_common_settings(MathLibrary)
+
+
+# ============================== GameEngines5 ==============================
+#
+# The engine. Main.cpp calls MemoryMonitor::GetStats(), and it has to: that call is what
+# makes the linker pull in the operator new and operator delete replacements. Without it the
+# engine runs unwatched and says nothing about it.
+
+add_executable(GameEngines5 Main.cpp)
+target_link_libraries(GameEngines5 PRIVATE MemoryMonitor MathLibrary)
+ge5_apply_common_settings(GameEngines5)
+
+
+# ============================== MemoryMonitorDemo ==============================
+#
+# A walk through every path the monitor watches. It links MemoryMonitor and the math headers,
+# and nothing else, on purpose: the point is a clean allocation picture.
+
+add_executable(MemoryMonitorDemo demo/MemoryMonitorDemo.cpp)
+target_link_libraries(MemoryMonitorDemo PRIVATE MemoryMonitor MathLibraryHeaders)
+ge5_apply_common_settings(MemoryMonitorDemo)
+
+
+# ============================== MemoryMonitorTests ==============================
+#
+# /sdl off, and only here.
+#
+# /sdl overwrites a pointer with a junk address as soon as it is deleted, so a stale pointer
+# cannot be used again. The tests delete the same pointer twice on purpose, and under /sdl the
+# second delete hands the monitor a wild address instead of a stale one. The monitor reads the
+# header in front of the block to decide whether to refuse the free, and reading it at a wild
+# address is an access violation. See "It does not survive a truly wild pointer" in the README.
+#
+# Everything else in this file keeps /sdl.
+
+add_executable(MemoryMonitorTests tests/MemoryMonitorTests.cpp)
+target_link_libraries(MemoryMonitorTests PRIVATE MemoryMonitor)
+ge5_apply_common_settings(MemoryMonitorTests SDL_CHECK OFF)
+
+# One program, one test. It counts its own checks and returns non zero if any of them fail.
+# A crash comes back as a large negative number, and CTest calls that a failure too, which
+# is the trap scripts/run-tests.bat used to have to sidestep by hand.
+#
+#   ctest --test-dir build/cmake-x64 -C Debug -V
+enable_testing()
+add_test(NAME MemoryMonitorTests COMMAND MemoryMonitorTests)
