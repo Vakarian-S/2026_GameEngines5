@@ -15,7 +15,8 @@
 
 cmake_minimum_required(VERSION 3.25)
 
-project(GameEngines5 LANGUAGES CXX)
+# C is here for SDL3, which is a C library. Our own code is all C++.
+project(GameEngines5 LANGUAGES CXX C)
 
 if(NOT MSVC)
     message(FATAL_ERROR
@@ -49,8 +50,13 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
 set(CMAKE_PDB_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
 
-# Start the IDE on something that runs.
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT GameEngines5)
+# Start the IDE on something that runs. The engine is 64 bit only, so on Win32 it is the demo
+# that the IDE opens on.
+if(GE5_PLATFORM STREQUAL "x64")
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT GameEngines5)
+else()
+    set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT MemoryMonitorDemo)
+endif()
 
 
 # ============================== MemoryMonitor ==============================
@@ -98,10 +104,55 @@ ge5_apply_common_settings(MathLibrary)
 # The engine. Main.cpp calls MemoryMonitor::GetStats(), and it has to: that call is what
 # makes the linker pull in the operator new and operator delete replacements. Without it the
 # engine runs unwatched and says nothing about it.
+#
+# 64 bit only, and the Vulkan SDK is the reason. It ships Lib and no Lib32, so there is no 32
+# bit vulkan-1.lib to link against. Everything inside this branch, SDL3 included, is skipped
+# on Win32, which keeps that configure quick and free of network access. The two libraries,
+# the demo and the tests still build for both platforms, and those are what
+# scripts/capture-output.sh and scripts/run-tests.bat measure.
 
-add_executable(GameEngines5 Main.cpp)
-target_link_libraries(GameEngines5 PRIVATE MemoryMonitor MathLibrary)
-ge5_apply_common_settings(GameEngines5)
+if(GE5_PLATFORM STREQUAL "x64")
+
+    # SDL3 is built from source at a pinned tag rather than vendored as binaries, so a fresh
+    # clone of this repository builds without a prepared machine. Shared, because that is how
+    # SDL ships and what it recommends.
+    include(FetchContent)
+    set(SDL_SHARED ON CACHE BOOL "" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG release-3.2.18
+        GIT_SHALLOW TRUE
+        GIT_PROGRESS TRUE
+    )
+    FetchContent_MakeAvailable(SDL3)
+
+    # No step here copies SDL3.dll next to the exe, and none is needed. SDL is brought in as a
+    # subdirectory after CMAKE_RUNTIME_OUTPUT_DIRECTORY is set above, so its own targets inherit
+    # it and SDL3.dll is built straight into bin/<platform>/<configuration>/. Scope those output
+    # directories per target one day and the dll stops arriving, and the engine will not start.
+
+    add_executable(GameEngines5
+        Main.cpp
+        src/core/Window.cpp
+        include/core/Window.h
+    )
+    # So the renderer headers are reached as "core/Window.h"
+    target_include_directories(GameEngines5 PRIVATE src)
+    target_link_libraries(GameEngines5 PRIVATE MemoryMonitor MathLibrary SDL3::SDL3)
+    ge5_apply_common_settings(GameEngines5)
+
+else()
+
+    message(STATUS
+        "GameEngines5 and SDL3 are skipped on ${GE5_PLATFORM}. The Vulkan SDK has no 32 bit "
+        "vulkan-1.lib. MemoryMonitor, MathLibrary, the demo and the tests still build.")
+
+endif()
 
 
 # ============================== MemoryMonitorDemo ==============================

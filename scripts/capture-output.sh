@@ -52,6 +52,16 @@ configure_tree() {
     cmake --preset "$platform" > "$OUT_DIR/configure-$platform.log" 2>&1
 }
 
+# Throws away one target's object files and its output, so the next build really compiles it.
+# Everything else in the tree is left alone.
+clean_target() {
+    local platform="$1"
+    local config="$2"
+    local target="$3"
+    rm -rf "build/cmake-$platform/$target.dir/$config"
+    rm -f "bin/$platform/$config/$target.exe" "bin/$platform/$config/$target.lib"
+}
+
 failed=0
 
 for entry in "${CONFIGS[@]}"; do
@@ -65,9 +75,15 @@ for entry in "${CONFIGS[@]}"; do
         continue
     fi
 
-    # --clean-first, so this is a rebuild and nothing stale can survive into the snapshot
+    # A rebuild, so nothing stale can reach the snapshot, but only of the demo and the library
+    # it links. cmake --build --clean-first would do it by cleaning the whole tree, which also
+    # throws away the engine, SDL3.dll and everything else in bin, and rebuilds SDL from source
+    # on every snapshot. MSBuild's -t:Rebuild on one .vcxproj never reached that far either.
+    clean_target "$platform" "$config" MemoryMonitorDemo
+    clean_target "$platform" "$config" MemoryMonitor
+
     if ! cmake --build "build/cmake-$platform" --config "$config" \
-            --target MemoryMonitorDemo --clean-first > "$OUT_DIR/$name.build.log" 2>&1; then
+            --target MemoryMonitorDemo > "$OUT_DIR/$name.build.log" 2>&1; then
         echo "BUILD FAILED  (see $OUT_DIR/$name.build.log)"
         failed=1
         continue
