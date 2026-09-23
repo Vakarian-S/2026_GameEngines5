@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Settings every project in this solution shares.
+
+    Each .vcxproj imports this once, so the language level, the warning level and the
+    output layout are written down in one place instead of four.
+  -->
+
+  <PropertyGroup>
+    <!--
+      Where the repository starts, worked out from this file's own folder.
+      $(SolutionDir) is not set when MSBuild is handed a single .vcxproj, and the
+      capture script does exactly that, so this is the one that always holds.
+    -->
+    <RepoRoot>$(MSBuildThisFileDirectory)..\</RepoRoot>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Programs and libraries land here, one folder per platform and configuration -->
+    <OutDir>$(RepoRoot)bin\$(Platform)\$(Configuration)\</OutDir>
+    <!--
+      Object files go under the project's own name. Without that last folder two
+      projects that both compile a file called Main.obj would overwrite each other.
+    -->
+    <IntDir>$(RepoRoot)build\obj\$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
+    <!--
+      include  : our own headers, reached as "utils/MemoryMonitor.h"
+      external : the math library and glm, vendored so the repo builds on any machine
+    -->
+    <IncludePath>$(RepoRoot)include;$(RepoRoot)external\MathLibrary\include;$(RepoRoot)external\glm;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <!-- Debug: no optimizer, and _DEBUG is what turns the monitor's checked headers on -->
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- The old project defined WIN32 on the 32 bit builds only. Kept, so nothing shifts. -->
+  <ItemDefinitionGroup Condition="'$(Platform)'=='Win32'">
+    <ClCompile>
+      <PreprocessorDefinitions>WIN32;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

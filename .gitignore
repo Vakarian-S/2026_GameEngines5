@@ -1,6 +1,9 @@
 # Build output
+bin/
+build/obj/
 x64/
 x86/
+Win32/
 Debug/
 Release/
 x64/**/*.obj

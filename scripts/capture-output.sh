@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Builds every configuration, runs it, and stores the normalized output as a snapshot.
+# Builds MemoryMonitorDemo in every configuration, runs it, and stores the normalized
+# output as a snapshot.
 # Use it to prove a refactor changed nothing: capture before, capture after, compare.
 #
 #   ./scripts/capture-output.sh step0            capture a snapshot named step0
@@ -25,7 +26,7 @@ cd "$PROJECT_DIR" || exit 1
 MSBUILD="/c/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/MSBuild/Current/Bin/MSBuild.exe"
 if [ ! -f "$MSBUILD" ]; then
     MSBUILD="$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
-        -latest -requires Microsoft.Component.MSBuild \
+        -products '*' -latest -requires Microsoft.Component.MSBuild \
         -find 'MSBuild\**\Bin\MSBuild.exe' 2>/dev/null | head -1)"
 fi
 [ -f "$MSBUILD" ] || { echo "MSBuild not found" >&2; exit 1; }
@@ -35,10 +36,10 @@ mkdir -p "$OUT_DIR"
 
 # config|platform|path to the exe that configuration produces
 CONFIGS=(
-    "Debug|x64|x64/Debug/GameEngines5.exe"
-    "Debug|Win32|Debug/GameEngines5.exe"
-    "Release|x64|x64/Release/GameEngines5.exe"
-    "Release|Win32|Release/GameEngines5.exe"
+    "Debug|x64|bin/x64/Debug/MemoryMonitorDemo.exe"
+    "Debug|Win32|bin/Win32/Debug/MemoryMonitorDemo.exe"
+    "Release|x64|bin/x64/Release/MemoryMonitorDemo.exe"
+    "Release|Win32|bin/Win32/Release/MemoryMonitorDemo.exe"
 )
 
 # Strip color codes and pin down the addresses that move between runs
@@ -53,7 +54,7 @@ for entry in "${CONFIGS[@]}"; do
     name="${config}-${platform}"
     printf '%-16s ' "$name"
 
-    if ! "$MSBUILD" GameEngines5.vcxproj -t:Rebuild \
+    if ! "$MSBUILD" MemoryMonitorDemo.vcxproj -t:Rebuild \
             -p:Configuration="$config" -p:Platform="$platform" \
             -v:minimal -nologo > "$OUT_DIR/$name.build.log" 2>&1; then
         echo "BUILD FAILED  (see $OUT_DIR/$name.build.log)"

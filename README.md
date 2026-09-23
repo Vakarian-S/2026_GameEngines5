@@ -5,6 +5,9 @@ A small C++ game engine project, built step by step. Right now it holds one fini
 
 ## Contents
 
+- [Layout](#layout)
+  - [Taking MemoryMonitor into another project](#taking-memorymonitor-into-another-project)
+  - [The vendored libraries](#the-vendored-libraries)
 - [MemoryMonitor](#memorymonitor)
   - [What it does](#what-it-does)
     - [1. Catches every `new` and `delete`](#1-catches-every-new-and-delete)
@@ -44,6 +47,45 @@ A small C++ game engine project, built step by step. Right now it holds one fini
     - [17. It is not free](#17-it-is-not-free)
 - [Running the tests](#running-the-tests)
 - [Checking that a refactor changed nothing](#checking-that-a-refactor-changed-nothing)
+
+## Layout
+
+The solution holds five projects. Two are libraries, three are programs.
+
+| Project | Kind | Holds |
+|---|---|---|
+| `MemoryMonitor` | static library | `include/utils/`, `src/utils/` |
+| `MathLibrary` | static library | `external/MathLibrary/include/` |
+| `GameEngines5` | program | `Main.cpp`, where the engine starts |
+| `MemoryMonitorDemo` | program | `demo/`, a walk through every path the monitor watches |
+| `MemoryMonitorTests` | program | `tests/`, the checks |
+
+Each program has its own `main()`, so each one is its own project. `build/Common.props` holds what
+they share: C++20, the warning level, the include paths, and where output lands.
+
+Programs and libraries go to `bin/<platform>/<configuration>/`. Object files go to `build/obj/`.
+
+### Taking MemoryMonitor into another project
+
+Two files, and no build system needed:
+
+```
+include/utils/MemoryMonitor.h
+src/utils/MemoryMonitor.cpp
+```
+
+Put `include/` on the include path, compile the `.cpp`, and the monitor is watching before `main`
+starts. It needs nothing else. Not the math library, not glm.
+
+### The vendored libraries
+
+`external/` holds two libraries copied in whole, so the repository builds on any machine with
+Visual Studio and nothing else set up first:
+
+- `external/MathLibrary/` - the course math library, 48 files
+- `external/glm/` - glm 0.9.9, which the math library's `DebugUtlities` needs
+
+Neither folder came with a license file. Add glm's before this repository goes anywhere public.
 
 ## MemoryMonitor
 
@@ -556,7 +598,11 @@ From the project root in PowerShell:
 .\scripts\run-tests.bat
 ```
 
-This builds and runs the MemoryMonitor tests in Debug and Release, for x64 and Win32. To run just one:
+This builds `MemoryMonitorTests.vcxproj` with MSBuild and runs it in Debug and Release, for x64 and
+Win32. It finds MSBuild with `vswhere`, so it works with the Build Tools or the full Visual Studio.
+You can also just set `MemoryMonitorTests` as the startup project and press Ctrl+F5.
+
+To run one configuration only:
 
 ```powershell
 .\scripts\run-tests.bat x64 Debug
@@ -564,13 +610,24 @@ This builds and runs the MemoryMonitor tests in Debug and Release, for x64 and W
 
 Red `Refused:`, `Mismatch:` and `Damaged:` lines are expected. Those tests make mistakes on purpose. Only `FAIL` means something broke.
 
+`MemoryMonitorTests` is the one project built without `/sdl`, and it has to be. `/sdl` overwrites a
+pointer with a junk address the moment it is deleted. The double free test deletes the same pointer
+twice on purpose, so under `/sdl` the second delete hands the monitor a wild address instead of a
+stale one, and reading the header there is an access violation. The project file says the same thing
+next to the setting.
+
 Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.
 
 Four of the tests start threads: they hammer the counters and the leak list from 4 threads at once, ask for reports while that happens, and race two frees on the same block. They repeat their work 3 times per run. Timing bugs do not show up every run, so it is worth running the tests a few times in a row.
 
 ## Checking that a refactor changed nothing
 
-`scripts/capture-output.sh` builds all four configurations of the demo, runs them, and saves the output. It replaces heap addresses with `0xADDR`, so runs can be compared.
+`scripts/capture-output.sh` builds all four configurations of `MemoryMonitorDemo`, runs them, and
+saves the output. It replaces heap addresses with `0xADDR`, so runs can be compared.
+
+One thing to know: in Debug the demo prints its own file name and line numbers, from `MEMMON_NEW`
+and `MEMMON_MAKE_UNIQUE`. Add or remove a line in `demo/MemoryMonitorDemo.cpp` and those lines shift,
+even when nothing else changed. Release prints no file tags, so it stays a clean comparison.
 
 ```bash
 ./scripts/capture-output.sh step0          # before the change
