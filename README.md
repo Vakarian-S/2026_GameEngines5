@@ -6,6 +6,7 @@ A small C++ game engine project, built step by step. Right now it holds one fini
 ## Contents
 
 - [Layout](#layout)
+  - [Building](#building)
   - [Taking MemoryMonitor into another project](#taking-memorymonitor-into-another-project)
   - [The vendored libraries](#the-vendored-libraries)
 - [MemoryMonitor](#memorymonitor)
@@ -50,9 +51,9 @@ A small C++ game engine project, built step by step. Right now it holds one fini
 
 ## Layout
 
-The solution holds five projects. Two are libraries, three are programs.
+The build holds five targets. Two are libraries, three are programs.
 
-| Project | Kind | Holds |
+| Target | Kind | Holds |
 |---|---|---|
 | `MemoryMonitor` | static library | `include/utils/`, `src/utils/` |
 | `MathLibrary` | static library | `external/MathLibrary/include/` |
@@ -60,10 +61,27 @@ The solution holds five projects. Two are libraries, three are programs.
 | `MemoryMonitorDemo` | program | `demo/`, a walk through every path the monitor watches |
 | `MemoryMonitorTests` | program | `tests/`, the checks |
 
-Each program has its own `main()`, so each one is its own project. `build/Common.props` holds what
-they share: C++20, the warning level, the include paths, and where output lands.
+Each program has its own `main()`, so each one is its own target. `cmake/CommonSettings.cmake`
+holds what they share: C++20, the warning level, the include paths, and where output lands.
 
-Programs and libraries go to `bin/<platform>/<configuration>/`. Object files go to `build/obj/`.
+Programs and libraries go to `bin/<platform>/<configuration>/`.
+
+### Building
+
+CMake, one build tree per platform, each holding both configurations:
+
+```powershell
+cmake -S . -B build/cmake-x64   -G "Visual Studio 17 2022" -A x64   -T v143
+cmake -S . -B build/cmake-Win32 -G "Visual Studio 17 2022" -A Win32 -T v143
+cmake --build build/cmake-x64 --config Debug
+```
+
+The toolset is pinned on purpose. A machine with more than one set of Build Tools installed will
+otherwise pick whichever is newest, and the saved output snapshots were built with `v143`.
+
+`build/cmake-x64/GameEngines5.sln` is generated, so Visual Studio still has a solution to open.
+Rider and Visual Studio can also open `CMakeLists.txt` directly. Either way the file to edit is
+`CMakeLists.txt`, never the generated project files.
 
 ### Taking MemoryMonitor into another project
 
@@ -598,9 +616,15 @@ From the project root in PowerShell:
 .\scripts\run-tests.bat
 ```
 
-This builds `MemoryMonitorTests.vcxproj` with MSBuild and runs it in Debug and Release, for x64 and
-Win32. It finds MSBuild with `vswhere`, so it works with the Build Tools or the full Visual Studio.
-You can also just set `MemoryMonitorTests` as the startup project and press Ctrl+F5.
+This builds the `MemoryMonitorTests` target with CMake and runs it through CTest in Debug and
+Release, for x64 and Win32. It configures a build tree first if there is not one already. CTest
+prefixes each line of the program's own output with `1:`.
+
+To run the tests without the script, against a tree that is already configured:
+
+```powershell
+ctest --test-dir build/cmake-x64 -C Debug -V
+```
 
 To run one configuration only:
 
@@ -613,7 +637,7 @@ Red `Refused:`, `Mismatch:` and `Damaged:` lines are expected. Those tests make 
 `MemoryMonitorTests` is the one project built without `/sdl`, and it has to be. `/sdl` overwrites a
 pointer with a junk address the moment it is deleted. The double free test deletes the same pointer
 twice on purpose, so under `/sdl` the second delete hands the monitor a wild address instead of a
-stale one, and reading the header there is an access violation. The project file says the same thing
+stale one, and reading the header there is an access violation. `CMakeLists.txt` says the same thing
 next to the setting.
 
 Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.

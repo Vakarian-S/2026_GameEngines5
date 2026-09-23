@@ -1,8 +1,7 @@
 # Build output
 bin/
-build/obj/
-# CMake build trees, one per platform
-build/cmake-*/
+# CMake build trees, one per platform, and anything else generated under build/
+build/
 x64/
 x86/
 Win32/
