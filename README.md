@@ -52,20 +52,29 @@ A small C++ game engine project, built step by step. Right now it holds one fini
 
 ## Layout
 
-The build holds five targets. Two are libraries, three are programs.
+Three programs and one library.
 
 | Target | Kind | Holds |
 |---|---|---|
-| `MemoryMonitor` | static library | `include/utils/`, `src/utils/` |
-| `MathLibrary` | static library | `external/MathLibrary/include/` |
-| `GameEngines5` | program | `Main.cpp`, where the engine starts |
+| `GameEngines5` | program | `Main.cpp`, and everything under `src/` and `include/` |
 | `MemoryMonitorDemo` | program | `demo/`, a walk through every path the monitor watches |
 | `MemoryMonitorTests` | program | `tests/`, the checks |
+| `MathLibrary` | static library | `external/MathLibrary/include/` |
 
 Each program has its own `main()`, so each one is its own target. `cmake/CommonSettings.cmake`
 holds what they share: C++20, the warning level, the include paths, and where output lands.
 
-Programs and libraries go to `bin/<platform>/<configuration>/`.
+`MathLibrary` is a library because it is someone else's code, vendored under `external/`.
+
+`MemoryMonitor` is not a target. It is two files, and each program that wants it compiles them,
+which is the same thing this README tells anyone else to do with it. The engine picks them up
+with the rest of `src/`; the demo and the tests name `src/utils/MemoryMonitor.cpp` on their own,
+because they want the monitor and not the renderer.
+
+Everything under `src/` and `include/` belongs to the engine, so adding a file there needs no
+change to `CMakeLists.txt`. The build re-reads those folders each time.
+
+Output goes to `bin/<platform>/<configuration>/`.
 
 ### Building
 
@@ -128,8 +137,8 @@ first. It counts the bytes, prints a line for each call, and checks that each fr
 build it also keeps a list of everything still alive, so it can tell you what leaked and which line of
 your code made it.
 
-There is nothing to set up. Include the header, link `src/utils/MemoryMonitor.cpp`, and it is already
-watching, even before `main` starts.
+There is nothing to set up. Include the header, compile `src/utils/MemoryMonitor.cpp`, and it is
+already watching, even before `main` starts.
 
 ```cpp
 #include "utils/MemoryMonitor.h"
@@ -646,7 +655,7 @@ To run one configuration only:
 
 Red `Refused:`, `Mismatch:` and `Damaged:` lines are expected. Those tests make mistakes on purpose. Only `FAIL` means something broke.
 
-`MemoryMonitorTests` is the one project built without `/sdl`, and it has to be. `/sdl` overwrites a
+`MemoryMonitorTests` is the one target built without `/sdl`, and it has to be. `/sdl` overwrites a
 pointer with a junk address the moment it is deleted. The double free test deletes the same pointer
 twice on purpose, so under `/sdl` the second delete hands the monitor a wild address instead of a
 stale one, and reading the header there is an access violation. `CMakeLists.txt` says the same thing

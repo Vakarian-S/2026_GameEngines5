@@ -75,12 +75,14 @@ for entry in "${CONFIGS[@]}"; do
         continue
     fi
 
-    # A rebuild, so nothing stale can reach the snapshot, but only of the demo and the library
-    # it links. cmake --build --clean-first would do it by cleaning the whole tree, which also
+    # A rebuild, so nothing stale can reach the snapshot, but only of the demo. That one target
+    # holds every object the demo is made of, the memory monitor's included, since the demo
+    # compiles it rather than linking a library.
+    #
+    # cmake --build --clean-first would do the same by cleaning the whole tree, which also
     # throws away the engine, SDL3.dll and everything else in bin, and rebuilds SDL from source
     # on every snapshot. MSBuild's -t:Rebuild on one .vcxproj never reached that far either.
     clean_target "$platform" "$config" MemoryMonitorDemo
-    clean_target "$platform" "$config" MemoryMonitor
 
     if ! cmake --build "build/cmake-$platform" --config "$config" \
             --target MemoryMonitorDemo > "$OUT_DIR/$name.build.log" 2>&1; then

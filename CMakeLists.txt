@@ -1,7 +1,8 @@
 # GameEngines5
 #
-# Five targets: two static libraries and three programs. Each program has its own main(),
-# which is why each one is its own target.
+# Three programs and the vendored math library. Each program has its own main(), which is why
+# each one is its own target. The memory monitor is not a target: it is two files, and each
+# program that wants it compiles them.
 #
 # Configure one build tree per platform, each holding both configurations:
 #
@@ -61,16 +62,19 @@ endif()
 
 # ============================== MemoryMonitor ==============================
 #
-# Two files and nothing else. Anything that links this gets the replaced operator new and
-# operator delete, so long as it also calls into the library somewhere. A linker only takes
-# the parts of a static library that something asks for.
+# Not a target. The monitor is two files, and each program that wants it compiles them, which
+# is exactly what README.md tells anyone else to do with it: put include/ on the include path
+# and compile the .cpp.
+#
+# It used to be a static library. That made Main.cpp's call to MemoryMonitor::GetStats() load
+# bearing, because a linker only takes the parts of a static library that something asks for,
+# and with no call the operator new replacement was quietly left out. Compiled straight into
+# each program, it is always there and that trap is gone.
 
-add_library(MemoryMonitor STATIC
+set(MEMORYMONITOR_SOURCES
     src/utils/MemoryMonitor.cpp
     include/utils/MemoryMonitor.h
 )
-target_include_directories(MemoryMonitor PUBLIC include)
-ge5_apply_common_settings(MemoryMonitor)
 
 
 # ============================== MathLibrary ==============================
@@ -101,14 +105,12 @@ ge5_apply_common_settings(MathLibrary)
 
 # ============================== GameEngines5 ==============================
 #
-# The engine. Main.cpp calls MemoryMonitor::GetStats(), and it has to: that call is what
-# makes the linker pull in the operator new and operator delete replacements. Without it the
-# engine runs unwatched and says nothing about it.
+# The engine. Everything under src/ and include/ belongs to it, the memory monitor included.
 #
 # 64 bit only, and the Vulkan SDK is the reason. It ships Lib and no Lib32, so there is no 32
 # bit vulkan-1.lib to link against. Everything inside this branch, SDL3 included, is skipped
-# on Win32, which keeps that configure quick and free of network access. The two libraries,
-# the demo and the tests still build for both platforms, and those are what
+# on Win32, which keeps that configure quick and free of network access. The math library, the
+# demo and the tests still build for both platforms, and those are what
 # scripts/capture-output.sh and scripts/run-tests.bat measure.
 
 if(GE5_PLATFORM STREQUAL "x64")
@@ -136,32 +138,44 @@ if(GE5_PLATFORM STREQUAL "x64")
     # it and SDL3.dll is built straight into bin/<platform>/<configuration>/. Scope those output
     # directories per target one day and the dll stops arriving, and the engine will not start.
 
+    # Everything under src/ and include/ is the engine. Add a file anywhere in either tree and
+    # the next build picks it up, with no edit here. CONFIGURE_DEPENDS is what makes CMake look
+    # at the folders again on every build rather than only when this file changes.
+    file(GLOB_RECURSE ENGINE_SOURCES CONFIGURE_DEPENDS "src/*.cpp")
+    file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS "include/*.h")
+
     add_executable(GameEngines5
         Main.cpp
-        src/core/Window.cpp
-        include/core/Window.h
+        ${ENGINE_SOURCES}
+        ${ENGINE_HEADERS}
     )
-    # So the renderer headers are reached as "core/Window.h"
-    target_include_directories(GameEngines5 PRIVATE src)
-    target_link_libraries(GameEngines5 PRIVATE MemoryMonitor MathLibrary SDL3::SDL3)
+
+    # Its own headers, reached as "core/Window.h" and "utils/MemoryMonitor.h"
+    target_include_directories(GameEngines5 PRIVATE include)
+    target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3)
     ge5_apply_common_settings(GameEngines5)
 
 else()
 
     message(STATUS
         "GameEngines5 and SDL3 are skipped on ${GE5_PLATFORM}. The Vulkan SDK has no 32 bit "
-        "vulkan-1.lib. MemoryMonitor, MathLibrary, the demo and the tests still build.")
+        "vulkan-1.lib. MathLibrary, the demo and the tests still build.")
 
 endif()
 
 
 # ============================== MemoryMonitorDemo ==============================
 #
-# A walk through every path the monitor watches. It links MemoryMonitor and the math headers,
-# and nothing else, on purpose: the point is a clean allocation picture.
+# A walk through every path the monitor watches, and the subject of scripts/capture-output.sh,
+# which is how a change is shown to have moved nothing. It compiles the monitor and reaches the
+# math headers, and that is all it needs.
 
-add_executable(MemoryMonitorDemo demo/MemoryMonitorDemo.cpp)
-target_link_libraries(MemoryMonitorDemo PRIVATE MemoryMonitor MathLibraryHeaders)
+add_executable(MemoryMonitorDemo
+    demo/MemoryMonitorDemo.cpp
+    ${MEMORYMONITOR_SOURCES}
+)
+target_include_directories(MemoryMonitorDemo PRIVATE include)
+target_link_libraries(MemoryMonitorDemo PRIVATE MathLibraryHeaders)
 ge5_apply_common_settings(MemoryMonitorDemo)
 
 
@@ -175,10 +189,14 @@ ge5_apply_common_settings(MemoryMonitorDemo)
 # header in front of the block to decide whether to refuse the free, and reading it at a wild
 # address is an access violation. See "It does not survive a truly wild pointer" in the README.
 #
-# Everything else in this file keeps /sdl.
+# Everything else in this file keeps /sdl. That includes the engine's own copy of the monitor,
+# so what ships is still built with it.
 
-add_executable(MemoryMonitorTests tests/MemoryMonitorTests.cpp)
-target_link_libraries(MemoryMonitorTests PRIVATE MemoryMonitor)
+add_executable(MemoryMonitorTests
+    tests/MemoryMonitorTests.cpp
+    ${MEMORYMONITOR_SOURCES}
+)
+target_include_directories(MemoryMonitorTests PRIVATE include)
 ge5_apply_common_settings(MemoryMonitorTests SDL_CHECK OFF)
 
 # One program, one test. It counts its own checks and returns non zero if any of them fail.

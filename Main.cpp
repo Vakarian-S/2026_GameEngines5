@@ -23,10 +23,11 @@ int main()
     /*
      * The runtime allocates before main, so measure against this point.
      *
-     * This call does a second job. MemoryMonitor is a static library, and a linker only takes
-     * the parts of one that something asks for. Touching it here is what pulls in its
-     * operator new and operator delete, which is what puts the monitor in front of the
-     * whole program.
+     * This call used to do a second job. While the monitor was a static library, it was this
+     * line that pulled its operator new and operator delete into the program, because a linker
+     * only takes the parts of a library that something asks for. src/utils/MemoryMonitor.cpp is
+     * compiled straight into this program now, so the replacements are always here and the
+     * line is only what it looks like: a starting point to measure from.
      */
     const MemoryStats baseline = MemoryMonitor::GetStats();
 
