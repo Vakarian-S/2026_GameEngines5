@@ -18,7 +18,7 @@
  * SDL does its own caching inside SDL_GetBasePath, out of the monitor's sight, so there is
  * nothing to gain by holding one here.
  */
-namespace Paths
+namespace PATHS
 {
     /**
      * Makes a path that sits next to the executable.

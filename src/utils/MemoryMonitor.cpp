@@ -54,35 +54,35 @@ namespace
     };
 
     /** On from the start, so the runtime's allocations before main are logged too */
-    constinit std::atomic<bool> loggingEnabled{true};
+    constinit std::atomic<bool> loggingEnabled{false};
 
 
     /* ============================== Block layout ============================== */
 
 #if MEMMON_CHECKED_HEADER
     /** Stamped on every live block. Any other value means the pointer is not ours. */
-    constexpr std::uint32_t LiveMagic = 0xC0FFEEu;
+    constexpr std::uint32_t kLiveMagic = 0xC0FFEEu;
 
     /** Stamped on the way out, so a second delete of the same block can be caught */
-    constexpr std::uint32_t FreedMagic = 0xDEAD5EEDu;
+    constexpr std::uint32_t kFreedMagic = 0xDEAD5EEDu;
 
     /**
      * Bytes used by the Debug fields: 3 pointers, 3 size_t and 2 uint32.
      * 56 on x64, 32 on Win32.
      */
-    constexpr std::size_t CheckedFieldBytes =
+    constexpr std::size_t kCheckedFieldBytes =
         3 * sizeof(void*) + 3 * sizeof(std::size_t) + 2 * sizeof(std::uint32_t);
 
     /**
      * Rounded up to a power of two: 64 on x64, 32 on Win32.
      * It MUST be a power of two, or _aligned_malloc kills the process.
      */
-    constexpr std::size_t CheckedHeaderSize = std::bit_ceil(CheckedFieldBytes);
+    constexpr std::size_t kCheckedHeaderSize = std::bit_ceil(kCheckedFieldBytes);
 
     /** Spare bytes, filled so that magic ends up last: 2 words on x64, 0 on Win32 */
-    constexpr std::size_t HeaderPadBytes = CheckedHeaderSize - CheckedFieldBytes;
-    static_assert(HeaderPadBytes % sizeof(std::uint32_t) == 0);
-    constexpr std::size_t HeaderPadWords = HeaderPadBytes / sizeof(std::uint32_t);
+    constexpr std::size_t kHeaderPadBytes = kCheckedHeaderSize - kCheckedFieldBytes;
+    static_assert(kHeaderPadBytes % sizeof(std::uint32_t) == 0);
+    constexpr std::size_t kHeaderPadWords = kHeaderPadBytes / sizeof(std::uint32_t);
 
     /** C++ does not allow an array of size 0, so Pad<0> is an empty type instead */
     template <std::size_t Words>
@@ -132,7 +132,7 @@ namespace
          * off the end. This attribute lets an empty field take 0 bytes.
          * It is MSVC's spelling of the standard [[no_unique_address]], which MSVC ignores.
          */
-        [[msvc::no_unique_address]] Pad<HeaderPadWords> reserved;
+        [[msvc::no_unique_address]] Pad<kHeaderPadWords> reserved;
 
         /** LiveMagic or FreedMagic. Last, so writing just before the block hits it */
         std::uint32_t magic;
@@ -149,7 +149,7 @@ namespace
     static_assert((sizeof(Header) & (sizeof(Header) - 1)) == 0, "Header size must be a power of two");
 #if MEMMON_CHECKED_HEADER
     /* Fails if the fields change, or if the compiler adds hidden padding between them */
-    static_assert(sizeof(Header) == CheckedHeaderSize, "Header fields no longer add up to CheckedHeaderSize");
+    static_assert(sizeof(Header) == kCheckedHeaderSize, "Header fields no longer add up to CheckedHeaderSize");
     static_assert(offsetof(Header, magic) + sizeof(Header::magic) == sizeof(Header),
                   "magic must be the last bytes of the header, so a small underrun lands on it");
 #endif
@@ -165,8 +165,8 @@ namespace
     BlockCheck CheckHeader([[maybe_unused]] const Header* header) noexcept
     {
 #if MEMMON_CHECKED_HEADER
-        if (header->magic == LiveMagic) return BlockCheck::Ok;
-        if (header->magic == FreedMagic) return BlockCheck::AlreadyFreed;
+        if (header->magic == kLiveMagic) return BlockCheck::Ok;
+        if (header->magic == kFreedMagic) return BlockCheck::AlreadyFreed;
         return BlockCheck::NotOurs;
 #else
         return BlockCheck::Ok;
@@ -192,7 +192,7 @@ namespace
         header->file = file;
         header->serial = 0;
         header->line = line;
-        header->magic = LiveMagic;
+        header->magic = kLiveMagic;
 #endif
     }
 
@@ -203,7 +203,7 @@ namespace
     void MarkFreed([[maybe_unused]] Header* header) noexcept
     {
 #if MEMMON_CHECKED_HEADER
-        header->magic = FreedMagic;
+        header->magic = kFreedMagic;
 #endif
     }
 
@@ -297,22 +297,22 @@ namespace
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Operation: {:<7}{}| {}{:<37}{}",
-                               prefixColor, operation, MemColor::Reset,
-                               functionColor, function, MemColor::Reset).out;
+                               prefixColor, operation, MEM_COLOR::kReset,
+                               functionColor, function, MEM_COLOR::kReset).out;
         if (size)
         {
             out = std::format_to_n(out, end - out, "| size = {}{} bytes{}",
-                                   MemColor::Value, *size, MemColor::Reset).out;
+                                   MEM_COLOR::kValue, *size, MEM_COLOR::kReset).out;
         }
         if (alignment)
         {
             out = std::format_to_n(out, end - out, " | alignment = {}{}{}",
-                                   MemColor::Value, *alignment, MemColor::Reset).out;
+                                   MEM_COLOR::kValue, *alignment, MEM_COLOR::kReset).out;
         }
         if (live)
         {
             out = std::format_to_n(out, end - out, " | live = {}{} bytes{}",
-                                   MemColor::Value, *live, MemColor::Reset).out;
+                                   MEM_COLOR::kValue, *live, MEM_COLOR::kReset).out;
         }
         *out++ = '\n';
         *out = '\0';
@@ -331,7 +331,7 @@ namespace
     {
         char buffer[128];
         const auto result = std::format_to_n(buffer, sizeof(buffer) - 1, "{:<20}: {}{}{}{}\n",
-                                             label, MemColor::Value, value, MemColor::Reset, unit);
+                                             label, MEM_COLOR::kValue, value, MEM_COLOR::kReset, unit);
         *result.out = '\0';
         std::fputs(buffer, stdout);
     }
@@ -360,12 +360,12 @@ namespace
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Refused:   {:<7}{}| {}{:<37}{}",
-                               MemColor::Fail, "free", MemColor::Reset,
-                               MemColor::Check, function, MemColor::Reset).out;
+                               MEM_COLOR::kFail, "free", MEM_COLOR::kReset,
+                               MEM_COLOR::kCheck, function, MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, "| address = {}{}{}",
-                               MemColor::Value, block, MemColor::Reset).out;
+                               MEM_COLOR::kValue, block, MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, " | {}{}{}",
-                               MemColor::Fail, reason, MemColor::Reset).out;
+                               MEM_COLOR::kFail, reason, MEM_COLOR::kReset).out;
         *out++ = '\n';
         *out = '\0';
 
@@ -389,14 +389,14 @@ namespace
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Mismatch:  {:<7}{}| {}{:<37}{}",
-                               MemColor::Fail, "free", MemColor::Reset,
-                               MemColor::Check, function, MemColor::Reset).out;
+                               MEM_COLOR::kFail, "free", MEM_COLOR::kReset,
+                               MEM_COLOR::kCheck, function, MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, "| address = {}{}{}",
-                               MemColor::Value, block, MemColor::Reset).out;
+                               MEM_COLOR::kValue, block, MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, " | expected align {}{}{}",
-                               MemColor::Value, expected, MemColor::Reset).out;
+                               MEM_COLOR::kValue, expected, MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, ", block says {}{}{}",
-                               MemColor::Value, actual, MemColor::Reset).out;
+                               MEM_COLOR::kValue, actual, MEM_COLOR::kReset).out;
         *out++ = '\n';
         *out = '\0';
 
@@ -417,14 +417,14 @@ namespace
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Leak:{}      | address = {}{}{}",
-                               MemColor::Fail, MemColor::Reset,
-                               MemColor::Value, static_cast<const void*>(header + 1), MemColor::Reset).out;
+                               MEM_COLOR::kFail, MEM_COLOR::kReset,
+                               MEM_COLOR::kValue, static_cast<const void*>(header + 1), MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, " | size = {}{} bytes{}",
-                               MemColor::Value, header->numBytes, MemColor::Reset).out;
+                               MEM_COLOR::kValue, header->numBytes, MEM_COLOR::kReset).out;
         if (header->alignment)
         {
             out = std::format_to_n(out, end - out, " | alignment = {}{}{}",
-                                   MemColor::Value, header->alignment, MemColor::Reset).out;
+                                   MEM_COLOR::kValue, header->alignment, MEM_COLOR::kReset).out;
         }
 
         if (header->file)
@@ -434,11 +434,11 @@ namespace
             const std::size_t slash = path.find_last_of("/\\");
             const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
             out = std::format_to_n(out, end - out, " | {}{}:{}{}",
-                                   MemColor::Check, name, header->line, MemColor::Reset).out;
+                                   MEM_COLOR::kCheck, name, header->line, MEM_COLOR::kReset).out;
         }
         else
         {
-            out = std::format_to_n(out, end - out, " | {}(unknown){}", MemColor::Section, MemColor::Reset).out;
+            out = std::format_to_n(out, end - out, " | {}(unknown){}", MEM_COLOR::kSection, MEM_COLOR::kReset).out;
         }
         *out++ = '\n';
         *out = '\0';
@@ -458,10 +458,10 @@ namespace
         char* out = buffer;
 
         out = std::format_to_n(out, end - out, "{}Damaged:{}   | address = {}{}{}",
-                               MemColor::Fail, MemColor::Reset,
-                               MemColor::Value, static_cast<const void*>(header + 1), MemColor::Reset).out;
+                               MEM_COLOR::kFail, MEM_COLOR::kReset,
+                               MEM_COLOR::kValue, static_cast<const void*>(header + 1), MEM_COLOR::kReset).out;
         out = std::format_to_n(out, end - out, " | {}bad check value, walk stopped: older blocks not listed{}",
-                               MemColor::Fail, MemColor::Reset).out;
+                               MEM_COLOR::kFail, MEM_COLOR::kReset).out;
         *out++ = '\n';
         *out = '\0';
 
@@ -536,9 +536,9 @@ namespace
         /* The malloc above runs without the lock, so threads can take memory from the heap side by side */
         {
             MonitorGuard guard;
-            const Counted counted = CountAllocation(size);
-            LinkBlock(header, counted.number);
-            LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, std::nullopt, counted.live);
+            const auto [live, number] = CountAllocation(size);
+            LinkBlock(header, number);
+            LogOperation(MEM_COLOR::kNewPrefix, "New", functionColor, function, size, std::nullopt, live);
         }
         return header + 1;
     }
@@ -572,7 +572,7 @@ namespace
             MonitorGuard guard;
             const Counted counted = CountAllocation(size);
             LinkBlock(reinterpret_cast<Header*>(block) - 1, counted.number);
-            LogOperation(MemColor::NewPrefix, "New", functionColor, function, size, alignment, counted.live);
+            LogOperation(MEM_COLOR::kNewPrefix, "New", functionColor, function, size, alignment, counted.live);
         }
         return block;
     }
@@ -621,7 +621,7 @@ namespace
             UnlinkBlock(header);
 
             const std::size_t live = CountFree(header->numBytes);
-            LogOperation(MemColor::DeletePrefix, "Delete", functionColor, function, header->numBytes,
+            LogOperation(MEM_COLOR::kDeletePrefix, "Delete", functionColor, function, header->numBytes,
                          alignment ? std::optional{alignment} : std::nullopt, live);
 
             MarkFreed(header);
@@ -678,7 +678,7 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
     const std::int64_t liveBlocks = static_cast<std::int64_t>(allocations) - static_cast<std::int64_t>(frees);
 
     char title[64];
-    *std::format_to_n(title, sizeof(title) - 1, "{}-- Memory Report --{}\n", MemColor::Section, MemColor::Reset).out
+    *std::format_to_n(title, sizeof(title) - 1, "{}-- Memory Report --{}\n", MEM_COLOR::kSection, MEM_COLOR::kReset).out
         = '\0';
     std::fputs(title, stdout);
 
@@ -705,7 +705,7 @@ void MemoryMonitor::Report(const MemoryStats& baseline)
 LeakSummary MemoryMonitor::ReportLeaks([[maybe_unused]] const MemoryStats& baseline)
 {
     char title[64];
-    *std::format_to_n(title, sizeof(title) - 1, "{}-- Leak Report --{}\n", MemColor::Section, MemColor::Reset).out
+    *std::format_to_n(title, sizeof(title) - 1, "{}-- Leak Report --{}\n", MEM_COLOR::kSection, MEM_COLOR::kReset).out
         = '\0';
     std::fputs(title, stdout);
 
@@ -764,22 +764,22 @@ AllocationSite MemoryMonitor::GetAllocationSite([[maybe_unused]] const void* blo
 
 void* operator new(std::size_t _Size)
 {
-    return Allocate(_Size, MemColor::Plain, "new(size_t)");
+    return Allocate(_Size, MEM_COLOR::kPlain, "new(size_t)");
 }
 
 void* operator new [](std::size_t _Size)
 {
-    return Allocate(_Size, MemColor::PlainArray, "new[](size_t)");
+    return Allocate(_Size, MEM_COLOR::kPlainArray, "new[](size_t)");
 }
 
 void* operator new(std::size_t _Size, std::align_val_t _Al)
 {
-    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MemColor::Aligned, "new(size_t, align_val_t)");
+    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MEM_COLOR::kAligned, "new(size_t, align_val_t)");
 }
 
 void* operator new[](std::size_t _Size, std::align_val_t _Al)
 {
-    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MemColor::AlignedArray, "new[](size_t, align_val_t)");
+    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MEM_COLOR::kAlignedArray, "new[](size_t, align_val_t)");
 }
 
 
@@ -787,48 +787,48 @@ void* operator new[](std::size_t _Size, std::align_val_t _Al)
 
 void operator delete(void* _Block) noexcept
 {
-    Free(_Block, MemColor::Plain, "delete(void*)", 0);
+    Free(_Block, MEM_COLOR::kPlain, "delete(void*)", 0);
 }
 
 void operator delete(void* _Block, std::size_t _Size) noexcept
 {
-    Free(_Block, MemColor::Sized, "delete(void*, size_t)", 0);
+    Free(_Block, MEM_COLOR::kSized, "delete(void*, size_t)", 0);
 }
 
 void operator delete [](void* _Block) noexcept
 {
-    Free(_Block, MemColor::PlainArray, "delete[](void*)", 0);
+    Free(_Block, MEM_COLOR::kPlainArray, "delete[](void*)", 0);
 }
 
 void operator delete[](void* _Block, std::size_t _Size) noexcept
 {
-    Free(_Block, MemColor::SizedArray, "delete[](void*, size_t)", 0);
+    Free(_Block, MEM_COLOR::kSizedArray, "delete[](void*, size_t)", 0);
 }
 
 /* The aligned deletes pass their alignment only so Free can report a mismatch */
 void operator delete(void* _Block, std::align_val_t _Al) noexcept
 {
-    Free(_Block, MemColor::Aligned, "delete(void*, align_val_t)",
+    Free(_Block, MEM_COLOR::kAligned, "delete(void*, align_val_t)",
          static_cast<std::size_t>(_Al));
 }
 
 void operator delete(void* _Block, std::size_t _Size,
                      std::align_val_t _Al) noexcept
 {
-    Free(_Block, MemColor::SizedAligned, "delete(void*, size_t, align_val_t)",
+    Free(_Block, MEM_COLOR::kSizedAligned, "delete(void*, size_t, align_val_t)",
          static_cast<std::size_t>(_Al));
 }
 
 void operator delete[](void* _Block, std::align_val_t _Al) noexcept
 {
-    Free(_Block, MemColor::AlignedArray, "delete[](void*, align_val_t)",
+    Free(_Block, MEM_COLOR::kAlignedArray, "delete[](void*, align_val_t)",
          static_cast<std::size_t>(_Al));
 }
 
 void operator delete[](void* _Block, std::size_t _Size,
                        std::align_val_t _Al) noexcept
 {
-    Free(_Block, MemColor::SizedAlignedArray, "delete[](void*, size_t, align_val_t)",
+    Free(_Block, MEM_COLOR::kSizedAlignedArray, "delete[](void*, size_t, align_val_t)",
          static_cast<std::size_t>(_Al));
 }
 
@@ -837,48 +837,48 @@ void operator delete[](void* _Block, std::size_t _Size,
 #if MEMMON_CHECKED_HEADER
 void* operator new(std::size_t _Size, const char* file, int line)
 {
-    return Allocate(_Size, MemColor::Plain, "new(size_t) file-tagged",
+    return Allocate(_Size, MEM_COLOR::kPlain, "new(size_t) file-tagged",
                     file, static_cast<std::uint32_t>(line));
 }
 
 void* operator new[](std::size_t _Size, const char* file, int line)
 {
-    return Allocate(_Size, MemColor::PlainArray, "new[](size_t) file-tagged",
+    return Allocate(_Size, MEM_COLOR::kPlainArray, "new[](size_t) file-tagged",
                     file, static_cast<std::uint32_t>(line));
 }
 
 void* operator new(std::size_t _Size, std::align_val_t _Al, const char* file, int line)
 {
-    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MemColor::Aligned,
+    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MEM_COLOR::kAligned,
                            "new(size_t, align_val_t) file-tagged", file, static_cast<std::uint32_t>(line));
 }
 
 void* operator new[](std::size_t _Size, std::align_val_t _Al, const char* file, int line)
 {
-    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MemColor::AlignedArray,
+    return AllocateAligned(_Size, static_cast<std::size_t>(_Al), MEM_COLOR::kAlignedArray,
                            "new[](size_t, align_val_t) file-tagged", file, static_cast<std::uint32_t>(line));
 }
 
 /* Only reached when a constructor throws. File and line are not needed to free. */
 void operator delete(void* _Block, const char*, int) noexcept
 {
-    Free(_Block, MemColor::Plain, "delete(void*) file-tagged", 0);
+    Free(_Block, MEM_COLOR::kPlain, "delete(void*) file-tagged", 0);
 }
 
 void operator delete[](void* _Block, const char*, int) noexcept
 {
-    Free(_Block, MemColor::PlainArray, "delete[](void*) file-tagged", 0);
+    Free(_Block, MEM_COLOR::kPlainArray, "delete[](void*) file-tagged", 0);
 }
 
 void operator delete(void* _Block, std::align_val_t _Al, const char*, int) noexcept
 {
-    Free(_Block, MemColor::Aligned, "delete(void*, align_val_t) file-tagged",
+    Free(_Block, MEM_COLOR::kAligned, "delete(void*, align_val_t) file-tagged",
          static_cast<std::size_t>(_Al));
 }
 
 void operator delete[](void* _Block, std::align_val_t _Al, const char*, int) noexcept
 {
-    Free(_Block, MemColor::AlignedArray, "delete[](void*, align_val_t) file-tagged",
+    Free(_Block, MEM_COLOR::kAlignedArray, "delete[](void*, align_val_t) file-tagged",
          static_cast<std::size_t>(_Al));
 }
 #endif

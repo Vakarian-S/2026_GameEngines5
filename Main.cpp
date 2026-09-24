@@ -3,7 +3,9 @@
 #include <iostream>
 #include <thread>
 
+#include "core/Entity.h"
 #include "core/Window.h"
+#include "core/World.h"
 #include "utils/MemoryMonitor.h"
 
 /*
@@ -32,6 +34,22 @@ int main()
     const MemoryStats baseline = MemoryMonitor::GetStats();
 
     std::cout << "GameEngines5" << std::endl;
+    
+        
+    MemoryMonitor::SetLogging(true);
+    World myWorld = World();
+    auto a = myWorld.CreateEntity();
+    std::cout << "a: {" << a.index << "," << a.version << "}\n";
+    auto b = myWorld.CreateEntity();
+    std::cout << "b: {" << b.index << "," << b.version << "}\n";
+    myWorld.DestroyEntity(a);
+    std::cout << "Is A Alive? " << myWorld.IsEntityAlive(a) << "\n";
+    auto c = myWorld.CreateEntity();
+    std::cout << "c: {" << c.index << "," << c.version << "}\n";
+    std::cout << "Is A Alive? " << myWorld.IsEntityAlive(a) << "\n";
+    std::cout << "Is B Alive? " << myWorld.IsEntityAlive(b) << "\n";
+    std::cout << "Is C Alive? " << myWorld.IsEntityAlive(c) << "\n";
+    myWorld.DestroyEntity(a);
 
     try
     {
@@ -54,6 +72,7 @@ int main()
 
     MemoryMonitor::Report(baseline);
     MemoryMonitor::ReportLeaks(baseline);
+
 
     return 0;
 }

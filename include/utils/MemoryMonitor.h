@@ -64,47 +64,47 @@ void operator delete[](void* block, std::align_val_t alignment, const char* file
 /**
  * Color Codes for making the terminal easier to read, each Function and Action has its own color
  */
-namespace MemColor
+namespace MEM_COLOR
 {
     /** Back to the default color */
-    inline constexpr std::string_view Reset = "\x1b[0m";
+    inline constexpr std::string_view kReset = "\x1b[0m";
     /** Dim gray */
-    inline constexpr std::string_view Section = "\x1b[90m";
+    inline constexpr std::string_view kSection = "\x1b[90m";
     /** Bold white */
-    inline constexpr std::string_view Value = "\x1b[1;97m";
+    inline constexpr std::string_view kValue = "\x1b[1;97m";
 
     /** Bold green */
-    inline constexpr std::string_view NewPrefix = "\x1b[1;32m";
+    inline constexpr std::string_view kNewPrefix = "\x1b[1;32m";
     /** Bold red */
-    inline constexpr std::string_view DeletePrefix = "\x1b[1;31m";
+    inline constexpr std::string_view kDeletePrefix = "\x1b[1;31m";
 
     /* Scalar overloads use the normal color, array overloads use the bright one. */
 
     /** Cyan */
-    inline constexpr std::string_view Plain = "\x1b[36m";
+    inline constexpr std::string_view kPlain = "\x1b[36m";
     /** Bright cyan */
-    inline constexpr std::string_view PlainArray = "\x1b[96m";
+    inline constexpr std::string_view kPlainArray = "\x1b[96m";
     /** Yellow */
-    inline constexpr std::string_view Sized = "\x1b[33m";
+    inline constexpr std::string_view kSized = "\x1b[33m";
     /** Bright yellow */
-    inline constexpr std::string_view SizedArray = "\x1b[93m";
+    inline constexpr std::string_view kSizedArray = "\x1b[93m";
     /** Magenta */
-    inline constexpr std::string_view Aligned = "\x1b[35m";
+    inline constexpr std::string_view kAligned = "\x1b[35m";
     /** Bright magenta */
-    inline constexpr std::string_view AlignedArray = "\x1b[95m";
+    inline constexpr std::string_view kAlignedArray = "\x1b[95m";
     /** Blue */
-    inline constexpr std::string_view SizedAligned = "\x1b[34m";
+    inline constexpr std::string_view kSizedAligned = "\x1b[34m";
     /** Bright blue */
-    inline constexpr std::string_view SizedAlignedArray = "\x1b[94m";
+    inline constexpr std::string_view kSizedAlignedArray = "\x1b[94m";
 
     /* Alignment checks */
 
     /** Bold green */
-    inline constexpr std::string_view Ok = "\x1b[1;32m";
+    inline constexpr std::string_view kOk = "\x1b[1;32m";
     /** Bold bright red */
-    inline constexpr std::string_view Fail = "\x1b[1;91m";
+    inline constexpr std::string_view kFail = "\x1b[1;91m";
     /** Bright cyan */
-    inline constexpr std::string_view Check = "\x1b[96m";
+    inline constexpr std::string_view kCheck = "\x1b[96m";
 }
 
 /* ============================== Public API ============================== */

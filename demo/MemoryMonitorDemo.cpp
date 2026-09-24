@@ -105,15 +105,15 @@ void CheckAlignment(const std::string_view what, const void* address, const std:
     char* out = buffer;
 
     out = std::format_to_n(out, end - out, "{}Alignment: {:<7}{}",
-                           ok ? MemColor::Ok : MemColor::Fail, ok ? "ok" : "FAIL", MemColor::Reset).out;
+                           ok ? MEM_COLOR::kOk : MEM_COLOR::kFail, ok ? "ok" : "FAIL", MEM_COLOR::kReset).out;
     out = std::format_to_n(out, end - out, "| {}{:<37}{}",
-                           MemColor::Check, what, MemColor::Reset).out;
+                           MEM_COLOR::kCheck, what, MEM_COLOR::kReset).out;
     out = std::format_to_n(out, end - out, "| address = {}{}{}",
-                           MemColor::Value, address, MemColor::Reset).out;
+                           MEM_COLOR::kValue, address, MEM_COLOR::kReset).out;
     out = std::format_to_n(out, end - out, " | % {}{}{}",
-                           MemColor::Value, alignment, MemColor::Reset).out;
+                           MEM_COLOR::kValue, alignment, MEM_COLOR::kReset).out;
     out = std::format_to_n(out, end - out, " = {}{}{}",
-                           MemColor::Value, remainder, MemColor::Reset).out;
+                           MEM_COLOR::kValue, remainder, MEM_COLOR::kReset).out;
     *out = '\0';
 
     std::fputs(buffer, stdout);
@@ -136,8 +136,8 @@ void PrintSite(const std::string_view what, const void* block)
     char* out = buffer;
 
     out = std::format_to_n(out, end - out, "{}Made at:   {:<7}{}| {}{:<37}{}",
-                           MemColor::Check, "site", MemColor::Reset,
-                           MemColor::Check, what, MemColor::Reset).out;
+                           MEM_COLOR::kCheck, "site", MEM_COLOR::kReset,
+                           MEM_COLOR::kCheck, what, MEM_COLOR::kReset).out;
 
     if (site.file)
     {
@@ -146,11 +146,11 @@ void PrintSite(const std::string_view what, const void* block)
         const std::size_t slash = path.find_last_of("/\\");
         const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
         out = std::format_to_n(out, end - out, "| {}{}:{}{}",
-                               MemColor::Value, name, site.line, MemColor::Reset).out;
+                               MEM_COLOR::kValue, name, site.line, MEM_COLOR::kReset).out;
     }
     else
     {
-        out = std::format_to_n(out, end - out, "| {}(unknown){}", MemColor::Section, MemColor::Reset).out;
+        out = std::format_to_n(out, end - out, "| {}(unknown){}", MEM_COLOR::kSection, MEM_COLOR::kReset).out;
     }
     *out++ = '\n';
     *out = '\0';
@@ -167,11 +167,11 @@ void TestType(const char* name)
 {
     const bool overAligned = alignof(T) > __STDCPP_DEFAULT_NEW_ALIGNMENT__;
 
-    std::cout << MemColor::Section << "-- " << name
+    std::cout << MEM_COLOR::kSection << "-- " << name
         << " | sizeof = " << sizeof(T)
         << " | alignof = " << alignof(T)
         << " | expected path: " << (overAligned ? "ALIGNED" : "plain")
-        << MemColor::Reset << std::endl;
+        << MEM_COLOR::kReset << std::endl;
 
     T* one = new T;
     CheckAlignment("scalar", one, alignof(T));
@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
     const MemoryStats baseline = MemoryMonitor::GetStats();
     MemoryMonitor::SetLogging(true);
 
-    std::cout << MemColor::Section << "-- Build --" << MemColor::Reset << std::endl;
+    std::cout << MEM_COLOR::kSection << "-- Build --" << MEM_COLOR::kReset << std::endl;
     std::cout << "pointer size                     = " << sizeof(void*) << " bytes" << std::endl;
     std::cout << "__STDCPP_DEFAULT_NEW_ALIGNMENT__ = " << __STDCPP_DEFAULT_NEW_ALIGNMENT__ << std::endl;
     std::cout << "anything above that goes to the align_val_t overloads" << std::endl;
@@ -225,7 +225,7 @@ int main(int argc, char* argv[])
     /* ============================== Operators called by hand ============================== */
 
     /* The compiler prefers the sized deletes, so these are the only sure way to run the unsized ones */
-    std::cout << MemColor::Section << "-- Direct operator calls --" << MemColor::Reset << std::endl;
+    std::cout << MEM_COLOR::kSection << "-- Direct operator calls --" << MEM_COLOR::kReset << std::endl;
 
     void* rawOne = operator new(sizeof(Plain4));
     CheckAlignment("plain scalar", rawOne, alignof(Plain4));
@@ -252,7 +252,7 @@ int main(int argc, char* argv[])
 
     /* ============================== A library container ============================== */
 
-    std::cout << MemColor::Section << "-- std::vector --" << MemColor::Reset << std::endl;
+    std::cout << MEM_COLOR::kSection << "-- std::vector --" << MEM_COLOR::kReset << std::endl;
     {
         std::vector<MATH::Vec3> vertices;
         vertices.reserve(1000);
@@ -273,7 +273,7 @@ int main(int argc, char* argv[])
      * MEMMON_MAKE_UNIQUE makes the same object through our file-tagged new instead.
      * Both give the memory back at the closing brace, so neither shows up in the leak report.
      */
-    std::cout << MemColor::Section << "-- Smart pointers --" << MemColor::Reset << std::endl;
+    std::cout << MEM_COLOR::kSection << "-- Smart pointers --" << MEM_COLOR::kReset << std::endl;
     {
         const std::unique_ptr<Plain4> plain = std::make_unique<Plain4>();
         const std::unique_ptr<Plain4> tagged = MEMMON_MAKE_UNIQUE(Plain4);
@@ -307,7 +307,7 @@ int main(int argc, char* argv[])
      */
     if (MemoryMonitor::HasCheckedHeaders())
     {
-        std::cout << MemColor::Section << "-- Damaged leak list --" << MemColor::Reset << std::endl;
+        std::cout << MEM_COLOR::kSection << "-- Damaged leak list --" << MEM_COLOR::kReset << std::endl;
 
         /* volatile stops the optimizer from reasoning about the deliberate write below */
         int* volatile target = leakedTagged;

@@ -4,7 +4,7 @@
 
 #include <SDL3/SDL.h>
 
-namespace Paths
+namespace PATHS
 {
     /*
      * SDL owns the string SDL_GetBasePath returns, so it is not freed here, and it already ends
