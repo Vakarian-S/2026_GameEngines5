@@ -14,14 +14,15 @@ Entity World::CreateEntity()
     {
         index = freeSlots.back();
         freeSlots.pop_back();
-        entitySlots[index].archetype = 0;
-        entitySlots[index].row = 0;
     }
     else
     {
         index = static_cast<uint32_t>(entitySlots.size());
-        entitySlots.push_back({1, 0, 0});
+        entitySlots.push_back({1, kInvalidArchetype, 0});
     }
+    entitySlots[index].archetype = 0;
+    entitySlots[index].row = 0;
+
     return {index, entitySlots[index].version};
 }
 
