@@ -33,7 +33,7 @@ Entity World::CreateEntity()
 void World::DestroyEntity(const Entity entity)
 {
     /* A stale handle is normal, not an error. Something died while someone still held it. */
-    if (!IsEntityAlive(entity))
+    if (!DoesEntityExist(entity))
     {
         return;
     }
@@ -44,7 +44,7 @@ void World::DestroyEntity(const Entity entity)
     freeSlots.push_back(entity.index);
 }
 
-bool World::IsEntityAlive(const Entity entity) const
+bool World::DoesEntityExist(const Entity entity) const
 {
     /* A default-constructed or garbage handle must answer false, not read past the end. */
     if (entity.index >= entitySlots.size())

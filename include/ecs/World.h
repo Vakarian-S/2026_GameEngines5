@@ -46,7 +46,7 @@ public:
      * Systems iterating an archetype do not call this. Everything in an archetype is alive by
      * definition. It is for stored handles, such as an AI target from a previous frame.
      */
-    bool IsEntityAlive(Entity entity) const;
+    bool DoesEntityExist(Entity entity) const;
 
 private:
     /** One record per index ever handed out. The index into this vector is the entity's index. */

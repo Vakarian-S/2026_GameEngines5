@@ -91,15 +91,15 @@ int main()
     std::cout << "b = {" << b.index << ", " << b.version << "}\n";
     std::cout << "c = {" << c.index << ", " << c.version << "}\n";
 
-    Check("a is dead once destroyed", !world.IsEntityAlive(a));
-    Check("b is untouched by a's death", world.IsEntityAlive(b));
-    Check("c is alive", world.IsEntityAlive(c));
+    Check("a is dead once destroyed", !world.DoesEntityExist(a));
+    Check("b is untouched by a's death", world.DoesEntityExist(b));
+    Check("c is alive", world.DoesEntityExist(c));
     Check("c recycled a's index", c.index == a.index);
     Check("c carries a newer version", c.version == a.version + 1);
 
     /* Destroying a handle that is already dead does nothing rather than corrupting the slot. */
     world.DestroyEntity(a);
-    Check("destroying a dead handle is harmless", world.IsEntityAlive(b) && world.IsEntityAlive(c));
+    Check("destroying a dead handle is harmless", world.DoesEntityExist(b) && world.DoesEntityExist(c));
 
     /*
      * Components.
