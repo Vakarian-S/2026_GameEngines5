@@ -5,6 +5,7 @@
 #include <thread>
 
 #include "core/Window.h"
+#include "ecs/Archetype.h"
 #include "ecs/Component.h"
 #include "ecs/Entity.h"
 #include "ecs/World.h"
@@ -39,6 +40,11 @@ struct Velocity
 
 struct Dead
 {
+};
+
+struct Health
+{
+    float current, max;
 };
 
 /** Prints one named expectation and whether it held. */
@@ -144,6 +150,47 @@ int main()
     Check("a mask contains its own type", (both & positionOnly) == positionOnly);
 
     std::cout << "\n";
+
+    /*
+     * Archetypes. Tested on its own: World does not place entities in archetypes yet, so
+     * these handles are only labels for rows.
+     */
+    std::cout << "\n-- archetypes --\n";
+
+    Archetype archetype(COMPONENTS::MaskOf<Position, Velocity, Dead>());
+
+    Check("three components, two columns", archetype.ColumnCount() == 2);
+    Check("a tag has no column", archetype.Column<Dead>() == nullptr);
+    Check("a component not in the mask has no column", archetype.Column<Health>() == nullptr);
+    Check("starts empty", archetype.Count() == 0);
+
+    const Entity e1 = world.CreateEntity();
+    const Entity e2 = world.CreateEntity();
+    const Entity e3 = world.CreateEntity();
+
+    Check("first row is 0", archetype.AddRow(e1) == 0);
+    Check("second row is 1", archetype.AddRow(e2) == 1);
+    Check("third row is 2", archetype.AddRow(e3) == 2);
+    Check("three rows", archetype.Count() == 3);
+
+    /* Fetched after the last AddRow: every resize can move the column. */
+    Position* positions = archetype.Column<Position>();
+    positions[0] = {1.0f, 0.0f, 0.0f};
+    positions[1] = {2.0f, 0.0f, 0.0f};
+    positions[2] = {3.0f, 0.0f, 0.0f};
+
+    Check("writes land in the column", archetype.Column<Position>()[2].x == 3.0f);
+    
+    const Entity moved = archetype.RemoveRow(0);
+    positions = archetype.Column<Position>();
+
+    Check("the last row moved down", moved.index == e3.index && moved.version == e3.version);
+    Check("count dropped to 2", archetype.Count() == 2);
+    Check("its data moved with it", positions[0].x == 3.0f);
+
+    Check("removing the last row moves nobody", archetype.RemoveRow(1).version == 0);
+    Check("one row left", archetype.Count() == 1);
+    
 
     try
     {
