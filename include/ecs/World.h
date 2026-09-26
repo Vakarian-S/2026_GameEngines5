@@ -1,9 +1,13 @@
 ﻿#pragma once
+#include <memory>
 #include <vector>
 
+#include "Archetype.h"
+#include "Component.h"
 #include "ecs/Entity.h"
 #include "ecs/EntitySlot.h"
 
+class Archetype;
 /**
  * Owns every entity in the game.
  *
@@ -48,9 +52,68 @@ public:
      */
     bool DoesEntityExist(Entity entity) const;
 
+    /**
+     * Gets a component from a given entity
+     * @tparam T Type of the component to find
+     * @param entity Entity that owns said component
+     * @return The component itself.
+     */
+    template <typename T>
+    T* GetComponent(const Entity entity)
+    {
+        if (!DoesEntityExist(entity))
+        {
+            return nullptr;
+        }
+
+        const EntitySlot& slot = entitySlots[entity.index];
+        T* column = archetypes[slot.archetype]->Column<T>();
+        return column != nullptr ? column + slot.row : nullptr;
+    }
+
+    /**
+     * Checks whether a certain entity has a certain type of component
+     * @tparam T Type of component to find
+     * @param entity entity to search in
+     * @return boolean indicating whether the entity has the component or not
+     */
+    template <typename T>
+    bool HasComponent(Entity entity) const
+    {
+        if (!DoesEntityExist(entity))
+        {
+            return false;
+        }
+        const EntitySlot& slot = entitySlots[entity.index];
+        return (archetypes[slot.archetype]->Mask() & COMPONENTS::MaskOf<T>()) != 0;
+    }
+
+    /**
+     * Where an entity's data sits: which archetype, and which row inside it.
+     *
+     * Debug and tests only. A row is correct only until the next structural change, so never
+     * store what comes back. Gameplay code wants GetComponent.
+     *
+     * @param entity The entity to look up.
+     * @param archetype Filled with the archetype index.
+     * @param row Filled with the row index.
+     * @return false if the entity is gone, and then both outputs are left alone.
+     */
+    bool Locate(Entity entity, uint16_t& archetype, uint32_t& row) const;
+
 private:
     /** One record per index ever handed out. The index into this vector is the entity's index. */
     std::vector<EntitySlot> entitySlots;
     /** Indexes of dead slots, newest first. */
     std::vector<uint32_t> freeSlots;
+
+    /** List of all the archetypes in our world **/
+    std::vector<std::unique_ptr<Archetype>> archetypes;
+
+    /**
+     * Gets the index for the archetype that matches the given mask, if no archetype is found, it adds it.
+     * @param mask Mask of the archetype 
+     * @return 
+     */
+    uint16_t ArchetypeIndexFor(ComponentMask mask);
 };

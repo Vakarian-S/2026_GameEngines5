@@ -58,6 +58,9 @@ public:
      * @return rows as an int.
      */
     uint32_t Count() const;
+    
+    /** The entity owning each row, parallel to every component column. */
+    const Entity* EntityColumn() const { return entities.data(); }
 
 private:
     ComponentMask mask;

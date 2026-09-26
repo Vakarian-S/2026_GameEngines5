@@ -10,7 +10,7 @@ World::World()
 Entity World::CreateEntity()
 {
     uint32_t index;
-    
+
     if (!freeSlots.empty())
     {
         /* Reuse the most recently freed index. Its version was already bumped by Destroy. */
@@ -24,10 +24,16 @@ Entity World::CreateEntity()
         entitySlots.push_back({1, kInvalidArchetype, 0});
     }
 
-    entitySlots[index].archetype = 0;
-    entitySlots[index].row = 0;
+    const Entity entity{index, entitySlots[index].version};
 
-    return {index, entitySlots[index].version};
+    /* Everything is born in the empty archetype and moves out when it gains a component. */
+    const uint16_t archetypeIndex = ArchetypeIndexFor(0);
+    const uint32_t row = archetypes[archetypeIndex]->AddRow(entity);
+
+    entitySlots[index].archetype = archetypeIndex;
+    entitySlots[index].row = row;
+
+    return entity;
 }
 
 void World::DestroyEntity(const Entity entity)
@@ -36,6 +42,16 @@ void World::DestroyEntity(const Entity entity)
     if (!DoesEntityExist(entity))
     {
         return;
+    }
+
+    /* Read the slot before anything changes it. */
+    const uint16_t archetypeIndex = entitySlots[entity.index].archetype;
+    const uint32_t row = entitySlots[entity.index].row;
+
+    /* Whoever was in the last row slid into this one and needs their slot corrected. */
+    if (const auto [index, version] = archetypes[archetypeIndex]->RemoveRow(row); version != 0)
+    {
+        entitySlots[index].row = row;
     }
 
     /* The version bump is the invalidation. Every copy of this handle is now stale. */
@@ -51,7 +67,33 @@ bool World::DoesEntityExist(const Entity entity) const
     {
         return false;
     }
-    
+
     return entitySlots[entity.index].version == entity.version &&
         entitySlots[entity.index].archetype != kInvalidArchetype;
+}
+
+bool World::Locate(const Entity entity, uint16_t& archetype, uint32_t& row) const
+{
+    if (!DoesEntityExist(entity))
+    {
+        return false;
+    }
+
+    archetype = entitySlots[entity.index].archetype;
+    row = entitySlots[entity.index].row;
+    return true;
+}
+
+uint16_t World::ArchetypeIndexFor(ComponentMask mask)
+{
+    for (size_t i = 0; i < archetypes.size(); i++)
+    {
+        if (archetypes[i]->Mask() == mask)
+        {
+            return static_cast<uint16_t>(i);
+        }
+    }
+    assert(archetypes.size() < kInvalidArchetype);
+    archetypes.push_back(std::make_unique<Archetype>(mask));
+    return static_cast<uint16_t>(archetypes.size() - 1);
 }

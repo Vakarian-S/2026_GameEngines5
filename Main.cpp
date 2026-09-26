@@ -71,9 +71,8 @@ int main()
     /*
      * Entities.
      *
-     * Logging is on through this part to show what the directory costs. The two reserves in
-     * the World constructor are the only allocations: creating and destroying entities after
-     * that touches memory that already exists.
+     * Logging is on to show what this costs: two reserves in the constructor, then the
+     * empty archetype and its entities vector on the first CreateEntity.
      */
     std::cout << "\n-- entities --\n";
     MemoryMonitor::SetLogging(true);
@@ -91,15 +90,15 @@ int main()
     std::cout << "b = {" << b.index << ", " << b.version << "}\n";
     std::cout << "c = {" << c.index << ", " << c.version << "}\n";
 
-    Check("a is dead once destroyed", !world.DoesEntityExist(a));
-    Check("b is untouched by a's death", world.DoesEntityExist(b));
-    Check("c is alive", world.DoesEntityExist(c));
+    Check("a is gone once destroyed", !world.DoesEntityExist(a));
+    Check("b is untouched", world.DoesEntityExist(b));
+    Check("c exists", world.DoesEntityExist(c));
     Check("c recycled a's index", c.index == a.index);
     Check("c carries a newer version", c.version == a.version + 1);
 
     /* Destroying a handle that is already dead does nothing rather than corrupting the slot. */
     world.DestroyEntity(a);
-    Check("destroying a dead handle is harmless", world.DoesEntityExist(b) && world.DoesEntityExist(c));
+    Check("destroying a stale handle is harmless", world.DoesEntityExist(b) && world.DoesEntityExist(c));
 
     /*
      * Components.
@@ -152,8 +151,8 @@ int main()
     std::cout << "\n";
 
     /*
-     * Archetypes. Tested on its own: World does not place entities in archetypes yet, so
-     * these handles are only labels for rows.
+     * Archetypes on their own. This one is not the world's, so the handles below are only
+     * labels for its rows.
      */
     std::cout << "\n-- archetypes --\n";
 
@@ -190,7 +189,58 @@ int main()
 
     Check("removing the last row moves nobody", archetype.RemoveRow(1).version == 0);
     Check("one row left", archetype.Count() == 1);
-    
+    Check("the entity column tracks the rows", archetype.EntityColumn()[0].index == e3.index);
+
+    /*
+     * World and archetypes together. A fresh world, so the row numbers are predictable.
+     */
+    std::cout << "\n-- world and archetypes --\n";
+
+    World stage;
+
+    /** Row an entity sits in, or -1 if it is gone. */
+    const auto row_of = [&stage](const Entity e)
+    {
+        uint16_t archetypeIndex;
+        uint32_t row;
+        return stage.Locate(e, archetypeIndex, row) ? static_cast<int>(row) : -1;
+    };
+
+    /** Archetype an entity sits in, or -1 if it is gone. */
+    const auto archetypeOf = [&stage](const Entity e)
+    {
+        uint16_t archetypeIndex;
+        uint32_t row;
+        return stage.Locate(e, archetypeIndex, row) ? static_cast<int>(archetypeIndex) : -1;
+    };
+
+    const Entity w1 = stage.CreateEntity();
+    const Entity w2 = stage.CreateEntity();
+    const Entity w3 = stage.CreateEntity();
+
+    Check("new entities land in rows 0, 1, 2", row_of(w1) == 0 && row_of(w2) == 1 && row_of(w3) == 2);
+    Check("they share one archetype", archetypeOf(w1) == archetypeOf(w2) && archetypeOf(w2) == archetypeOf(w3));
+
+    /* The empty archetype has no columns, so nothing can be read out of it. */
+    Check("a new entity has no components", !stage.HasComponent<Position>(w1));
+    Check("and nothing to read", stage.GetComponent<Position>(w1) == nullptr);
+
+    stage.DestroyEntity(w2);
+
+    Check("w2 is gone", !stage.DoesEntityExist(w2));
+    Check("a gone entity locates nowhere", row_of(w2) == -1);
+    Check("w3 slid down into w2's row", row_of(w3) == 1);
+    Check("w1 was not touched", row_of(w1) == 0);
+
+    /* w3 is the last row now, so removing it moves nobody. */
+    stage.DestroyEntity(w3);
+    Check("w1 still sits in row 0", row_of(w1) == 0);
+
+    const Entity w4 = stage.CreateEntity();
+
+    Check("a recycled slot rejoins the empty archetype", archetypeOf(w4) == archetypeOf(w1));
+    Check("and takes the free row", row_of(w4) == 1);
+
 
     try
     {

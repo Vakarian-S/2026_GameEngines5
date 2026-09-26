@@ -53,6 +53,7 @@ Entity Archetype::RemoveRow(uint32_t row)
     return moved;
 }
 
+
 uint32_t Archetype::ColumnCount() const
 {
     return static_cast<uint32_t>(componentColumns.size());
