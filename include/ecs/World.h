@@ -107,10 +107,13 @@ public:
         /* Reminder: the OR operator (|) means that we add the bit of the component to the archetype mask */
         MoveEntity(entity, currentArchetypeMask | COMPONENTS::MaskOf<T>());
 
-        /* A tag has no column, so there is nothing to write */
-        if (T* stored = GetComponent<T>(entity))
+        /* A tag has no column. if constexpr stops GetComponent<T> existing at all for one. */
+        if constexpr (!std::is_empty_v<T>)
         {
-            *stored = value;
+            if (T* stored = GetComponent<T>(entity))
+            {
+                *stored = value;
+            }
         }
     }
 
