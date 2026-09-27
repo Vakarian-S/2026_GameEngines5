@@ -84,6 +84,25 @@ bool World::Locate(const Entity entity, uint16_t& archetype, uint32_t& row) cons
     return true;
 }
 
+void World::CollectMatching(const ComponentMask all, const ComponentMask none, std::vector<Archetype*>& out)
+{
+    out.clear();
+    for (const std::unique_ptr<Archetype>& archetype : archetypes)
+    {
+        const ComponentMask mask = archetype->Mask();
+        /*
+        * (mask & all) != all    missing a required bit. AND only ever clears bits, so the
+        *                        result can equal `all` only if every one of its bits was set.
+        * (mask & none) != 0     carries at least one forbidden bit.
+        */
+        if ((mask & all) != all || (mask & none) != 0)
+        {
+            continue;
+        }
+        out.push_back(archetype.get());
+    }
+}
+
 uint16_t World::ArchetypeIndexFor(ComponentMask mask)
 {
     for (size_t i = 0; i < archetypes.size(); i++)
@@ -95,6 +114,7 @@ uint16_t World::ArchetypeIndexFor(ComponentMask mask)
     }
     assert(archetypes.size() < kInvalidArchetype);
     archetypes.push_back(std::make_unique<Archetype>(mask));
+    archetypeGeneration++;
     return static_cast<uint16_t>(archetypes.size() - 1);
 }
 

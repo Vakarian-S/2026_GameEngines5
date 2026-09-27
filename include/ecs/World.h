@@ -139,6 +139,15 @@ public:
      */
     bool Locate(Entity entity, uint16_t& archetype, uint32_t& row) const;
 
+    /**
+     * Returns the current archetype generation, used for query validation
+     * @return number of the generation 
+     */
+    uint32_t ArchetypeGeneration() const { return archetypeGeneration; }
+
+    /** Fills out with every archetype that has all of `all` and none of `none`. */
+    void CollectMatching(ComponentMask all, ComponentMask none, std::vector<Archetype*>& out);
+
 private:
     /** One record per index ever handed out. The index into this vector is the entity's index. */
     std::vector<EntitySlot> entitySlots;
@@ -147,6 +156,9 @@ private:
 
     /** List of all the archetypes in our world **/
     std::vector<std::unique_ptr<Archetype>> archetypes;
+
+    /** Goes up by one each time a new archetype is created. Nothing else changes it. */
+    uint32_t archetypeGeneration = 0;
 
     /**
      * Gets the index for the archetype that matches the given mask, if no archetype is found, it adds it.

@@ -271,6 +271,44 @@ int main()
 
     Check("a recycled slot starts back in the empty archetype", archetypeOf(m2) == emptyArchetype);
     Check("and has no components", !stage.HasComponent<Position>(m2));
+    
+    /*
+ * Queries. A fresh world, so the archetype count and generation are predictable.
+ */
+    std::cout << "\n-- queries --\n";
+
+    World queryWorld;
+    std::vector<Archetype*> matches;
+
+    const Entity q1 = queryWorld.CreateEntity();
+    const uint32_t afterFirstEntity = queryWorld.ArchetypeGeneration();
+
+    const Entity q2 = queryWorld.CreateEntity();
+    Check("reusing the empty archetype does not bump", queryWorld.ArchetypeGeneration() == afterFirstEntity);
+
+    queryWorld.AddComponent<Position>(q1, {1.0f, 0.0f, 0.0f});
+    Check("a new archetype bumps the generation", queryWorld.ArchetypeGeneration() == afterFirstEntity + 1);
+
+    queryWorld.AddComponent<Position>(q2, {2.0f, 0.0f, 0.0f});
+    Check("the second entity reuses it", queryWorld.ArchetypeGeneration() == afterFirstEntity + 1);
+
+    queryWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), 0, matches);
+    Check("one archetype holds both", matches.size() == 1 && matches[0]->Count() == 2);
+
+    queryWorld.AddComponent<Dead>(q2);
+    Check("a tag makes its own archetype", queryWorld.ArchetypeGeneration() == afterFirstEntity + 2);
+
+    queryWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), COMPONENTS::MaskOf<Dead>(), matches);
+    Check("none<Dead> excludes the dead archetype", matches.size() == 1 && matches[0]->Count() == 1);
+
+    queryWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), 0, matches);
+    Check("without the filter both match", matches.size() == 2);
+
+    queryWorld.CollectMatching(COMPONENTS::MaskOf<Position, Velocity>(), 0, matches);
+    Check("all needs every bit, not any of them", matches.empty());
+
+    queryWorld.CollectMatching(0, 0, matches);
+    Check("an empty query matches every archetype", matches.size() == 3);
 
 
     try
