@@ -8,6 +8,7 @@
 #include "ecs/Archetype.h"
 #include "ecs/Component.h"
 #include "ecs/Entity.h"
+#include "ecs/Query.h"
 #include "ecs/World.h"
 #include "utils/MemoryMonitor.h"
 
@@ -310,6 +311,30 @@ int main()
     queryWorld.CollectMatching(0, 0, matches);
     Check("an empty query matches every archetype", matches.size() == 3);
 
+    Query moving(queryWorld, COMPONENTS::MaskOf<Position>(), COMPONENTS::MaskOf<Dead>());
+
+    Check("the query skips the dead archetype", moving.Matches().size() == 1);
+
+    /* A shape that did not exist when the query was written. */
+    const Entity q3 = queryWorld.CreateEntity();
+    queryWorld.AddComponent<Position>(q3, {3.0f, 0.0f, 0.0f});
+    queryWorld.AddComponent<Velocity>(q3, {0.0f, 0.0f, 0.0f});
+
+    Check("a new archetype joins the query on its own", moving.Matches().size() == 2);
+
+    /* The canonical system loop: outer over archetypes, inner over rows. */
+    float total = 0.0f;
+    for (Archetype* a : moving.Matches())
+    {
+        Position* positions = a->Column<Position>();
+
+        for (uint32_t i = 0; i < a->Count(); ++i)
+        {
+            total += positions[i].x;
+        }
+    }
+
+    Check("the loop reaches both live entities", total == 4.0f);
 
     try
     {
