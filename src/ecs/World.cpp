@@ -97,3 +97,32 @@ uint16_t World::ArchetypeIndexFor(ComponentMask mask)
     archetypes.push_back(std::make_unique<Archetype>(mask));
     return static_cast<uint16_t>(archetypes.size() - 1);
 }
+
+void World::MoveEntity(const Entity entity, const ComponentMask newMask)
+{
+    const EntitySlot slot = entitySlots[entity.index];
+    const uint16_t sourceIndex = slot.archetype;
+    const uint32_t sourceRow = slot.row;
+    ComponentMask sourceMask = archetypes[sourceIndex]->Mask();
+
+    if (sourceMask == newMask) return;
+
+    const uint16_t destinationIndex = ArchetypeIndexFor(newMask);
+    const uint32_t destinationRow = archetypes[destinationIndex]->AddRow(entity);
+
+    /* for each id where both srcMask and newMask have the bit: */
+    for (ComponentId id = 0; id < kMaxComponents; id++)
+    {
+        const std::byte* source = archetypes[sourceIndex]->ElementAt(id, sourceRow);
+        std::byte* destination = archetypes[destinationIndex]->ElementAt(id, destinationRow);
+        if (source && destination)
+        {
+            std::memcpy(destination, source, COMPONENTS::InfoOf(id).size);
+        }
+    }
+
+    auto [movedIndex, movedVersion] = archetypes[sourceIndex]->RemoveRow(sourceRow);
+    if (movedVersion != 0) entitySlots[movedIndex].row = sourceRow;
+    entitySlots[entity.index].archetype = destinationIndex;
+    entitySlots[entity.index].row = destinationRow;
+}

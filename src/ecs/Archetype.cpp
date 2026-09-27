@@ -13,6 +13,13 @@ Archetype::Archetype(const ComponentMask mask) : mask(mask)
     }
 }
 
+std::byte* Archetype::ElementAt(ComponentId type, uint32_t row)
+{
+    ComponentColumn* column = FindColumn(type);
+    if (column == nullptr) return nullptr;
+    return column->data.data() + row * column->elementSize;
+}
+
 uint32_t Archetype::AddRow(const Entity entity)
 {
     const uint32_t row = static_cast<uint32_t>(entities.size());

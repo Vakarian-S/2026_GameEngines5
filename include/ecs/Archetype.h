@@ -20,6 +20,14 @@ public:
     explicit Archetype(ComponentMask mask);
 
     /**
+     * Raw bytes of one component in one row, or nullptr if this archetype has no such column. 
+     * @param type Component Id of the component type column to search from
+     * @param row row where the component lives
+     * @return bytes of the component or nullptr if component is not found
+     */
+    std::byte* ElementAt(ComponentId type, uint32_t row);
+
+    /**
      * Appends a row (entity and components). The component bytes start zeroed
      * @param entity entity to add
      * @return index of the added row.
@@ -51,6 +59,10 @@ public:
      */
     uint32_t ColumnCount() const;
 
+    /**
+     * Gets the Mask of the Component, bits based on the components that it owns (i.e 1001100)
+     * @return uint64_t mask of the archetype
+     */
     ComponentMask Mask() const;
 
     /**

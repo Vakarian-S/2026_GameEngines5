@@ -53,7 +53,9 @@ public:
     bool DoesEntityExist(Entity entity) const;
 
     /**
-     * Gets a component from a given entity
+     * The entity's component of type T, or nullptr if it is gone or has no T.
+     *
+     * Not for tags. A tag stores nothing, so there is no data to point at.
      * @tparam T Type of the component to find
      * @param entity Entity that owns said component
      * @return The component itself.
@@ -61,6 +63,9 @@ public:
     template <typename T>
     T* GetComponent(const Entity entity)
     {
+        static_assert(!std::is_empty_v<T>,
+                      "A tag holds no data. Use HasComponent<T>() to test whether an entity has one.");
+
         if (!DoesEntityExist(entity))
         {
             return nullptr;
@@ -72,7 +77,7 @@ public:
     }
 
     /**
-     * Checks whether a certain entity has a certain type of component
+     * Whether the entity has T. Tests the mask, so this works for tags as well as components. 
      * @tparam T Type of component to find
      * @param entity entity to search in
      * @return boolean indicating whether the entity has the component or not
@@ -86,6 +91,36 @@ public:
         }
         const EntitySlot& slot = entitySlots[entity.index];
         return (archetypes[slot.archetype]->Mask() & COMPONENTS::MaskOf<T>()) != 0;
+    }
+
+    /**
+     * Adds a component to an entity, migrating it from its current archetype to its new one
+     * @tparam T Type of the component to add
+     * @param entity Entity to add the component to
+     * @param value Value of the created Component.
+     */
+    template <typename T>
+    void AddComponent(const Entity entity, const T& value = T{})
+    {
+        if (!DoesEntityExist(entity)) return;
+        const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
+        /* Reminder: the OR operator (|) means that we add the bit of the component to the archetype mask */
+        MoveEntity(entity, currentArchetypeMask | COMPONENTS::MaskOf<T>());
+
+        /* A tag has no column, so there is nothing to write */
+        if (T* stored = GetComponent<T>(entity))
+        {
+            *stored = value;
+        }
+    }
+
+    template <typename T>
+    void RemoveComponent(const Entity entity)
+    {
+        if (!DoesEntityExist(entity)) return;
+        const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
+        /* & = And, ~ = Invert. AND operator against the inverse means, remove the 1's from the second max in the first mask */
+        MoveEntity(entity, currentArchetypeMask & ~COMPONENTS::MaskOf<T>());
     }
 
     /**
@@ -116,4 +151,11 @@ private:
      * @return 
      */
     uint16_t ArchetypeIndexFor(ComponentMask mask);
+
+    /**
+     * Moves an entity from their current archetype to the archetype of newMask, carrying all the components they both share
+     * @param entity Entity to be moved
+     * @param newMask Mask of the target archetype.
+     */
+    void MoveEntity(Entity entity, ComponentMask newMask);
 };

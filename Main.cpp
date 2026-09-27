@@ -240,6 +240,37 @@ int main()
 
     Check("a recycled slot rejoins the empty archetype", archetypeOf(w4) == archetypeOf(w1));
     Check("and takes the free row", row_of(w4) == 1);
+    
+    /*
+     * Adding components to an entity, with their archetypes shifting.
+     */
+    std::cout << "\n-- Adding Components --\n";
+    
+    const Entity m1 = stage.CreateEntity();
+    const int emptyArchetype = archetypeOf(m1);
+
+    stage.AddComponent<Position>(m1, {5.0f, 6.0f, 7.0f});
+
+    Check("gaining a component moves the entity", archetypeOf(m1) != emptyArchetype);
+    Check("it lands in row 0 of the new archetype", row_of(m1) == 0);
+    Check("the component reads back", stage.GetComponent<Position>(m1)->x == 5.0f);
+    Check("HasComponent agrees", stage.HasComponent<Position>(m1));
+
+    /* A second move: Position has to survive being carried across. */
+    stage.AddComponent<Velocity>(m1, {1.0f, 0.0f, 0.0f});
+    Check("the older component came along", stage.GetComponent<Position>(m1)->x == 5.0f);
+
+    /* Tags move an entity too, and store nothing. */
+    stage.AddComponent<Dead>(m1);
+    Check("a tag still moves the entity", stage.HasComponent<Dead>(m1));
+    Check("and the data still survived", stage.GetComponent<Position>(m1)->x == 5.0f);
+    Check("We can still read the Dead Tag", stage.HasComponent<Dead>(m1));
+
+    stage.DestroyEntity(m1);
+    const Entity m2 = stage.CreateEntity();
+
+    Check("a recycled slot starts back in the empty archetype", archetypeOf(m2) == emptyArchetype);
+    Check("and has no components", !stage.HasComponent<Position>(m2));
 
 
     try
