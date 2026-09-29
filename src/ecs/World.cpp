@@ -107,6 +107,7 @@ void World::CollectMatching(const ComponentMask all, const ComponentMask none, s
 
 void World::AddComponentById(Entity entity, ComponentId id, const std::byte* value, uint32_t size)
 {
+    assert(id < kMaxComponents);
     if (!DoesEntityExist(entity)) return;
 
     const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
@@ -126,6 +127,7 @@ void World::AddComponentById(Entity entity, ComponentId id, const std::byte* val
 
 void World::RemoveComponentById(Entity entity, ComponentId id)
 {
+    assert(id < kMaxComponents);
     if (!DoesEntityExist(entity)) return;
 
     const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();

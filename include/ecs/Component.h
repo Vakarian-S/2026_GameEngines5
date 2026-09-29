@@ -10,6 +10,9 @@ using ComponentMask = uint64_t;
 /* One bit per component type in a ComponentMask, so this can never exceed the mask's width. */
 constexpr ComponentId kMaxComponents = 64;
 
+/* Id for null component, as 0 can be a real component */
+constexpr ComponentId kNoComponent = 0xFFFFFFFF;
+
 /**
  * Everything an archetype needs to know about a component type without knowing the type.
  * It allocates, indexes and copies using nothing but these three numbers.
