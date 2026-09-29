@@ -1,10 +1,12 @@
-#include <chrono>
 #include <exception>
 #include <iostream>
-#include <thread>
+#include <SDL3/SDL.h>
 
+
+#include "core/Timer.h"
 #include "core/Window.h"
-#include "ecs/World.h"
+#include "core/Scene.h"
+#include "scenes/Scene0.h"
 #include "utils/MemoryMonitor.h"
 
 /*
@@ -37,30 +39,47 @@ int main()
 
     std::cout << "GameEngines5\n";
 
-    /*
-     * What an empty world costs to start: two reserves in the constructor, then the empty
-     * archetype and its entities vector on the first CreateEntity. This is the number the
-     * arena allocator is meant to bring down, so it is worth seeing on every run.
-     */
-    MemoryMonitor::SetLogging(true);
-
-    World world;
-    world.CreateEntity();
-
-    MemoryMonitor::SetLogging(false);
-
     try
     {
         Window window("GameEngines5", 1280, 720);
+        /*
+         * What a scene costs to start: the World's two reserves, the empty archetype on its
+         * first entity, and whatever OnCreate spawns. This is the number the arena allocator
+         * is meant to bring down, so it is worth seeing on every run.
+         */
+        MemoryMonitor::SetLogging(true);
 
-        while (window.PollEvents())
+        Scene0 scene;
+        if (!scene.OnCreate())
         {
-            /*
-             * Nothing is drawn yet, so give the core back rather than spinning on an empty
-             * event queue. The renderer replaces this with the frame it presents.
-             */
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            std::cerr << "Scene0::OnCreate failed" << std::endl;
+            return 1;
         }
+
+        MemoryMonitor::SetLogging(false);
+        Timer timer;
+        timer.Start();
+
+        DrawList drawList;
+        SDL_Event event;
+        while (true)
+        {
+            while (window.NextEvent(event))
+            {
+                scene.HandleEvents(event);
+            }
+            if (window.ShouldClose()) break;
+
+            timer.UpdateFrameTicks();
+
+            scene.Update(timer.GetDeltaTime());
+            scene.MakeDrawList(drawList);
+
+            /** Placeholder for Renderer consumption **/
+
+            SDL_Delay(timer.GetSleepTime(60));
+        }
+        scene.OnDestroy();
     }
     catch (const std::exception& error)
     {

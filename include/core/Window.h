@@ -1,8 +1,9 @@
 #pragma once
 
-#include <string>
-
 struct SDL_Window;
+union SDL_Event;
+
+#include <string>
 
 /**
  * A window, and the SDL video subsystem behind it.
@@ -33,14 +34,23 @@ public:
     Window& operator=(Window&&) = delete;
 
     /**
-     * Takes everything waiting in the event queue.
-     * @return false once the user has asked to close the window, true to keep running
-     */
-    bool PollEvents() noexcept;
+    * Takes the next event waiting in the queue.
+    *
+    * Close requests are noticed on the way past, so a caller that ignores every event still
+    * ends up with ShouldClose answering true.
+    *
+    * @param out filled with the event when one was waiting
+    * @return false once the queue is empty for this frame
+    */
+    bool NextEvent(SDL_Event& out) noexcept;
+
+    /** @return true once the user has asked to close the window */
+    bool ShouldClose() const noexcept { return shouldClose; }
 
     /** @return SDL's handle, which the Vulkan surface will need */
     SDL_Window* Handle() const noexcept { return window; }
 
 private:
     SDL_Window* window = nullptr;
+    bool shouldClose = false;
 };

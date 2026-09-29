@@ -39,10 +39,10 @@ public:
      * @return milliseconds to sleep, or zero when the frame already ran long
      */
     unsigned int GetSleepTime(const unsigned int fps_) const;
-    
+
     /**
-    * Milliseconds since SDL started.
-    * @return the current tick count
+    * Seconds elapsed at the last reading. Constant for the whole frame.
+    * @return seconds since Start
     */
     float GetCurrentTicks() const;
 

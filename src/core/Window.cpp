@@ -36,25 +36,17 @@ Window::~Window()
     SDL_Quit();
 }
 
-bool Window::PollEvents() noexcept
+bool Window::NextEvent(SDL_Event& out) noexcept
 {
-    SDL_Event event;
-    while (SDL_PollEvent(&event))
-    {
-        /*
-         * QUIT arrives when the last window closes. CLOSE_REQUESTED arrives first, per window.
-         * Both are handled, so this still ends when there is more than one window later.
-         */
-        if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
-        {
-            return false;
-        }
+    if (!SDL_PollEvent(&out)) return false;
 
-        if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)
-        {
-            return false;
-        }
-    }
+    /*
+     * QUIT arrives when the last window closes. CLOSE_REQUESTED arrives first, per window.
+     * Both are recorded, so this still ends when there is more than one window later.
+     */
+    if (out.type == SDL_EVENT_QUIT || out.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) shouldClose = true;
+
+    if (out.type == SDL_EVENT_KEY_DOWN && out.key.key == SDLK_ESCAPE) shouldClose = true;
 
     return true;
 }
