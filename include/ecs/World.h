@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <memory>
 #include <vector>
+#include <cstddef>
 
 #include "Archetype.h"
 #include "Component.h"
@@ -102,28 +103,22 @@ public:
     template <typename T>
     void AddComponent(const Entity entity, const T& value = T{})
     {
-        if (!DoesEntityExist(entity)) return;
-        const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
-        /* Reminder: the OR operator (|) means that we add the bit of the component to the archetype mask */
-        MoveEntity(entity, currentArchetypeMask | COMPONENTS::MaskOf<T>());
-
-        /* A tag has no column. if constexpr stops GetComponent<T> existing at all for one. */
-        if constexpr (!std::is_empty_v<T>)
+        /* A tag has no column, so there are no bytes to hand over. */
+        if constexpr (std::is_empty_v<T>)
         {
-            if (T* stored = GetComponent<T>(entity))
-            {
-                *stored = value;
-            }
+            AddComponentById(entity, COMPONENTS::IdOf<T>(), nullptr, 0);
+        }
+        else
+        {
+            AddComponentById(entity, COMPONENTS::IdOf<T>(),
+                             reinterpret_cast<const std::byte*>(&value), sizeof(T));
         }
     }
 
     template <typename T>
     void RemoveComponent(const Entity entity)
     {
-        if (!DoesEntityExist(entity)) return;
-        const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
-        /* & = And, ~ = Invert. AND operator against the inverse means, remove the 1's from the second max in the first mask */
-        MoveEntity(entity, currentArchetypeMask & ~COMPONENTS::MaskOf<T>());
+        RemoveComponentById(entity, COMPONENTS::IdOf<T>());
     }
 
     /**
@@ -147,6 +142,23 @@ public:
 
     /** Fills out with every archetype that has all of `all` and none of `none`. */
     void CollectMatching(ComponentMask all, ComponentMask none, std::vector<Archetype*>& out);
+
+    /**
+     * Adds a component named by its runtime id, copying size bytes into the new column.
+     * For playback and tooling, where no type is available. A tag passes nullptr and 0.
+     * @param entity Entity to add the component to
+     * @param id Id of the component type
+     * @param value Bytes to copy from, or nullptr
+     * @param size Bytes to copy, which must match the registered size
+     */
+    void AddComponentById(Entity entity, ComponentId id, const std::byte* value, uint32_t size);
+
+    /**
+    * Removes a component named by its runtime id.
+    * @param entity Entity to remove the component from
+    * @param id Id of the component type
+    */
+    void RemoveComponentById(Entity entity, ComponentId id);
 
 private:
     /** One record per index ever handed out. The index into this vector is the entity's index. */

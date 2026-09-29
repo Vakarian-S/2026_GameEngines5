@@ -1,5 +1,7 @@
 ﻿#include "ecs/World.h"
 
+#include <cstring>
+
 
 World::World()
 {
@@ -101,6 +103,33 @@ void World::CollectMatching(const ComponentMask all, const ComponentMask none, s
         }
         out.push_back(archetype.get());
     }
+}
+
+void World::AddComponentById(Entity entity, ComponentId id, const std::byte* value, uint32_t size)
+{
+    if (!DoesEntityExist(entity)) return;
+
+    const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
+    MoveEntity(entity, currentArchetypeMask | (ComponentMask{1} << id));
+
+    if (value == nullptr || size == 0) return;
+
+    assert(size == COMPONENTS::InfoOf(id).size);
+
+    /* MoveEntity changed the slot, so read it again rather than reusing what was read above. */
+    const EntitySlot& slot = entitySlots[entity.index];
+    if (std::byte* stored = archetypes[slot.archetype]->ElementAt(id, slot.row))
+    {
+        std::memcpy(stored, value, size);
+    }
+}
+
+void World::RemoveComponentById(Entity entity, ComponentId id)
+{
+    if (!DoesEntityExist(entity)) return;
+
+    const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
+    MoveEntity(entity, currentArchetypeMask & ~(ComponentMask{1} << id));
 }
 
 uint16_t World::ArchetypeIndexFor(ComponentMask mask)

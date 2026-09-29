@@ -335,6 +335,42 @@ int main()
     }
 
     Check("the loop reaches both live entities", total == 4.0f);
+    
+    std::cout << "\n-- component logic by Id --\n";
+    
+    /* The by-id path, which is the door command buffer playback will come through. */
+    World idWorld;
+    const Entity byId = idWorld.CreateEntity();
+
+    const Position placed{7.0f, 8.0f, 9.0f};
+    idWorld.AddComponentById(byId, COMPONENTS::IdOf<Position>(),
+                             reinterpret_cast<const std::byte*>(&placed), sizeof(Position));
+
+    Check("AddComponentById gives the entity the component", idWorld.HasComponent<Position>(byId));
+    Check("AddComponentById copies the value", idWorld.GetComponent<Position>(byId)->y == 8.0f);
+
+    const Position overwritten{1.0f, 2.0f, 3.0f};
+    idWorld.AddComponentById(byId, COMPONENTS::IdOf<Position>(),
+                             reinterpret_cast<const std::byte*>(&overwritten), sizeof(Position));
+
+    Check("adding a component twice overwrites the value", idWorld.GetComponent<Position>(byId)->x == 1.0f);
+
+    idWorld.AddComponentById(byId, COMPONENTS::IdOf<Dead>(), nullptr, 0);
+    Check("a tag goes in by id with no bytes", idWorld.HasComponent<Dead>(byId));
+
+    idWorld.RemoveComponentById(byId, COMPONENTS::IdOf<Position>());
+    Check("RemoveComponentById takes the component away", !idWorld.HasComponent<Position>(byId));
+    Check("removing by id leaves the other components alone", idWorld.HasComponent<Dead>(byId));
+
+    idWorld.RemoveComponentById(byId, COMPONENTS::IdOf<Velocity>());
+    Check("removing a component the entity does not have is a no-op",
+          idWorld.DoesEntityExist(byId) && idWorld.HasComponent<Dead>(byId));
+
+    const Entity staleById{byId.index, byId.version + 1};
+    idWorld.AddComponentById(staleById, COMPONENTS::IdOf<Position>(),
+                             reinterpret_cast<const std::byte*>(&placed), sizeof(Position));
+
+    Check("a stale handle is ignored by id too", !idWorld.HasComponent<Position>(byId));
 
     try
     {
