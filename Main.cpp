@@ -530,8 +530,8 @@ int main()
 
     Check("an add and a remove in one buffer both land",
           addWorld.HasComponent<Velocity>(mixedB) && !addWorld.HasComponent<Dead>(mixedB));
-    
-        std::cout << "\n-- command buffer, the hazard --\n";
+
+    std::cout << "\n-- command buffer, the hazard --\n";
 
     World frameWorld;
     const Entity zeroFirst = frameWorld.CreateEntity();
@@ -594,6 +594,163 @@ int main()
     Check("the untagged entities survived two frames",
           frameWorld.DoesEntityExist(healthy) && frameWorld.DoesEntityExist(wounded));
     Check("the buffer is empty after the second playback", frame.Count() == 0);
+
+    std::cout << "\n-- command buffer, create --\n";
+
+    World createWorld;
+    CommandBuffer spawns;
+
+    const Entity firstPlaceholder = spawns.CreateEntity();
+    const Entity secondPlaceholder = spawns.CreateEntity();
+
+    Check("a placeholder carries the placeholder bit",
+          (firstPlaceholder.index & kPlaceholderBit) != 0);
+    Check("placeholders are numbered from zero",
+          (firstPlaceholder.index & ~kPlaceholderBit) == 0 &&
+          (secondPlaceholder.index & ~kPlaceholderBit) == 1);
+    Check("a placeholder does not exist in the world",
+          !createWorld.DoesEntityExist(firstPlaceholder));
+    Check("a placeholder has no components",
+          createWorld.GetComponent<Position>(firstPlaceholder) == nullptr);
+    Check("two creates queue as two commands", spawns.Count() == 2);
+
+    spawns.Playback(createWorld);
+
+    std::vector<Archetype*> spawnedArchetypes;
+    createWorld.CollectMatching(0, 0, spawnedArchetypes);
+
+    uint32_t spawnedRows = 0;
+    for (const Archetype* a : spawnedArchetypes) spawnedRows += a->Count();
+
+    Check("playback creates one entity per create command", spawnedRows == 2);
+    Check("playback empties the buffer", spawns.Count() == 0);
+
+    const Entity afterPlayback = spawns.CreateEntity();
+
+    Check("the next round starts placeholders back at zero",
+          (afterPlayback.index & ~kPlaceholderBit) == 0);
+
+    spawns.Clear();
+
+    std::cout << "\n-- command buffer, placeholders resolve --\n";
+
+    World resolveWorld;
+    CommandBuffer building;
+
+    const Entity built = building.CreateEntity();
+    building.AddComponent<Position>(built, {11.0f, 12.0f, 13.0f});
+    building.AddComponent<Health>(built, {75.0f, 100.0f});
+    building.AddComponent<Dead>(built);
+
+    Check("create and three adds queue as four commands", building.Count() == 4);
+
+    building.Playback(resolveWorld);
+
+    std::vector<Archetype*> builtArchetypes;
+    resolveWorld.CollectMatching(COMPONENTS::MaskOf<Position, Health, Dead>(), 0, builtArchetypes);
+
+    Check("every queued component landed on one entity",
+          builtArchetypes.size() == 1 && builtArchetypes[0]->Count() == 1);
+
+    const Entity realBuilt = builtArchetypes[0]->EntityColumn()[0];
+
+    Check("the created entity is live", resolveWorld.DoesEntityExist(realBuilt));
+    Check("its first value survived", resolveWorld.GetComponent<Position>(realBuilt)->y == 12.0f);
+    Check("its second value survived", resolveWorld.GetComponent<Health>(realBuilt)->current == 75.0f);
+
+    /* Two placeholders in one buffer, to prove one ordinal cannot bleed into the other. */
+    const Entity twinA = building.CreateEntity();
+    const Entity twinB = building.CreateEntity();
+    building.AddComponent<Position>(twinA, {1.0f, 0.0f, 0.0f});
+    building.AddComponent<Position>(twinB, {2.0f, 0.0f, 0.0f});
+    building.AddComponent<Velocity>(twinB, {9.0f, 0.0f, 0.0f});
+    building.Playback(resolveWorld);
+
+    std::vector<Archetype*> plainPosition;
+    resolveWorld.CollectMatching(COMPONENTS::MaskOf<Position>(),
+                                 COMPONENTS::MaskOf<Velocity, Health, Dead>(), plainPosition);
+
+    Check("the first placeholder got only its own component",
+          plainPosition.size() == 1 && plainPosition[0]->Count() == 1 &&
+          plainPosition[0]->Column<Position>()[0].x == 1.0f);
+
+    std::vector<Archetype*> movingPosition;
+    resolveWorld.CollectMatching(COMPONENTS::MaskOf<Position, Velocity>(), 0, movingPosition);
+
+    Check("the second placeholder got its own two",
+          movingPosition.size() == 1 && movingPosition[0]->Count() == 1 &&
+          movingPosition[0]->Column<Position>()[0].x == 2.0f &&
+          movingPosition[0]->Column<Velocity>()[0].x == 9.0f);
+
+    const Entity shortLived = building.CreateEntity();
+    building.AddComponent<Health>(shortLived, {5.0f, 5.0f});
+    building.DestroyEntity(shortLived);
+    building.Playback(resolveWorld);
+
+    std::vector<Archetype*> healthOnly;
+    resolveWorld.CollectMatching(COMPONENTS::MaskOf<Health>(), COMPONENTS::MaskOf<Position>(), healthOnly);
+
+    uint32_t healthOnlyRows = 0;
+    for (const Archetype* a : healthOnly) healthOnlyRows += a->Count();
+
+    Check("an entity created and destroyed in one buffer does not survive", healthOnlyRows == 0);
+
+    const Entity alreadyReal = resolveWorld.CreateEntity();
+    building.AddComponent<Velocity>(alreadyReal, {3.0f, 3.0f, 3.0f});
+    building.Playback(resolveWorld);
+
+    Check("a real handle still goes through untouched",
+          resolveWorld.GetComponent<Velocity>(alreadyReal)->x == 3.0f);
+
+    std::cout << "\n-- command buffer, spawning mid-loop --\n";
+
+    World spawnWorld;
+    CommandBuffer spawnFrame;
+
+    for (uint32_t i = 0; i < 4; ++i)
+    {
+        const Entity mover = spawnWorld.CreateEntity();
+        spawnWorld.AddComponent<Position>(mover, {static_cast<float>(i), 0.0f, 0.0f});
+        spawnWorld.AddComponent<Velocity>(mover, {1.0f, 0.0f, 0.0f});
+    }
+
+    Query movers(spawnWorld, COMPONENTS::MaskOf<Position, Velocity>(), 0);
+
+    uint32_t moverRowsVisited = 0;
+
+    for (Archetype* a : movers.Matches())
+    {
+        const Position* positions = a->Column<Position>();
+
+        for (uint32_t i = 0; i < a->Count(); ++i)
+        {
+            ++moverRowsVisited;
+
+            /* Each spawn ends up in the very archetype this loop is walking. */
+            const Entity trail = spawnFrame.CreateEntity();
+            spawnFrame.AddComponent<Position>(trail, positions[i]);
+            spawnFrame.AddComponent<Velocity>(trail, {0.0f, 0.0f, 0.0f});
+        }
+    }
+
+    Check("the spawning loop visits only the rows it started with", moverRowsVisited == 4);
+    Check("nothing was spawned while the loop ran", movers.Matches()[0]->Count() == 4);
+
+    spawnFrame.Playback(spawnWorld);
+
+    Check("every spawn landed at playback", movers.Matches()[0]->Count() == 8);
+
+    /* A second round on the same buffer, where ordinals must start over. */
+    const Entity secondRound = spawnFrame.CreateEntity();
+    spawnFrame.AddComponent<Health>(secondRound, {42.0f, 42.0f});
+    spawnFrame.Playback(spawnWorld);
+
+    std::vector<Archetype*> healthHolders;
+    spawnWorld.CollectMatching(COMPONENTS::MaskOf<Health>(), 0, healthHolders);
+
+    Check("the second round resolves to its own entity",
+          healthHolders.size() == 1 && healthHolders[0]->Count() == 1 &&
+          healthHolders[0]->Column<Health>()[0].current == 42.0f);
 
     try
     {

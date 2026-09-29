@@ -36,6 +36,15 @@ struct Command
 class CommandBuffer
 {
 public:
+    /**
+    * Queues the creation of an entity and returns a placeholder naming it.
+    *
+    * The placeholder is only meaningful to later calls on this buffer, and only until the
+    * next playback. It does not exist in any world.
+    * @return A handle to pass to this buffer's other calls in the same pass
+    */
+    Entity CreateEntity();
+
     /** Queues the destruction of an entity. A handle that is already gone is ignored at playback. */
     void DestroyEntity(Entity entity);
 
@@ -59,7 +68,7 @@ public:
      * @param value Value the component will hold
      */
     template <typename T>
-void AddComponent(const Entity entity, const T& value = T{})
+    void AddComponent(const Entity entity, const T& value = T{})
     {
         if constexpr (std::is_empty_v<T>)
         {
@@ -85,6 +94,11 @@ void AddComponent(const Entity entity, const T& value = T{})
 private:
     std::vector<Command> commands;
     std::vector<std::byte> payload;
+    uint32_t placeholderCount = 0;
+    std::vector<Entity> created;
+
+    /** The world this buffer has been played into, or nullptr before the first playback. */
+    const World* playedInto = nullptr;
 
     /** Copies size bytes onto the end of the payload and returns where they landed. */
     uint32_t AppendPayload(const std::byte* value, uint32_t size);
@@ -99,4 +113,11 @@ private:
      */
     void Record(CommandKind kind, Entity target, ComponentId type = kNoComponent,
                 uint32_t payloadOffset = 0, uint32_t payloadSize = 0);
+
+    /**
+    * Turns a placeholder into the entity it became. A real handle passes through unchanged.
+    * @param target Handle recorded on a command
+    * @return The real entity, or a default handle when the placeholder names nothing
+    */
+    Entity Resolve(Entity target) const;
 };
