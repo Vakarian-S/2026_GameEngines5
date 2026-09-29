@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include <vector>
-#include <glm/fwd.hpp>
 
 #include "Component.h"
 #include "Entity.h"

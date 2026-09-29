@@ -263,10 +263,32 @@ add_executable(MemoryMonitorTests
 target_include_directories(MemoryMonitorTests PRIVATE include)
 ge5_apply_common_settings(MemoryMonitorTests SDL_CHECK OFF)
 
-# One program, one test. It counts its own checks and returns non zero if any of them fail.
+
+# ============================== EcsTests ==============================
+#
+# The ECS checks, which used to live in Main.cpp and moved out once Main had to become a real
+# program rather than a test runner.
+#
+# Built for both platforms, unlike the engine. Everything under src/ecs is standard C++ with no
+# SDL, no Vulkan and no math library, so there is nothing here that Win32 cannot compile.
+
+file(GLOB_RECURSE ECS_SOURCES CONFIGURE_DEPENDS "src/ecs/*.cpp")
+file(GLOB_RECURSE ECS_HEADERS CONFIGURE_DEPENDS "include/ecs/*.h")
+
+add_executable(EcsTests
+    tests/EcsTests.cpp
+    ${ECS_SOURCES}
+    ${ECS_HEADERS}
+)
+target_include_directories(EcsTests PRIVATE include)
+ge5_apply_common_settings(EcsTests)
+
+
+# One program per test. Each counts its own checks and returns non zero if any of them fail.
 # A crash comes back as a large negative number, and CTest calls that a failure too, which
 # is the trap scripts/run-tests.bat used to have to sidestep by hand.
 #
 #   ctest --test-dir build/cmake-x64 -C Debug -V
 enable_testing()
 add_test(NAME MemoryMonitorTests COMMAND MemoryMonitorTests)
+add_test(NAME EcsTests COMMAND EcsTests)

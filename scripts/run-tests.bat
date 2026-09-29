@@ -1,9 +1,10 @@
 @echo off
 setlocal
-REM Builds and runs MemoryMonitorTests in every configuration.
+REM Builds and runs MemoryMonitorTests and EcsTests in every configuration.
 REM
-REM The tests are their own program on purpose: they make deliberate mistakes (double free,
-REM writing before an allocation) and that output does not belong in the demo.
+REM Each suite is its own program. The monitor's tests make deliberate mistakes (double free,
+REM writing before an allocation) and that output does not belong in the demo. The ECS tests
+REM moved out of Main.cpp once Main had to become a real program rather than a test runner.
 REM
 REM   scripts\run-tests.bat            all four configurations
 REM   scripts\run-tests.bat x64 Debug  just one
@@ -59,7 +60,7 @@ if not "%RC%"=="0" (
 
 :configured
 
-cmake --build --preset %PLAT%-%CFG% --target MemoryMonitorTests
+cmake --build --preset %PLAT%-%CFG% --target MemoryMonitorTests EcsTests
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo   BUILD FAILED
