@@ -8,6 +8,7 @@
 #include "core/Scene.h"
 #include "scenes/Scene0.h"
 #include "utils/MemoryMonitor.h"
+#include "utils/Profiler.h"
 
 /*
  * Where the engine starts.
@@ -64,20 +65,36 @@ int main()
         SDL_Event event;
         while (true)
         {
-            while (window.NextEvent(event))
+            Profiler::BeginFrame();
             {
-                scene.HandleEvents(event);
+                PROFILE_SCOPE("Events");
+                while (window.NextEvent(event))
+                {
+                    scene.HandleEvents(event);
+                }
             }
+
             if (window.ShouldClose()) break;
 
             timer.UpdateFrameTicks();
 
-            scene.Update(timer.GetDeltaTime());
-            scene.MakeDrawList(drawList);
+            {
+                PROFILE_SCOPE("Scene0::Update");
+                scene.Update(timer.GetDeltaTime());
+            }
+
+            {
+                PROFILE_SCOPE("MakeDrawList");
+                scene.MakeDrawList(drawList);
+            }
 
             /** Placeholder for Renderer consumption **/
 
-            SDL_Delay(timer.GetSleepTime(60));
+            {
+                PROFILE_SCOPE("Wait");
+                SDL_Delay(timer.GetSleepTime(60));
+            }
+            Profiler::EndFrame();
         }
         scene.OnDestroy();
     }
@@ -87,6 +104,7 @@ int main()
         return 1;
     }
 
+    Profiler::Report();
     MemoryMonitor::Report(baseline);
     MemoryMonitor::ReportLeaks(baseline);
 
