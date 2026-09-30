@@ -739,8 +739,65 @@ int main()
           healthHolders.size() == 1 && healthHolders[0]->Count() == 1 &&
           healthHolders[0]->Column<Health>()[0].current == 42.0f);
 
+    /* ===== Counters ===== */
+
+    World statsWorld;
+    statsWorld.ResetFrameStats();
+
+    const Entity counted = statsWorld.CreateEntity();
+    Check("creating an entity counts one", statsWorld.Stats().entitiesCreated == 1);
+    Check("the empty archetype counts as created", statsWorld.Stats().archetypesCreated == 1);
+
+    statsWorld.AddComponent<Position>(counted, {1.0f, 2.0f, 3.0f});
+    Check("adding a component counts one add", statsWorld.Stats().componentsAdded == 1);
+    Check("adding a component moves the entity once", statsWorld.Stats().migrations == 1);
+    Check("the archetype the entity moved into counts as created", statsWorld.Stats().archetypesCreated == 2);
+    Check("moving out of the empty archetype copies nothing", statsWorld.Stats().bytesCopied == 0);
+
+    statsWorld.AddComponent<Velocity>(counted, {0.0f, 0.0f, 0.0f});
+    Check("the second add carries the first component across",
+          statsWorld.Stats().bytesCopied == sizeof(Position));
+
+    statsWorld.AddComponent<Position>(counted, {9.0f, 9.0f, 9.0f});
+    Check("adding a component twice still counts the call", statsWorld.Stats().componentsAdded == 3);
+    Check("adding a component twice moves nothing", statsWorld.Stats().migrations == 2);
+
+    statsWorld.RemoveComponent<Velocity>(counted);
+    Check("removing a component counts one remove", statsWorld.Stats().componentsRemoved == 1);
+
+    const WorldStats before = statsWorld.Snapshot();
+    Check("the snapshot sees the live entity", before.liveEntities == 1);
+    Check("the snapshot counts every archetype", before.archetypeCount == 3);
+
+    statsWorld.ResetFrameStats();
+    Check("the reset clears the counters",
+          statsWorld.Stats().entitiesCreated == 0 && statsWorld.Stats().migrations == 0);
+    Check("the reset leaves the snapshot alone", statsWorld.Snapshot().archetypeCount == 3);
+
+    statsWorld.DestroyEntity(counted);
+    const WorldStats after = statsWorld.Snapshot();
+
+    Check("destroying an entity counts one", statsWorld.Stats().entitiesDestroyed == 1);
+    Check("the snapshot loses the live entity", after.liveEntities == 0);
+    Check("every archetype is empty once the entity is gone", after.emptyArchetypes == 3);
+    Check("the slot table keeps the dead slot", after.slotTableSize == 1);
+
+    World bufferWorld;
+    CommandBuffer statsBuffer;
+
+    const Entity placeholder = statsBuffer.CreateEntity();
+    statsBuffer.AddComponent<Position>(placeholder, {1.0f, 1.0f, 1.0f});
+    statsBuffer.Playback(bufferWorld);
+
+    Check("the buffer reports the commands it played", statsBuffer.Stats().commandsPlayed == 2);
+    Check("the buffer reports the placeholder it made", statsBuffer.Stats().placeholdersCreated == 1);
+    Check("the buffer reports the payload it carried",
+          statsBuffer.Stats().payloadBytes == sizeof(Position));
+    Check("playback counts through the world it played into",
+          bufferWorld.Stats().entitiesCreated == 1 && bufferWorld.Stats().componentsAdded == 1);
+
     std::cout << "\n" << (failures ? Fail : Pass)
-              << checks - failures << " of " << checks << " checks passed" << Reset << "\n";
+        << checks - failures << " of " << checks << " checks passed" << Reset << "\n";
 
     return failures == 0 ? 0 : 1;
 }

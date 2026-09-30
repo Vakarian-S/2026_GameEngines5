@@ -31,7 +31,7 @@ namespace PROF_COLOR
 /** One named span. Every number is nanoseconds, milliseconds appear only when printing. */
 struct ProfileSpan
 {
-    /** Compared by pointer, so use a string literal or __FUNCTION__. */
+    /** The span's name. Compared by pointer, so use a string literal or __FUNCTION__. */
     const char* name = nullptr;
 
     /* This frame. BeginFrame clears these. */
@@ -48,9 +48,9 @@ struct ProfileSpan
     std::uint64_t framesSeen = 0;
     /** Nanoseconds across every frame */
     std::uint64_t totalNanoseconds = 0;
-    /** The fastest frame */
+    /** This span's nanoseconds in its fastest frame */
     std::uint64_t minNanoseconds = 0;
-    /** The slowest frame */
+    /** This span's nanoseconds in its slowest frame */
     std::uint64_t maxNanoseconds = 0;
     /** Times the span was entered, all frames */
     std::uint64_t totalCalls = 0;

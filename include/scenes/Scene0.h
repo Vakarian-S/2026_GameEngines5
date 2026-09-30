@@ -16,9 +16,30 @@ public:
     void OnDestroy() override;
     void Update(float deltaTime) override;
 
+    /** @return this scene's world, so Main can read its counters */
+    const World& GetWorld() const { return world; }
+
+    /** @return what the last playback cost in structural changes */
+    const FrameStats& LastPlaybackCost() const { return lastPlaybackCost; }
+
 private:
     World world;
     CommandBuffer commandBuffer;
+    Query movers;
 
-    Query testQuery;
+    /** Every entity this scene spawned, in spawn order */
+    std::vector<Entity> entities;
+    /** Frames this scene has updated */
+    uint64_t frameNumber = 0;
+    /** True while the first entities carry the Hit tag */
+    bool hitOn = false;
+    /** Counters from the last playback that had work to apply */
+    FrameStats lastPlaybackCost;
+
+    /** Entities OnCreate spawns */
+    static constexpr int kEntityCount = 1000;
+    /** Entities each damage frame tags or untags */
+    static constexpr int kDamageCount = 100;
+    /** Frames between one damage frame and the next */
+    static constexpr uint64_t kDamageEvery = 60;
 };

@@ -35,6 +35,7 @@ Entity World::CreateEntity()
     entitySlots[index].archetype = archetypeIndex;
     entitySlots[index].row = row;
 
+    GE5_ECS_COUNT(frameStats, entitiesCreated, 1);
     return entity;
 }
 
@@ -60,6 +61,7 @@ void World::DestroyEntity(const Entity entity)
     entitySlots[entity.index].version++;
     entitySlots[entity.index].archetype = kInvalidArchetype;
     freeSlots.push_back(entity.index);
+    GE5_ECS_COUNT(frameStats, entitiesDestroyed, 1);
 }
 
 bool World::DoesEntityExist(const Entity entity) const
@@ -105,10 +107,34 @@ void World::CollectMatching(const ComponentMask all, const ComponentMask none, s
     }
 }
 
+void World::ResetFrameStats()
+{
+    AddStats(runTotals, frameStats);
+    frameStats = FrameStats{};
+}
+
+WorldStats World::Snapshot() const
+{
+    WorldStats stats;
+    stats.archetypeCount = static_cast<uint32_t>(archetypes.size());
+    stats.slotTableSize = static_cast<uint32_t>(entitySlots.size());
+    stats.liveEntities = static_cast<uint32_t>(entitySlots.size() - freeSlots.size());
+
+    for (const std::unique_ptr<Archetype>& archetype : archetypes)
+    {
+        const uint32_t rows = archetype->Count();
+        stats.totalRows += rows;
+        if (rows == 0) stats.emptyArchetypes++;
+    }
+
+    return stats;
+}
+
 void World::AddComponentById(Entity entity, ComponentId id, const std::byte* value, uint32_t size)
 {
     assert(id < kMaxComponents);
     if (!DoesEntityExist(entity)) return;
+    GE5_ECS_COUNT(frameStats, componentsAdded, 1);
 
     const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
     MoveEntity(entity, currentArchetypeMask | (ComponentMask{1} << id));
@@ -129,6 +155,7 @@ void World::RemoveComponentById(Entity entity, ComponentId id)
 {
     assert(id < kMaxComponents);
     if (!DoesEntityExist(entity)) return;
+    GE5_ECS_COUNT(frameStats, componentsRemoved, 1);
 
     const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
     MoveEntity(entity, currentArchetypeMask & ~(ComponentMask{1} << id));
@@ -146,6 +173,7 @@ uint16_t World::ArchetypeIndexFor(ComponentMask mask)
     assert(archetypes.size() < kInvalidArchetype);
     archetypes.push_back(std::make_unique<Archetype>(mask));
     archetypeGeneration++;
+    GE5_ECS_COUNT(frameStats, archetypesCreated, 1);
     return static_cast<uint16_t>(archetypes.size() - 1);
 }
 
@@ -157,6 +185,7 @@ void World::MoveEntity(const Entity entity, const ComponentMask newMask)
     ComponentMask sourceMask = archetypes[sourceIndex]->Mask();
 
     if (sourceMask == newMask) return;
+    GE5_ECS_COUNT(frameStats, migrations, 1);
 
     const uint16_t destinationIndex = ArchetypeIndexFor(newMask);
     const uint32_t destinationRow = archetypes[destinationIndex]->AddRow(entity);
@@ -169,6 +198,7 @@ void World::MoveEntity(const Entity entity, const ComponentMask newMask)
         if (source && destination)
         {
             std::memcpy(destination, source, COMPONENTS::InfoOf(id).size);
+            GE5_ECS_COUNT(frameStats, bytesCopied, COMPONENTS::InfoOf(id).size);
         }
     }
 

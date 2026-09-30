@@ -97,6 +97,23 @@ int main()
             Profiler::EndFrame();
         }
         scene.OnDestroy();
+
+        const FrameStats& totals = scene.GetWorld().Totals();
+        const FrameStats& playbackCost = scene.LastPlaybackCost();
+        const WorldStats snapshot = scene.GetWorld().Snapshot();
+
+        std::cout << "-- ECS Report --\n"
+            << "  entities created    " << totals.entitiesCreated << "\n"
+            << "  components added    " << totals.componentsAdded << "\n"
+            << "  components removed  " << totals.componentsRemoved << "\n"
+            << "  migrations          " << totals.migrations << "\n"
+            << "  bytes copied        " << totals.bytesCopied << "\n"
+            << "  archetypes created  " << totals.archetypesCreated << "\n"
+            << "  last playback cost  " << playbackCost.migrations << " migrations, "
+            << playbackCost.bytesCopied << " bytes\n"
+            << "  live entities       " << snapshot.liveEntities << "\n"
+            << "  archetypes now      " << snapshot.archetypeCount
+            << " (" << snapshot.emptyArchetypes << " empty)\n";
     }
     catch (const std::exception& error)
     {

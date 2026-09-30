@@ -7,6 +7,7 @@
 #include "Component.h"
 #include "ecs/Entity.h"
 #include "ecs/EntitySlot.h"
+#include "FrameStats.h"
 
 class Archetype;
 /**
@@ -143,6 +144,20 @@ public:
     /** Fills out with every archetype that has all of `all` and none of `none`. */
     void CollectMatching(ComponentMask all, ComponentMask none, std::vector<Archetype*>& out);
 
+    /** @return the counters for this frame */
+    const FrameStats& Stats() const { return frameStats; }
+
+    /** @return the counters added up over every frame so far */
+    const FrameStats& Totals() const { return runTotals; }
+
+    /** Adds this frame into the run totals, then clears the frame's counters. */
+    void ResetFrameStats();
+
+    /**
+     * @return what the world holds right now
+     */
+    WorldStats Snapshot() const;
+
     /**
      * Adds a component named by its runtime id, copying size bytes into the new column.
      * For playback and tooling, where no type is available. A tag passes nullptr and 0.
@@ -171,6 +186,12 @@ private:
 
     /** Goes up by one each time a new archetype is created. Nothing else changes it. */
     uint32_t archetypeGeneration = 0;
+
+    /** Structural changes in this frame */
+    FrameStats frameStats;
+    
+    /** Structural changes across every frame so far */
+    FrameStats runTotals;
 
     /**
      * Gets the index for the archetype that matches the given mask, if no archetype is found, it adds it.
