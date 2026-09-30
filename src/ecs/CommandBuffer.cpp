@@ -21,10 +21,6 @@ void CommandBuffer::Playback(World& world)
     assert((playedInto == nullptr || playedInto == &world) &&
         "A command buffer holds handles from one world and cannot be played into another.");
     playedInto = &world;
-    stats = CommandBufferStats{};
-    GE5_ECS_COUNT(stats, commandsPlayed, static_cast<uint32_t>(commands.size()));
-    GE5_ECS_COUNT(stats, placeholdersCreated, placeholderCount);
-    GE5_ECS_COUNT(stats, payloadBytes, static_cast<uint32_t>(payload.size()));
     created.reserve(placeholderCount);
     for (const auto& [kind, componentType, target, payloadOffset, payloadSize] : commands)
     {

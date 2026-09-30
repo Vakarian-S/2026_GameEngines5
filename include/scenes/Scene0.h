@@ -19,9 +19,6 @@ public:
     /** @return this scene's world, so Main can read its counters */
     const World& GetWorld() const { return world; }
 
-    /** @return what the last playback cost in structural changes */
-    const FrameStats& LastPlaybackCost() const { return lastPlaybackCost; }
-
 private:
     World world;
     CommandBuffer commandBuffer;
@@ -33,8 +30,6 @@ private:
     uint64_t frameNumber = 0;
     /** True while the first entities carry the Hit tag */
     bool hitOn = false;
-    /** Counters from the last playback that had work to apply */
-    FrameStats lastPlaybackCost;
 
     /** Entities OnCreate spawns */
     static constexpr int kEntityCount = 1000;

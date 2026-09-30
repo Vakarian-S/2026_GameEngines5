@@ -5,7 +5,6 @@
 
 #include "Component.h"
 #include "Entity.h"
-#include "FrameStats.h"
 
 class World;
 
@@ -92,16 +91,11 @@ public:
     /** How many commands are waiting. */
     uint32_t Count() const;
 
-    /** @return what the last playback did */
-    const CommandBufferStats& Stats() const { return stats; }
-
 private:
     std::vector<Command> commands;
     std::vector<std::byte> payload;
     uint32_t placeholderCount = 0;
     std::vector<Entity> created;
-    /** What the last playback did */
-    CommandBufferStats stats;
 
     /** The world this buffer has been played into, or nullptr before the first playback. */
     const World* playedInto = nullptr;

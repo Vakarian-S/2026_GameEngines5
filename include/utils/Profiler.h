@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
+#include "ecs/FrameStats.h"
+
+class World;
 
 /* ============================== Switch ============================== */
 
@@ -54,6 +57,12 @@ struct ProfileSpan
     std::uint64_t maxNanoseconds = 0;
     /** Times the span was entered, all frames */
     std::uint64_t totalCalls = 0;
+    /** Structural changes this span caused this frame */
+    FrameStats frameStats;
+    /** Structural changes this span caused across every frame */
+    FrameStats totalStats;
+    /** The most migrations this span caused in any one frame */
+    std::uint64_t maxFrameMigrations = 0;
 };
 
 
@@ -78,16 +87,21 @@ public:
     static void Record(const char* name, std::uint64_t nanoseconds);
 
     /**
-     * Turns the per frame log line on or off. Recording never stops, only the printing.
-     * @param enabled
-     */
-    static void SetLogging(bool enabled);
-
-    /** @return true if the per frame log line is on */
-    static bool IsLogging();
+    * Adds time and structural changes to a span.
+    * @param name a string literal or __FUNCTION__, kept by pointer
+    * @param nanoseconds time to add
+    * @param gained structural changes the block caused, from StatsSince
+    */
+    static void Record(const char* name, std::uint64_t nanoseconds, const FrameStats& gained);
 
     /** Prints the frame summary and the span table, biggest total first. */
     static void Report();
+
+    /** Prints what every span did in the frame that just closed, and nothing else. */
+    static void ReportFrame();
+
+    /** @return how long the frame that just closed took, in milliseconds */
+    static double LastFrameMilliseconds();
 
     /** Forgets every span and every frame. */
     static void Reset();
@@ -130,6 +144,35 @@ private:
     std::chrono::steady_clock::time_point start;
 };
 
+/**
+ * Times the block it sits in and counts the structural changes it caused in one world.
+ *
+ * Reads the world's counters twice, so it costs a little more than ScopedTimer. Use it on a
+ * block that changes structure, not on one that only reads.
+ */
+class ScopedEcsTimer
+{
+public:
+    /**
+     * @param world_ the world whose counters to read
+     * @param name_ a string literal or __FUNCTION__, kept by pointer
+     */
+    ScopedEcsTimer(const World& world_, const char* name_);
+    ~ScopedEcsTimer();
+
+    /* One scope, one timer. A copy would record the same scope twice. */
+    ScopedEcsTimer(const ScopedEcsTimer&) = delete;
+    ScopedEcsTimer(ScopedEcsTimer&&) = delete;
+    ScopedEcsTimer& operator=(const ScopedEcsTimer&) = delete;
+    ScopedEcsTimer& operator=(ScopedEcsTimer&&) = delete;
+
+private:
+    const World* world;
+    const char* name;
+    FrameStats before;
+    std::chrono::steady_clock::time_point start;
+};
+
 
 /* ============================== Macros ============================== */
 
@@ -145,11 +188,17 @@ private:
 /** Times the enclosing function, named after it */
 #define PROFILE_FUNCTION() PROFILE_SCOPE(__FUNCTION__)
 
+/** Times the enclosing block and counts the structural changes it caused in one world */
+#define PROFILE_SCOPE_ECS(world, name) const ScopedEcsTimer GE5_PROFILE_JOIN(profileScope, __LINE__)(world, name)
+
 #else
 
 /** Profiling off - does nothing */
 #define PROFILE_SCOPE(name) ((void)0)
 /** Profiling off - does nothing */
 #define PROFILE_FUNCTION() ((void)0)
+
+/** Profiling off - does nothing */
+#define PROFILE_SCOPE_ECS(world, name) ((void)0)
 
 #endif

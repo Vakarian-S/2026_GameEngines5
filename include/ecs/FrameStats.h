@@ -91,27 +91,6 @@ inline void AddStats(FrameStats& totals, const FrameStats& frame)
 }
 
 /**
- * What command buffer's last playback did. Playback fills this in
- */
-struct CommandBufferStats
-{
-    /**
-     * Commands the last playback applied
-     */
-    uint32_t commandsPlayed = 0;
-
-    /**
-     * Placeholder Entities the last playback created
-     */
-    uint32_t placeholdersCreated = 0;
-
-    /**
-     * Bytes of component values the last playback carried
-     */
-    uint32_t payloadBytes = 0;
-};
-
-/**
  * Stats for the current World, Built by World:Snapshot
  */
 struct WorldStats

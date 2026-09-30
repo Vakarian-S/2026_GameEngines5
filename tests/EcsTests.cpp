@@ -788,11 +788,6 @@ int main()
     const Entity placeholder = statsBuffer.CreateEntity();
     statsBuffer.AddComponent<Position>(placeholder, {1.0f, 1.0f, 1.0f});
     statsBuffer.Playback(bufferWorld);
-
-    Check("the buffer reports the commands it played", statsBuffer.Stats().commandsPlayed == 2);
-    Check("the buffer reports the placeholder it made", statsBuffer.Stats().placeholdersCreated == 1);
-    Check("the buffer reports the payload it carried",
-          statsBuffer.Stats().payloadBytes == sizeof(Position));
     Check("playback counts through the world it played into",
           bufferWorld.Stats().entitiesCreated == 1 && bufferWorld.Stats().componentsAdded == 1);
 

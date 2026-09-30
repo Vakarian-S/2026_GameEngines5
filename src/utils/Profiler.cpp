@@ -1,4 +1,5 @@
 ﻿#include "utils/Profiler.h"
+#include "ecs/World.h"
 
 #include <cstdio>
 #include <format>
@@ -20,8 +21,7 @@ namespace
     std::uint64_t frameTotalNanoseconds = 0;
     std::uint64_t frameMinNanoseconds = 0;
     std::uint64_t frameMaxNanoseconds = 0;
-
-    bool logging = false;
+    std::uint64_t lastFrameNanoseconds = 0;
 
     /**
      * Finds a span by a name pointer or takes the next free slot
@@ -82,6 +82,7 @@ void Profiler::BeginFrame()
     {
         spans[i].frameNanoseconds = 0;
         spans[i].frameCalls = 0;
+        spans[i].frameStats = FrameStats{};
     }
 
     frameStart = std::chrono::steady_clock::now();
@@ -104,21 +105,26 @@ void Profiler::EndFrame()
         /* A span that did not run this frame keeps the numbers it already had */
         if (span.frameCalls == 0) continue;
         AddMeasurement(span, span.frameNanoseconds);
+        AddStats(span.totalStats, span.frameStats);
+        if (span.frameStats.migrations > span.maxFrameMigrations)
+        {
+            span.maxFrameMigrations = span.frameStats.migrations;
+        }
     }
 
     if (frameCount == 0 || elapsed < frameMinNanoseconds) frameMinNanoseconds = elapsed;
     if (elapsed > frameMaxNanoseconds) frameMaxNanoseconds = elapsed;
     frameTotalNanoseconds += elapsed;
+    lastFrameNanoseconds = elapsed;
     ++frameCount;
-
-    if (logging)
-    {
-        Print("{}frame{} {:>7}  {:>9.3f} ms\n",
-              PROF_COLOR::kSection, PROF_COLOR::kReset, frameCount, ToMilliseconds(elapsed));
-    }
 }
 
 void Profiler::Record(const char* name, const std::uint64_t nanoseconds)
+{
+    Record(name, nanoseconds, FrameStats{});
+}
+
+void Profiler::Record(const char* name, const std::uint64_t nanoseconds, const FrameStats& gained)
 {
     ProfileSpan* span = FindOrAdd(name);
     if (span == nullptr)
@@ -132,21 +138,31 @@ void Profiler::Record(const char* name, const std::uint64_t nanoseconds)
     if (!frameOpen)
     {
         AddMeasurement(*span, nanoseconds);
+        AddStats(span->totalStats, gained);
+        if (gained.migrations > span->maxFrameMigrations)
+        {
+            span->maxFrameMigrations = gained.migrations;
+        }
         return;
     }
 
     span->frameNanoseconds += nanoseconds;
     ++span->frameCalls;
+    AddStats(span->frameStats, gained);
 }
 
-void Profiler::SetLogging(bool enabled)
+ScopedEcsTimer::ScopedEcsTimer(const World& world_, const char* name_)
+    : world(&world_), name(name_), before(world_.Stats()), start(std::chrono::steady_clock::now())
 {
-    logging = enabled;
 }
 
-bool Profiler::IsLogging()
+ScopedEcsTimer::~ScopedEcsTimer()
 {
-    return logging;
+    const std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    Profiler::Record(
+        name,
+        static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()),
+        StatsSince(before, world->Stats()));
 }
 
 void Profiler::Report()
@@ -187,22 +203,25 @@ void Profiler::Report()
         order[position] = current;
     }
 
-    Print("{}  {:<28}{:>8}{:>8}{:>11}{:>11}{:>11}{}\n",
+    Print("{}  {:<24}{:>6}{:>6}{:>9}{:>9}{:>9}{:>8}{:>8}{:>10}{}\n",
           PROF_COLOR::kSection, "span", "frames", "calls", "min ms", "avg ms", "max ms",
-          PROF_COLOR::kReset);
+          "mig/f", "mig max", "bytes/f", PROF_COLOR::kReset);
 
     for (std::size_t i = 0; i < spanCount; ++i)
     {
         const ProfileSpan& span = spans[order[i]];
         const double average = ToMilliseconds(span.totalNanoseconds / span.framesSeen);
 
-        Print("  {}{:<28}{}{:>8}{:>8}{:>11.3f}{:>11.3f}{:>11.3f}\n",
+        Print("  {}{:<24}{}{:>6}{:>6}{:>9.3f}{:>9.3f}{:>9.3f}{:>8.1f}{:>8}{:>10}\n",
               PROF_COLOR::kName, span.name, PROF_COLOR::kReset,
               span.framesSeen,
               span.totalCalls,
               ToMilliseconds(span.minNanoseconds),
               average,
-              ToMilliseconds(span.maxNanoseconds));
+              ToMilliseconds(span.maxNanoseconds),
+              static_cast<double>(span.totalStats.migrations) / static_cast<double>(span.framesSeen),
+              span.maxFrameMigrations,
+              span.totalStats.bytesCopied / span.framesSeen);
     }
 
     /* When a table runs out of size, print the dropped fields info. */
@@ -211,6 +230,35 @@ void Profiler::Report()
         Print("  {}dropped {} records, the table holds {} spans{}\n",
               PROF_COLOR::kSection, droppedSpans, Profiler::kMaxSpans, PROF_COLOR::kReset);
     }
+}
+
+void Profiler::ReportFrame()
+{
+    Print("{}-- Frame {} --{}  {:.3f} ms\n",
+          PROF_COLOR::kSection, frameCount, PROF_COLOR::kReset, ToMilliseconds(lastFrameNanoseconds));
+
+    Print("{}  {:<24}{:>6}{:>10}{:>8}{:>10}{}\n",
+          PROF_COLOR::kSection, "span", "calls", "ms", "mig", "bytes", PROF_COLOR::kReset);
+
+    for (std::size_t i = 0; i < spanCount; ++i)
+    {
+        const ProfileSpan& span = spans[i];
+
+        /* A frame runs only a few spans, and the silent ones would bury them. */
+        if (span.frameCalls == 0) continue;
+
+        Print("  {}{:<24}{}{:>6}{:>10.3f}{:>8}{:>10}\n",
+              PROF_COLOR::kName, span.name, PROF_COLOR::kReset,
+              span.frameCalls,
+              ToMilliseconds(span.frameNanoseconds),
+              span.frameStats.migrations,
+              span.frameStats.bytesCopied);
+    }
+}
+
+double Profiler::LastFrameMilliseconds()
+{
+    return ToMilliseconds(lastFrameNanoseconds);
 }
 
 void Profiler::Reset()
@@ -222,6 +270,7 @@ void Profiler::Reset()
     frameOpen = false;
     frameCount = 0;
     frameTotalNanoseconds = 0;
+    lastFrameNanoseconds = 0;
     frameMinNanoseconds = 0;
     frameMaxNanoseconds = 0;
 }

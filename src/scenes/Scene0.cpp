@@ -29,15 +29,17 @@ void Scene0::MakeDrawList(DrawList& drawList)
 
 bool Scene0::OnCreate()
 {
-    entities.reserve(kEntityCount);
-    for (int i = 0; i < kEntityCount; ++i)
     {
-        const Entity entity = world.CreateEntity();
-        world.AddComponent<Position>(entity, {static_cast<float>(i), 0.0f, 0.0f});
-        world.AddComponent<Velocity>(entity, {1.0f, 0.5f, 0.0f});
-        entities.push_back(entity);
+        PROFILE_SCOPE_ECS(world, "OnCreate");
+        entities.reserve(kEntityCount);
+        for (int i = 0; i < kEntityCount; ++i)
+        {
+            const Entity entity = world.CreateEntity();
+            world.AddComponent<Position>(entity, {static_cast<float>(i), 0.0f, 0.0f});
+            world.AddComponent<Velocity>(entity, {1.0f, 0.5f, 0.0f});
+            entities.push_back(entity);
+        }
     }
-
     return true;
 }
 
@@ -79,12 +81,8 @@ void Scene0::Update(float deltaTime)
             else commandBuffer.RemoveComponent<Hit>(entities[i]);
         }
     }
-
-    const FrameStats beforePlayback = world.Stats();
     {
-        PROFILE_SCOPE("Playback");
+        PROFILE_SCOPE_ECS(world, "Playback");
         commandBuffer.Playback(world);
     }
-
-    if (damageFrame) lastPlaybackCost = StatsSince(beforePlayback, world.Stats());
 }

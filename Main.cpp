@@ -95,11 +95,13 @@ int main()
                 SDL_Delay(timer.GetSleepTime(60));
             }
             Profiler::EndFrame();
+
+            /* Over budget, so dump the frame while its numbers are still in the table. */
+            if (Profiler::LastFrameMilliseconds() > 30.0) Profiler::ReportFrame();
         }
         scene.OnDestroy();
 
         const FrameStats& totals = scene.GetWorld().Totals();
-        const FrameStats& playbackCost = scene.LastPlaybackCost();
         const WorldStats snapshot = scene.GetWorld().Snapshot();
 
         std::cout << "-- ECS Report --\n"
@@ -109,8 +111,6 @@ int main()
             << "  migrations          " << totals.migrations << "\n"
             << "  bytes copied        " << totals.bytesCopied << "\n"
             << "  archetypes created  " << totals.archetypesCreated << "\n"
-            << "  last playback cost  " << playbackCost.migrations << " migrations, "
-            << playbackCost.bytesCopied << " bytes\n"
             << "  live entities       " << snapshot.liveEntities << "\n"
             << "  archetypes now      " << snapshot.archetypeCount
             << " (" << snapshot.emptyArchetypes << " empty)\n";
