@@ -284,6 +284,26 @@ target_include_directories(EcsTests PRIVATE include)
 ge5_apply_common_settings(EcsTests)
 
 
+# ============================== EcsBench ==============================
+#
+# A load for the profiler, and the only program here big enough for a sampling profiler to
+# find anything. Not a test: it takes seconds to run and it measures rather than checks, so
+# ctest never launches it.
+#
+# Built for both platforms like EcsTests. It compiles the ECS and the profiler and nothing
+# else, so there is no SDL and no Vulkan in it.
+
+add_executable(EcsBench
+    bench/EcsBench.cpp
+    src/utils/Profiler.cpp
+    include/utils/Profiler.h
+    ${ECS_SOURCES}
+    ${ECS_HEADERS}
+)
+target_include_directories(EcsBench PRIVATE include)
+ge5_apply_common_settings(EcsBench)
+
+
 # One program per test. Each counts its own checks and returns non zero if any of them fail.
 # A crash comes back as a large negative number, and CTest calls that a failure too, which
 # is the trap scripts/run-tests.bat used to have to sidestep by hand.
