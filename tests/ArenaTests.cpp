@@ -1,5 +1,6 @@
 /*
- * Tests for the arena allocator, built as their own program.
+ * Tests for the arena allocator and the resource that plugs it into std::pmr, built as
+ * their own program.
  *
  * Nothing here touches SDL, Vulkan or the ECS, so this target builds on Win32 as well as x64.
  *
@@ -9,8 +10,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <memory_resource>
+#include <vector>
 
 #include "utils/Arena.h"
+#include "utils/ArenaResource.h"
 
 namespace
 {
@@ -192,6 +196,83 @@ int main()
         void* empty = arena.Allocate(0, 1);
         Check("a zero byte request is served", empty != nullptr);
         Check("it took no space", arena.Stats().used == 0);
+    }
+
+    std::cout << "\nTEST CASE: a pmr vector allocates from the arena\n";
+    {
+        Arena arena(4096);
+        ArenaResource resource(arena);
+
+        std::pmr::vector<std::byte> data(&resource);
+        data.resize(100);
+
+        Check("the arena served the vector", arena.Stats().used >= 100);
+        Check("the resource counted it", resource.Stats().fromArena >= 1);
+        Check("nothing fell back to the heap", resource.Stats().fromHeap == 0);
+        Check("the vector holds what was asked for", data.size() == 100);
+    }
+
+    std::cout << "\nTEST CASE: the bytes behave like memory\n";
+    {
+        Arena arena(4096);
+        ArenaResource resource(arena);
+
+        std::pmr::vector<int> numbers(&resource);
+        for (int i = 0; i < 50; ++i) numbers.push_back(i * 3);
+
+        bool correct = true;
+        for (int i = 0; i < 50; ++i) if (numbers[static_cast<std::size_t>(i)] != i * 3) correct = false;
+
+        Check("every value survived the growth", correct);
+        Check("growing reallocated more than once", resource.Stats().fromArena > 1);
+    }
+
+    std::cout << "\nTEST CASE: giving arena memory back leaves the arena alone\n";
+    {
+        Arena arena(4096);
+        ArenaResource resource(arena);
+        std::size_t usedWhileAlive = 0;
+
+        {
+            std::pmr::vector<std::byte> data(&resource);
+            data.resize(200);
+            usedWhileAlive = arena.Stats().used;
+        }
+
+        Check("the arena did not take the memory back", arena.Stats().used == usedWhileAlive);
+        Check("no heap block was freed by mistake", resource.Stats().heapLive == 0);
+    }
+
+    std::cout << "\nTEST CASE: a full arena falls back to the heap instead of failing\n";
+    {
+        Arena arena(64);
+        ArenaResource resource(arena);
+
+        /* The assert would stop this test before it could check the fallback it is about. */
+        resource.SetAssertOnFull(false);
+
+        auto* data = new std::pmr::vector<std::byte>(&resource);
+        data->resize(4096);
+
+        Check("the allocation was served anyway", data->size() == 4096);
+        Check("the fallback was counted", resource.Stats().fromHeap >= 1);
+        Check("the fallback bytes were counted", resource.Stats().heapBytes >= 4096);
+        Check("a heap block is outstanding", resource.Stats().heapLive >= 1);
+
+        delete data;
+        Check("the heap block was given back", resource.Stats().heapLive == 0);
+    }
+
+    std::cout << "\nTEST CASE: a resource is only equal to itself\n";
+    {
+        Arena first(256);
+        Arena second(256);
+        ArenaResource a(first);
+        ArenaResource b(second);
+
+        Check("a resource equals itself", a.is_equal(a));
+        Check("two resources over different arenas differ", !a.is_equal(b));
+        Check("it differs from the default heap resource", !a.is_equal(*std::pmr::new_delete_resource()));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

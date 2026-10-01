@@ -290,7 +290,9 @@ ge5_apply_common_settings(EcsTests)
 add_executable(ArenaTests
         tests/ArenaTests.cpp
         src/utils/Arena.cpp
+        src/utils/ArenaResource.cpp
         include/utils/Arena.h
+        include/utils/ArenaResource.h
 )
 target_include_directories(ArenaTests PRIVATE include)
 ge5_apply_common_settings(ArenaTests)

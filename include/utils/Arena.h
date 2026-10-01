@@ -5,6 +5,7 @@
 /* On in Debug and Release. Set to 0 and the ECS allocates from the heap as it did before. */
 #ifndef GE5_USE_ARENA
 #define GE5_USE_ARENA 1
+#include <memory_resource>
 #endif
 
 #include <cstddef>
