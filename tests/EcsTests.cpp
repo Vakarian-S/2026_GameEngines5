@@ -145,7 +145,7 @@ int main()
      */
     std::cout << "\n-- archetypes --\n";
 
-    Archetype archetype(COMPONENTS::MaskOf<Position, Velocity, Dead>());
+    Archetype archetype(COMPONENTS::MaskOf<Position, Velocity, Dead>(), std::pmr::new_delete_resource());
 
     Check("three components, two columns", archetype.ColumnCount() == 2);
     Check("a tag has no column", archetype.Column<Dead>() == nullptr);
@@ -790,6 +790,65 @@ int main()
     statsBuffer.Playback(bufferWorld);
     Check("playback counts through the world it played into",
           bufferWorld.Stats().entitiesCreated == 1 && bufferWorld.Stats().componentsAdded == 1);
+
+    std::cout << "\n-- memory, a world in an arena --\n";
+
+    WorldConfig arenaConfig;
+    arenaConfig.maxEntities = 100;
+    arenaConfig.arenaBytes = 64 * 1024;
+    World arenaWorld(arenaConfig);
+
+    const Entity firstInArena = arenaWorld.CreateEntity();
+    arenaWorld.AddComponent<Position>(firstInArena, {1.0f, 2.0f, 3.0f});
+
+    std::vector<Archetype*> arenaArchetypes;
+    arenaWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), 0, arenaArchetypes);
+    const Position* columnBefore = arenaArchetypes[0]->Column<Position>();
+    const std::size_t usedBefore = arenaWorld.MemoryStats().arena.used;
+
+    for (int i = 1; i < 100; ++i)
+    {
+        const Entity next = arenaWorld.CreateEntity();
+        arenaWorld.AddComponent<Position>(next, {static_cast<float>(i), 0.0f, 0.0f});
+    }
+
+    const WorldMemoryStats arenaMemory = arenaWorld.MemoryStats();
+
+    Check("the world took the slab it was asked for", arenaMemory.arena.capacity == 64 * 1024);
+    Check("the world lives inside the slab", arenaMemory.arena.used > 0);
+    Check("nothing fell back to the heap", arenaMemory.resource.fromHeap == 0);
+    Check("filling a reserved archetype takes no more memory", arenaMemory.arena.used == usedBefore);
+    Check("a reserved column does not move as rows are added",
+          arenaArchetypes[0]->Column<Position>() == columnBefore);
+    Check("the column holds every row", arenaArchetypes[0]->Count() == 100);
+    Check("a column is aligned like plain new",
+          reinterpret_cast<std::uintptr_t>(columnBefore) % __STDCPP_DEFAULT_NEW_ALIGNMENT__ == 0);
+    Check("the first value survived", arenaWorld.GetComponent<Position>(firstInArena)->y == 2.0f);
+
+    std::cout << "\n-- memory, a world on the heap --\n";
+
+    WorldConfig heapConfig;
+    heapConfig.arenaBytes = 0;
+    World heapWorld(heapConfig);
+
+    const Entity firstOnHeap = heapWorld.CreateEntity();
+    heapWorld.AddComponent<Position>(firstOnHeap, {4.0f, 5.0f, 6.0f});
+
+    /* Past the 64 slots a heap world starts with, so every container has to grow. */
+    for (int i = 0; i < 200; ++i)
+    {
+        const Entity next = heapWorld.CreateEntity();
+        heapWorld.AddComponent<Position>(next, {0.0f, 0.0f, 0.0f});
+        heapWorld.AddComponent<Velocity>(next, {0.0f, 0.0f, 0.0f});
+    }
+
+    const WorldMemoryStats heapMemory = heapWorld.MemoryStats();
+
+    Check("a heap world takes no slab", heapMemory.arena.capacity == 0);
+    Check("every allocation went to the heap",
+          heapMemory.resource.fromArena == 0 && heapMemory.resource.fromHeap > 0);
+    Check("a heap world grows past its first reserve", heapWorld.Snapshot().liveEntities == 201);
+    Check("values survive the growth", heapWorld.GetComponent<Position>(firstOnHeap)->z == 6.0f);
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

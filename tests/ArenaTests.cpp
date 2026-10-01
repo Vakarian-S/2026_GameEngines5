@@ -73,7 +73,7 @@ int main()
     {
         Arena arena(1024);
         auto* numbers = static_cast<std::uint32_t*>(arena.Allocate(sizeof(std::uint32_t) * 4,
-                                                                  alignof(std::uint32_t)));
+                                                                   alignof(std::uint32_t)));
         void* between = arena.Allocate(64, 64);
         (void)between;
 
@@ -152,6 +152,21 @@ int main()
         Check("the same bytes are handed out again", after == before);
     }
 
+#ifdef _DEBUG
+    std::cout << "\nTEST CASE: a Debug reset poisons what was handed out\n";
+    {
+        Arena arena(256);
+        auto* bytes = static_cast<std::uint8_t*>(arena.Allocate(16, 1));
+        for (int i = 0; i < 16; ++i) bytes[i] = 0x11;
+
+        arena.Reset();
+
+        bool poisoned = true;
+        for (int i = 0; i < 16; ++i) if (bytes[i] != 0xDD) poisoned = false;
+
+        Check("every handed out byte reads 0xDD after the reset", poisoned);
+    }
+#endif
     std::cout << "\nTEST CASE: the high water mark remembers the worst moment\n";
     {
         Arena arena(1024);
@@ -261,6 +276,77 @@ int main()
 
         delete data;
         Check("the heap block was given back", resource.Stats().heapLive == 0);
+    }
+
+    std::cout << "\nTEST CASE: a zero byte request on a full arena is given back safely\n";
+    {
+        Arena arena(64);
+        ArenaResource resource(arena);
+        resource.SetAssertOnFull(false);
+
+        void* whole = resource.allocate(64, 1);
+        void* empty = resource.allocate(0, 1);
+
+        Check("the zero byte request is served", empty != nullptr);
+        Check("it did not come from the arena", !arena.Owns(empty));
+        Check("the heap served it", resource.Stats().heapLive == 1);
+
+        resource.deallocate(empty, 0, 1);
+        Check("the heap block was given back", resource.Stats().heapLive == 0);
+
+        resource.deallocate(whole, 64, 1);
+    }
+
+    std::cout << "\nTEST CASE: an arena with no capacity refuses everything\n";
+    {
+        Arena arena(0);
+        Check("capacity is zero", arena.Stats().capacity == 0);
+        Check("one byte is refused", arena.Allocate(1, 1) == nullptr);
+        Check("zero bytes is refused too", arena.Allocate(0, 1) == nullptr);
+        Check("both refusals were counted", arena.Stats().refusals == 2);
+        Check("it owns nothing", !arena.Owns(nullptr));
+    }
+
+    std::cout << "\nTEST CASE: a resource over an empty arena is the heap\n";
+    {
+        Arena arena(0);
+        ArenaResource resource(arena);
+        resource.SetAssertOnFull(false);
+
+        {
+            std::pmr::vector<int> numbers(&resource);
+            for (int i = 0; i < 100; ++i) numbers.push_back(i);
+
+            Check("the values are intact", numbers[0] == 0 && numbers[99] == 99);
+            Check("nothing came from the arena", resource.Stats().fromArena == 0);
+            Check("the heap served every call", resource.Stats().fromHeap >= 1);
+            Check("a heap block is outstanding", resource.Stats().heapLive >= 1);
+        }
+
+        Check("every heap block was given back", resource.Stats().heapLive == 0);
+    }
+
+    std::cout << "\nTEST CASE: a byte vector is aligned like plain new\n";
+    {
+        Arena arena(4096);
+        ArenaResource resource(arena);
+
+        /* One odd byte first, so the next slice has something to skip past. */
+        arena.Allocate(1, 1);
+
+        std::pmr::vector<std::byte> bytes(&resource);
+        bytes.resize(24);
+
+        Check("the bytes sit on the default new alignment",
+              IsAligned(bytes.data(), __STDCPP_DEFAULT_NEW_ALIGNMENT__));
+
+        resource.SetAssertOnFull(false);
+        std::pmr::vector<std::byte> large(&resource);
+        large.resize(8192);
+
+        Check("the large vector missed the arena", !arena.Owns(large.data()));
+        Check("heap bytes are aligned the same way",
+              IsAligned(large.data(), __STDCPP_DEFAULT_NEW_ALIGNMENT__));
     }
 
     std::cout << "\nTEST CASE: a resource is only equal to itself\n";

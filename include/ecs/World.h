@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include <memory>
+#include <memory_resource>
 #include <vector>
 #include <cstddef>
 
@@ -8,8 +8,29 @@
 #include "ecs/Entity.h"
 #include "ecs/EntitySlot.h"
 #include "FrameStats.h"
+#include "utils/Arena.h"
+#include "utils/ArenaResource.h"
 
 class Archetype;
+
+/** How much memory a World takes, and from where. */
+struct WorldConfig
+{
+    /** Most entities alive at once. Every archetype reserves this many rows. */
+    uint32_t maxEntities = 1024;
+    /**
+     * Bytes in the world's slab, taken from the OS once. Zero means no arena: every container
+     * grows on the heap, as the world did before the arena existed.
+     */
+    std::size_t arenaBytes = 1024 * 1024;
+};
+
+/** What a World's arena holds, and how much of the world missed it. */
+struct WorldMemoryStats
+{
+    ArenaStats arena;
+    ArenaResourceStats resource;
+};
 /**
  * Owns every entity in the game.
  *
@@ -23,7 +44,11 @@ class Archetype;
 class World
 {
 public:
-    World();
+    /**
+     * @param config how many entities to make room for, and how large a slab to take
+     */
+    explicit World(const WorldConfig& config = {});
+    ~World();
 
     /**
      * Makes a live entity and returns a handle to it.
@@ -158,6 +183,9 @@ public:
      */
     WorldStats Snapshot() const;
 
+    /** @return the arena's counters, and how many calls went to the heap instead */
+    WorldMemoryStats MemoryStats() const;
+
     /**
      * Adds a component named by its runtime id, copying size bytes into the new column.
      * For playback and tooling, where no type is available. A tag passes nullptr and 0.
@@ -176,13 +204,22 @@ public:
     void RemoveComponentById(Entity entity, ComponentId id);
 
 private:
-    /** One record per index ever handed out. The index into this vector is the entity's index. */
-    std::vector<EntitySlot> entitySlots;
-    /** Indexes of dead slots, newest first. */
-    std::vector<uint32_t> freeSlots;
+    /* Declared first, so they are built before every container below and destroyed after them. */
 
-    /** List of all the archetypes in our world **/
-    std::vector<std::unique_ptr<Archetype>> archetypes;
+    /** The one block this world takes from the OS */
+    Arena arena;
+    /** Where every container below allocates. With no slab behind it, every call goes to the heap. */
+    ArenaResource memory;
+    /** Rows each archetype reserves, or zero when there is no arena */
+    uint32_t reservedRows;
+
+    /** One record per index ever handed out. The index into this vector is the entity's index. */
+    std::pmr::vector<EntitySlot> entitySlots;
+    /** Indexes of dead slots, newest first. */
+    std::pmr::vector<uint32_t> freeSlots;
+
+    /** List of all the archetypes in our world. Each one is built in place inside memory. **/
+    std::pmr::vector<Archetype*> archetypes;
 
     /** Goes up by one each time a new archetype is created. Nothing else changes it. */
     uint32_t archetypeGeneration = 0;

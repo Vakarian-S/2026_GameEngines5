@@ -7,7 +7,8 @@
 #include "game/Components.h"
 #include "utils/Profiler.h"
 
-Scene0::Scene0() : movers(world, COMPONENTS::MaskOf<Position, Velocity>())
+Scene0::Scene0() : world(WorldConfig{kEntityCount, kWorldArenaBytes}),
+                   movers(world, COMPONENTS::MaskOf<Position, Velocity>())
 {
 }
 
@@ -24,7 +25,21 @@ void Scene0::HandleEvents(const SDL_Event& sdlEvent)
 
 void Scene0::MakeDrawList(DrawList& drawList)
 {
-    // drawList.clear();
+    uint32_t total = 0;
+    for (const Archetype* archetype : movers.Matches()) total += archetype->Count();
+
+    /* Reserved once, so the list takes one block from the caller's memory. */
+    drawList.reserve(total);
+
+    for (Archetype* archetype : movers.Matches())
+    {
+        const Position* positions = archetype->Column<Position>();
+        const uint32_t rows = archetype->Count();
+        for (uint32_t row = 0; row < rows; ++row)
+        {
+            drawList.push_back({positions[row].x, positions[row].y, positions[row].z});
+        }
+    }
 }
 
 bool Scene0::OnCreate()
@@ -32,7 +47,7 @@ bool Scene0::OnCreate()
     {
         PROFILE_SCOPE_ECS(world, "OnCreate");
         entities.reserve(kEntityCount);
-        for (int i = 0; i < kEntityCount; ++i)
+        for (uint32_t i = 0; i < kEntityCount; ++i)
         {
             const Entity entity = world.CreateEntity();
             world.AddComponent<Position>(entity, {static_cast<float>(i), 0.0f, 0.0f});

@@ -275,6 +275,10 @@ ge5_apply_common_settings(MemoryMonitorTests SDL_CHECK OFF)
 file(GLOB_RECURSE ECS_SOURCES CONFIGURE_DEPENDS "src/ecs/*.cpp")
 file(GLOB_RECURSE ECS_HEADERS CONFIGURE_DEPENDS "include/ecs/*.h")
 
+# The World allocates from an arena, so every program that compiles the ECS compiles these too.
+list(APPEND ECS_SOURCES src/utils/Arena.cpp src/utils/ArenaResource.cpp)
+list(APPEND ECS_HEADERS include/utils/Arena.h include/utils/ArenaResource.h)
+
 add_executable(EcsTests
     tests/EcsTests.cpp
     ${ECS_SOURCES}
@@ -296,6 +300,21 @@ add_executable(ArenaTests
 )
 target_include_directories(ArenaTests PRIVATE include)
 ge5_apply_common_settings(ArenaTests)
+
+
+# ============================== ArenaDemo ==============================
+#
+# The same work on the heap and from an arena, counted by the memory monitor. Built for both
+# platforms: it compiles the ECS, the arena and the monitor, and nothing else.
+
+add_executable(ArenaDemo
+    demo/ArenaDemo.cpp
+    ${MEMORYMONITOR_SOURCES}
+    ${ECS_SOURCES}
+    ${ECS_HEADERS}
+)
+target_include_directories(ArenaDemo PRIVATE include)
+ge5_apply_common_settings(ArenaDemo)
 
 
 # ============================== EcsBench ==============================

@@ -1,7 +1,9 @@
 ﻿#include "utils/Arena.h"
 
+
 #include <cassert>
 #include <new>
+#include <cstring>
 
 namespace
 {
@@ -19,9 +21,10 @@ namespace
     }
 }
 
-Arena::Arena(const std::size_t capacityBytes) : begin(static_cast<std::byte*>(::operator new(capacityBytes))),
-                                          current(begin),
-                                          end(begin + capacityBytes)
+Arena::Arena(const std::size_t capacityBytes)
+    : begin(capacityBytes > 0 ? static_cast<std::byte*>(::operator new(capacityBytes)) : nullptr),
+      current(begin),
+      end(begin + capacityBytes)
 {
 }
 
@@ -33,6 +36,13 @@ Arena::~Arena()
 void* Arena::Allocate(const std::size_t size, const std::size_t alignment)
 {
     assert(alignment > 0 && (alignment & (alignment - 1)) == 0 && "alignment must be a power of two");
+
+    /* An arena built with zero capacity has no slab to hand out. */
+    if (begin == nullptr)
+    {
+        ++refusals;
+        return nullptr;
+    }
 
     std::byte* const aligned = AlignUp(current, alignment);
 
@@ -55,6 +65,10 @@ void* Arena::Allocate(const std::size_t size, const std::size_t alignment)
 
 void Arena::Reset()
 {
+#ifdef _DEBUG
+    /* A pointer kept past a reset now reads 0xDD bytes instead of another owner's data. */
+    if (current > begin) std::memset(begin, 0xDD, static_cast<std::size_t>(current - begin));
+#endif
     current = begin;
     padding = 0;
     ++resets;
@@ -76,5 +90,5 @@ ArenaStats Arena::Stats() const
     stats.resets = resets;
     stats.padding = padding;
     stats.highWater = highWater;
-    return stats;   
+    return stats;
 }

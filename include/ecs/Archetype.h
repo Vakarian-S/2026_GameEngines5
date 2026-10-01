@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <cstddef>
+#include <memory_resource>
 #include <vector>
 
 #include "Component.h"
@@ -9,14 +11,31 @@ struct ComponentColumn
 {
     ComponentId type;
     uint32_t elementSize;
-    std::vector<std::byte> data;
+    std::pmr::vector<std::byte> data;
+
+    /**
+     * @param type_ component type this column stores
+     * @param elementSize_ bytes one element takes
+     * @param memory where the bytes come from
+     */
+    ComponentColumn(ComponentId type_, uint32_t elementSize_, std::pmr::memory_resource* memory);
+
+    /* A copied pmr vector lands on the default heap, so a column can only be moved. */
+    ComponentColumn(const ComponentColumn&) = delete;
+    ComponentColumn& operator=(const ComponentColumn&) = delete;
+    ComponentColumn(ComponentColumn&&) noexcept = default;
 };
 
 /* A collection of entities with the same components */
 class Archetype
 {
 public:
-    explicit Archetype(ComponentMask mask);
+    /**
+     * @param mask one bit per component type this archetype holds
+     * @param memory where the columns and the entity list allocate
+     * @param reservedRows rows to reserve up front. Zero reserves nothing and the columns grow.
+     */
+    explicit Archetype(ComponentMask mask, std::pmr::memory_resource* memory, uint32_t reservedRows = 0);
 
     /**
      * Raw bytes of one component in one row, or nullptr if this archetype has no such column. 
@@ -75,8 +94,10 @@ public:
 
 private:
     ComponentMask mask;
-    std::vector<ComponentColumn> componentColumns;
-    std::vector<Entity> entities;
+    std::pmr::vector<ComponentColumn> componentColumns;
+    std::pmr::vector<Entity> entities;
+    /** Rows reserved at creation, or zero when the columns grow on demand */
+    uint32_t reservedRows;
 
     /**
      * Get the component column of the given component type

@@ -1,12 +1,18 @@
 ﻿#pragma once
 
+#include <memory_resource>
+#include <vector>
+
 union SDL_Event;
 
-/* Placeholder */
-struct DrawList
+/** One thing to draw. A placeholder holding a position, until a renderer asks for more. */
+struct DrawItem
 {
-    float x;
+    float x, y, z;
 };
+
+/** Everything to draw this frame. The caller picks the memory, so a frame arena can stand behind it. */
+using DrawList = std::pmr::vector<DrawItem>;
 
 class Scene
 {

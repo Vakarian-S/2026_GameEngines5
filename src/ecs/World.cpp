@@ -1,12 +1,37 @@
 ﻿#include "ecs/World.h"
 
 #include <cstring>
+#include <new>
 
-
-World::World()
+namespace
 {
-    entitySlots.reserve(64);
-    freeSlots.reserve(64);
+    /** Slots and archetype pointers reserved when the world has no arena */
+    constexpr uint32_t kHeapReserve = 64;
+    /** Archetype pointers reserved when it has one */
+    constexpr uint32_t kArchetypeReserve = 64;
+}
+
+World::World(const WorldConfig& config)
+    : arena(config.arenaBytes),
+      memory(arena),
+      reservedRows(config.arenaBytes > 0 ? config.maxEntities : 0),
+      entitySlots(&memory),
+      freeSlots(&memory),
+      archetypes(&memory)
+{
+    entitySlots.reserve(reservedRows > 0 ? reservedRows : kHeapReserve);
+    freeSlots.reserve(reservedRows > 0 ? reservedRows : kHeapReserve);
+    if (reservedRows > 0) archetypes.reserve(kArchetypeReserve);
+}
+
+World::~World()
+{
+    /* Built with placement new, so each one is destroyed by hand. */
+    for (Archetype* archetype : archetypes)
+    {
+        archetype->~Archetype();
+        memory.deallocate(archetype, sizeof(Archetype), alignof(Archetype));
+    }
 }
 
 Entity World::CreateEntity()
@@ -23,6 +48,7 @@ Entity World::CreateEntity()
     {
         /* Grow the table. A new slot starts at version 1, never 0, so a default Entity{} never matches it. */
         index = static_cast<uint32_t>(entitySlots.size());
+        assert((reservedRows == 0 || index < reservedRows) && "the world is full, raise maxEntities");
         entitySlots.push_back({1, kInvalidArchetype, 0});
     }
 
@@ -91,7 +117,7 @@ bool World::Locate(const Entity entity, uint16_t& archetype, uint32_t& row) cons
 void World::CollectMatching(const ComponentMask all, const ComponentMask none, std::vector<Archetype*>& out)
 {
     out.clear();
-    for (const std::unique_ptr<Archetype>& archetype : archetypes)
+    for (Archetype* archetype : archetypes)
     {
         const ComponentMask mask = archetype->Mask();
         /*
@@ -103,7 +129,7 @@ void World::CollectMatching(const ComponentMask all, const ComponentMask none, s
         {
             continue;
         }
-        out.push_back(archetype.get());
+        out.push_back(archetype);
     }
 }
 
@@ -120,7 +146,7 @@ WorldStats World::Snapshot() const
     stats.slotTableSize = static_cast<uint32_t>(entitySlots.size());
     stats.liveEntities = static_cast<uint32_t>(entitySlots.size() - freeSlots.size());
 
-    for (const std::unique_ptr<Archetype>& archetype : archetypes)
+    for (const Archetype* archetype : archetypes)
     {
         const uint32_t rows = archetype->Count();
         stats.totalRows += rows;
@@ -128,6 +154,11 @@ WorldStats World::Snapshot() const
     }
 
     return stats;
+}
+
+WorldMemoryStats World::MemoryStats() const
+{
+    return {arena.Stats(), memory.Stats()};
 }
 
 void World::AddComponentById(Entity entity, ComponentId id, const std::byte* value, uint32_t size)
@@ -171,7 +202,8 @@ uint16_t World::ArchetypeIndexFor(ComponentMask mask)
         }
     }
     assert(archetypes.size() < kInvalidArchetype);
-    archetypes.push_back(std::make_unique<Archetype>(mask));
+    void* place = memory.allocate(sizeof(Archetype), alignof(Archetype));
+    archetypes.push_back(new(place) Archetype(mask, &memory, reservedRows));
     archetypeGeneration++;
     GE5_ECS_COUNT(frameStats, archetypesCreated, 1);
     return static_cast<uint16_t>(archetypes.size() - 1);

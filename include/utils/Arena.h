@@ -1,13 +1,5 @@
 ﻿#pragma once
 
-/* ============================== Switch ============================== */
-
-/* On in Debug and Release. Set to 0 and the ECS allocates from the heap as it did before. */
-#ifndef GE5_USE_ARENA
-#define GE5_USE_ARENA 1
-#include <memory_resource>
-#endif
-
 #include <cstddef>
 #include <cstdint>
 
@@ -46,6 +38,10 @@ struct ArenaStats
 class Arena
 {
 public:
+    /**
+     * @param capacityBytes bytes in the slab. Zero takes nothing from the OS, and such an arena
+     *                      refuses every request.
+     */
     explicit Arena(std::size_t capacityBytes);
     ~Arena();
 
@@ -67,9 +63,12 @@ public:
     void* Allocate(std::size_t size, std::size_t alignment = alignof(std::max_align_t));
 
     /**
-     * Hands the whole slab back for reuse. Every pointer taken from it is dangling afterwards,
-     * and nothing here can tell. Destructors are not run.
-     */
+    * Hands the whole slab back for reuse. Every pointer taken from it is dangling afterwards,
+    * and nothing here can tell. Destructors are not run.
+    *
+    * Debug fills the bytes that were handed out with 0xDD first, so a stale read shows an
+    * obvious value. Release leaves them alone.
+    */
     void Reset();
 
     /**

@@ -10,6 +10,7 @@
  * Nothing in it touches SDL or Vulkan, so it builds on Win32 as well as x64.
  */
 
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <vector>
@@ -35,6 +36,10 @@ namespace
     constexpr uint32_t kCullStride = 20;
     /** One row in every this many gains or loses the tag on a tag frame */
     constexpr uint32_t kTagStride = 10;
+    /** Slab bytes per entity. Four archetypes of this load use 108, measured with MemoryStats. */
+    constexpr std::size_t kArenaBytesPerEntity = 128;
+    /** Slab bytes on top of that, for the archetype objects and their lists */
+    constexpr std::size_t kArenaBaseBytes = 64 * 1024;
 
     /**
      * Fills a world with entities carrying Position and Velocity.
@@ -138,10 +143,15 @@ namespace
     /**
      * Runs one scale end to end and prints what it cost.
      * @param count how many entities to start with
+     * @param useArena true for one slab sized for count, false for the heap
      */
-    void RunScale(const int count)
+    void RunScale(const int count, const bool useArena)
     {
-        World world;
+        WorldConfig config;
+        config.maxEntities = static_cast<uint32_t>(count);
+        config.arenaBytes = useArena ? kArenaBaseBytes + kArenaBytesPerEntity * static_cast<std::size_t>(count) : 0;
+
+        World world(config);
         CommandBuffer buffer;
         Query movers(world, COMPONENTS::MaskOf<Position, Velocity>());
         Query untagged(world, COMPONENTS::MaskOf<Position, Velocity>(), COMPONENTS::MaskOf<Hit>());
@@ -190,7 +200,8 @@ namespace
         const FrameStats& totals = world.Totals();
         const WorldStats snapshot = world.Snapshot();
 
-        std::cout << "\n==== " << count << " entities, " << kFrames << " frames ====\n";
+        std::cout << "\n==== " << count << " entities, " << kFrames << " frames, "
+            << (useArena ? "arena" : "heap") << " ====\n";
         Profiler::Report();
 
         std::cout << "  totals    created " << totals.entitiesCreated
@@ -202,6 +213,15 @@ namespace
             << snapshot.archetypeCount << " archetypes ("
             << snapshot.emptyArchetypes << " empty), "
             << snapshot.slotTableSize << " slots\n";
+
+        if (useArena)
+        {
+            const WorldMemoryStats memory = world.MemoryStats();
+            std::cout << "  arena     " << memory.arena.capacity << " bytes, "
+                << memory.arena.highWater << " high water, "
+                << memory.resource.fromArena << " allocations, "
+                << memory.resource.fromHeap << " fell back to the heap\n";
+        }
     }
 }
 
@@ -211,7 +231,8 @@ int main()
 
     for (const int count : {1000, 10000, 100000})
     {
-        RunScale(count);
+        RunScale(count, false);
+        RunScale(count, true);
     }
 
     return 0;

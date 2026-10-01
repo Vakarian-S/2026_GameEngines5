@@ -32,7 +32,9 @@ private:
     bool hitOn = false;
 
     /** Entities OnCreate spawns */
-    static constexpr int kEntityCount = 1000;
+    static constexpr uint32_t kEntityCount = 1000;
+    /** Bytes in the world's slab. This scene's four archetypes use about 110,000. */
+    static constexpr std::size_t kWorldArenaBytes = 256 * 1024;
     /** Entities each damage frame tags or untags */
     static constexpr int kDamageCount = 100;
     /** Frames between one damage frame and the next */

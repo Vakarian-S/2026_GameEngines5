@@ -31,6 +31,11 @@ struct ArenaResourceStats
  * When the arena is full this falls back to the heap rather than failing, so a slab sized too
  * small costs memory and a count rather than a crash. Debug asserts first, so the size gets
  * fixed instead of ignored.
+ *
+ * Over an arena with no capacity every call goes to the heap, through this program's own
+ * operator new, and nothing asserts. That is how a World runs with no arena. It is not
+ * std::pmr::new_delete_resource, because that one allocates inside the runtime's DLL, where
+ * the Memory Monitor cannot count it.
  */
 class ArenaResource final : public std::pmr::memory_resource
 {
@@ -58,7 +63,7 @@ private:
      * @param alignment required alignment
      * @return the memory, never nullptr
      */
-    void* do_allocate(std::size_t bytes, std::size_t alignment) override;
+    void* do_allocate(size_t bytes, std::size_t alignment) override;
 
     /**
      * Hook the container calls when it gives memory back. Arena memory is left where it is,
@@ -78,5 +83,5 @@ private:
 
     Arena* arena;
     ArenaResourceStats stats;
-    bool assertOnFull = true;
+    bool assertOnFull;
 };

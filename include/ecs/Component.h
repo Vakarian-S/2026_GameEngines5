@@ -62,6 +62,10 @@ namespace COMPONENTS
                       "A component must be plain data. No destructor, no std::string, no owning pointers: "
                       "moving an entity between archetypes is a memcpy and nothing else.");
 
+        static_assert(alignof(T) <= __STDCPP_DEFAULT_NEW_ALIGNMENT__,
+                      "A column is a byte array aligned like plain new. A component that needs more "
+                      "alignment than that would sit on the wrong address.");
+
         const ComponentId id = NextComponentId();
         assert(id < kMaxComponents && "Out of component ids. Widen ComponentMask and kMaxComponents.");
 

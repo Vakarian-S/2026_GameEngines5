@@ -7,6 +7,8 @@
 #include "core/Window.h"
 #include "core/Scene.h"
 #include "scenes/Scene0.h"
+#include "utils/Arena.h"
+#include "utils/ArenaResource.h"
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
 
@@ -21,9 +23,17 @@
  *   MemoryMonitorDemo   demo\MemoryMonitorDemo.cpp, every path the monitor watches
  *   MemoryMonitorTests  tests\MemoryMonitorTests.cpp, the monitor's checks
  *   EcsTests            tests\EcsTests.cpp, the ECS checks
+ *   ArenaTests          tests\ArenaTests.cpp, the arena's checks
+ *   ArenaDemo           demo\ArenaDemo.cpp, the heap and the arena side by side
  *
  * Both test programs are built and run by scripts\run-tests.bat.
  */
+
+namespace
+{
+    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 12,000. */
+    constexpr std::size_t kFrameArenaBytes = 64 * 1024;
+}
 
 int main()
 {
@@ -44,9 +54,9 @@ int main()
     {
         Window window("GameEngines5", 1280, 720);
         /*
-         * What a scene costs to start: the World's two reserves, the empty archetype on its
-         * first entity, and whatever OnCreate spawns. This is the number the arena allocator
-         * is meant to bring down, so it is worth seeing on every run.
+         * What a scene costs to start. The World takes one slab and every archetype, column
+         * and slot lives inside it, so the lines printed here are the slab and whatever the
+         * scene itself allocates outside the World.
          */
         MemoryMonitor::SetLogging(true);
 
@@ -61,11 +71,18 @@ int main()
         Timer timer;
         timer.Start();
 
-        DrawList drawList;
+        /* Scratch memory that lives for one frame. Taken from the OS once, here. */
+        Arena frameArena(kFrameArenaBytes);
+        ArenaResource frameMemory(frameArena);
+
         SDL_Event event;
         while (true)
         {
             Profiler::BeginFrame();
+
+            /* Everything the last frame put in the frame arena is gone from here on. */
+            frameArena.Reset();
+            DrawList drawList(&frameMemory);
             {
                 PROFILE_SCOPE("Events");
                 while (window.NextEvent(event))
@@ -114,6 +131,19 @@ int main()
             << "  live entities       " << snapshot.liveEntities << "\n"
             << "  archetypes now      " << snapshot.archetypeCount
             << " (" << snapshot.emptyArchetypes << " empty)\n";
+
+        const WorldMemoryStats worldMemory = scene.GetWorld().MemoryStats();
+        const ArenaStats frameStats = frameArena.Stats();
+
+        std::cout << "-- Arena Report --\n"
+            << "  world slab          " << worldMemory.arena.capacity << " bytes\n"
+            << "  world used          " << worldMemory.arena.used << " bytes\n"
+            << "  world allocations   " << worldMemory.resource.fromArena
+            << " (" << worldMemory.resource.fromHeap << " fell to the heap)\n"
+            << "  frame slab          " << frameStats.capacity << " bytes\n"
+            << "  frame high water    " << frameStats.highWater << " bytes\n"
+            << "  frame resets        " << frameStats.resets
+            << " (" << frameMemory.Stats().fromHeap << " fell to the heap)\n";
     }
     catch (const std::exception& error)
     {
