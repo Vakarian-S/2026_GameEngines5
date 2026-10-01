@@ -797,17 +797,20 @@ weaker: a counter is one integer add next to work that already costs more.
 every entity, kills one row in twenty every tenth frame and respawns them, and toggles a tag on
 one row in ten every fifth frame. Release, x64.
 
+Means of three runs. Timings move about 8% between runs and a fresh binary's first run is roughly
+25% slower than the mean, so one run is not a measurement. The counters are identical every run.
+
 | entities | Movement avg | Playback avg | migrations/frame | worst Playback | worst frame |
 |---|---|---|---|---|---|
-| 1,000 | 0.001 ms | 0.006 ms | 38 | 0.397 ms | 0.399 ms |
-| 10,000 | 0.008 ms | 0.055 ms | 376 | 0.689 ms | 0.728 ms |
-| 100,000 | 0.097 ms | 0.745 ms | 3,763 | 5.833 ms | 6.344 ms |
+| 1,000 | 0.001 ms | 0.004 ms | 37.9 | 0.065 ms | 0.118 ms |
+| 10,000 | 0.007 ms | 0.043 ms | 376.4 | 0.457 ms | 0.491 ms |
+| 100,000 | 0.074 ms | 0.465 ms | 3,762.9 | 3.835 ms | 4.159 ms |
 
-**Migration costs 0.15 to 0.24 microseconds, and that figure holds at all three scales.** Churn
+**Migration costs 0.114 to 0.124 microseconds, and that figure holds at all three scales.** Churn
 scales linearly. It does not degrade as the world grows.
 
 **The worst frame at 100,000 entities moved 24,000 entities between archetypes and still finished
-in 6.3 ms**, inside a 16.6 ms budget. Extrapolating at 0.2 µs, it would take roughly 83,000
+in 4.2 ms**, inside a 16.6 ms budget. Extrapolating at 0.12 µs, it would take roughly 130,000
 migrations in one frame to miss 60 fps.
 
 That answers the question `docs/ECS.md` section 8 raised about archetype churn. Adding a tag here
@@ -815,12 +818,12 @@ copies a whole row, where a per-component design like EnTT would push into one p
 nothing. The measurement says the row copy is affordable at every scale this engine will see, so
 the archetype layout keeps its iteration speed without paying for it elsewhere.
 
-**Iteration is about 1 nanosecond per entity.** 0.097 ms for 100,000 rows of `Position` and
+**Iteration is under 1 nanosecond per entity.** 0.074 ms for 100,000 rows of `Position` and
 `Velocity`. That is a straight walk through packed memory, bounded by bandwidth rather than by
 instructions, and it is the whole reason for grouping entities by archetype.
 
-**Deferring costs about 2% of the work it defers.** Recording 24,000 commands takes 0.12 ms.
-Applying them takes 5.8 ms. So the command buffer's own overhead is small next to the migrations
+**Deferring costs about 3% of the work it defers.** Recording 24,000 commands takes 0.12 ms.
+Applying them takes 3.8 ms. So the command buffer's own overhead is small next to the migrations
 it batches, which is what justifies recording changes instead of applying them in place.
 
 **Entity slots are reused rather than reallocated.** The 100,000 run created 600,099 entities and
@@ -830,11 +833,15 @@ alive, and no more.
 **Archetypes do not accumulate.** Four archetypes, two of them empty, at every scale, after 3.9
 million migrations. Archetype count stays flat.
 
-**One caveat worth knowing.** `EcsBench` does not compile `MemoryMonitor`, and `GameEngines5`
-does. Spawning one entity with two components takes 0.28 µs in the benchmark and 2.5 µs in the
-engine, so routing every `new` through the monitor's replacement operator costs roughly nine
-times on allocation-heavy work. Numbers from the engine include that tax; numbers from the
-benchmark do not.
+**One caveat worth knowing, and it is not the one you would guess.** `EcsBench` does not compile
+`MemoryMonitor` and `GameEngines5` does, so the monitor looked like it was taxing allocation about
+ninefold. It is not. The same 1000-entity spawn, three runs each with and without the monitor
+compiled in, shows no measurable difference — with roughly 130 allocations in the whole program, a
+header write and a lock cost nothing.
+
+The engine's `OnCreate` row reads 44 ms because `Main.cpp` wraps it in
+`MemoryMonitor::SetLogging(true)`, which prints a colored line per allocation. **That measures the
+console, not the engine.** Turn logging off around anything you intend to time.
 
 ### What it does not do
 

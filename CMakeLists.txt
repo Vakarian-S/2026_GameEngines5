@@ -283,6 +283,18 @@ add_executable(EcsTests
 target_include_directories(EcsTests PRIVATE include)
 ge5_apply_common_settings(EcsTests)
 
+# ============================== ArenaTests ==============================
+#
+# The arena's checks. Two files and no dependencies, so it builds for both platforms.
+
+add_executable(ArenaTests
+        tests/ArenaTests.cpp
+        src/utils/Arena.cpp
+        include/utils/Arena.h
+)
+target_include_directories(ArenaTests PRIVATE include)
+ge5_apply_common_settings(ArenaTests)
+
 
 # ============================== EcsBench ==============================
 #
@@ -312,3 +324,4 @@ ge5_apply_common_settings(EcsBench)
 enable_testing()
 add_test(NAME MemoryMonitorTests COMMAND MemoryMonitorTests)
 add_test(NAME EcsTests COMMAND EcsTests)
+add_test(NAME ArenaTests COMMAND ArenaTests)
