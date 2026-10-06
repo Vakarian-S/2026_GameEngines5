@@ -47,8 +47,8 @@ public:
     /** @return true once the user has asked to close the window */
     bool ShouldClose() const noexcept { return shouldClose; }
 
-    /** @return SDL's handle, which the Vulkan surface will need */
-    SDL_Window* Handle() const noexcept { return window; }
+    /** @return SDL's Window, which the Vulkan surface will need */
+    SDL_Window* GetSDLWindow() const noexcept { return window; }
 
 private:
     SDL_Window* window = nullptr;
