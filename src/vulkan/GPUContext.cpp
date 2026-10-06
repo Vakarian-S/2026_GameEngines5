@@ -325,6 +325,7 @@ bool GPUContext::IsDeviceSuitable(VkPhysicalDevice candidate) const
     if (!indices.IsComplete()) return false;
 
     /*  ============ 2. Does it support the swapchain extension? =========== */
+    /** Check For Extension Support Overall, right now kDeviceExtensions only has swapchain. **/
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extensionCount, nullptr);
 
@@ -333,25 +334,26 @@ bool GPUContext::IsDeviceSuitable(VkPhysicalDevice candidate) const
 
     std::set<std::string> requiredExtensions(kDeviceExtensions.begin(), kDeviceExtensions.end());
 
-    bool supportsSwapchain = false;
+    bool supportsExtensions = false;
     for (const auto& [extensionName, specVersion] : availableExtensions)
     {
         requiredExtensions.erase(extensionName);
         if (requiredExtensions.empty())
         {
-            supportsSwapchain = true;
+            supportsExtensions = true;
             break;
         }
     }
-    if (!supportsSwapchain) return false;
+    if (!supportsExtensions) return false;
 
     /*  ============ 3. Can the surface show anything from it? =========== */
+    const SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(candidate);
+    if (swapChainSupport.formats.empty() || swapChainSupport.presentModes.empty()) return false;
 
     /*  ============ 4. Does it have the features I need?  ===========*/
     VkPhysicalDeviceFeatures2 supportedFeatures{};
     supportedFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     vkGetPhysicalDeviceFeatures2(candidate, &supportedFeatures);
-
     return supportedFeatures.features.samplerAnisotropy == VK_TRUE;
 }
 
@@ -383,6 +385,31 @@ QueueFamilyIndices GPUContext::FindQueueFamilies(const VkPhysicalDevice physical
         if (indices.IsComplete()) break;
     }
     return indices;
+}
+
+SwapChainSupportDetails GPUContext::QuerySwapChainSupport(const VkPhysicalDevice physicalDevice_) const
+{
+    SwapChainSupportDetails details;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice_, surface, &details.capabilities);
+
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface, &formatCount, nullptr);
+
+    if (formatCount != 0)
+    {
+        details.formats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice_, surface, &formatCount, details.formats.data());
+    }
+
+    uint32_t presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface, &presentModeCount, nullptr);
+    if (presentModeCount != 0)
+    {
+        details.presentModes.resize(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice_, surface, &presentModeCount,
+                                                  details.presentModes.data());
+    }
+    return details;
 }
 
 

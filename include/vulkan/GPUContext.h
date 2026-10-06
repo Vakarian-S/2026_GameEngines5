@@ -38,6 +38,25 @@ struct QueueFamilyIndices
     }
 };
 
+/**
+ * A struct containing the details about the supported capabilities of a given Swap Chain
+ */
+struct SwapChainSupportDetails
+{
+    /**
+     * The limits. Minimum and maximum image count, and the allowed image sizes.
+     */
+    VkSurfaceCapabilitiesKHR capabilities;
+    /**
+     * The pixel formats and colour spaces the window can show.
+     */
+    std::vector<VkSurfaceFormatKHR> formats;
+    /**
+     * The ways an image can reach the screen. FIFO waits for the screen's refresh. Mailbox and immediate do not wait.
+     */
+    std::vector<VkPresentModeKHR> presentModes;
+};
+
 
 /**
  * Vulkan GPU Context is represented by a combination of three core objects that separate the application runtime, 
@@ -49,8 +68,6 @@ struct QueueFamilyIndices
 class GPUContext
 {
 public:
-    GPUContext() = default;
-
     /**
      * Create: instance → messenger → surface → pick GPU → logical device.
      */
@@ -74,6 +91,14 @@ public:
     VkQueue GetGraphicsQueue() const { return graphicsQueue; }
     VkQueue GetPresentQueue() const { return presentQueue; }
     QueueFamilyIndices GetQueueFamilyIndices() const { return queueFamilyIndices; }
+
+
+    /**
+     * Queries the supported Swap Chain features from the given physical device
+     * @param physicalDevice_ device to query
+     * @return A struct containing the information of the supported features of the given swapchain.
+     */
+    SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice physicalDevice_) const;
 
 private:
     /** The program's connection to the Vulkan library. Every other object here comes from it. */
@@ -163,5 +188,10 @@ private:
      */
     bool IsDeviceSuitable(VkPhysicalDevice candidate) const;
 
+    /**
+     * Finds the Queue families available on the given GPU
+     * @param physicalDevice_ GPU to check for
+     * @return a struct containing the found information of the queue families.
+     */
     QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice physicalDevice_) const;
 };

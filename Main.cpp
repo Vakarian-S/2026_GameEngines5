@@ -12,6 +12,7 @@
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
 #include "vulkan/GPUContext.h"
+#include "vulkan/Swapchain.h"
 
 /*
  * Where the engine starts.
@@ -56,6 +57,7 @@ int main()
     {
         Window window("GameEngines5", 1280, 720);
         GPUContext gpuContext(window.GetSDLWindow());
+        Swapchain swapchain(gpuContext, window.GetSDLWindow());
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
          * and slot lives inside it, so the lines printed here are the slab and whatever the
