@@ -1,11 +1,26 @@
 #include "vulkan/GPUContext.h"
 
 #include <set>
+#include <SDL3/SDL_video.h>
 #include <SDL3/SDL_vulkan.h>
 #include <utility>
 #include <vector>
 
-void GPUContext::InitializeGPUContext(SDL_Window* sdlWindow)
+/**
+ * Validation Layers that we want in our Vulkan Engine, A layer is code that sits between your program and the driver and inspects every Vulkan call.
+ */
+constexpr std::array<const char*, 1> kValidationLayers = {
+    "VK_LAYER_KHRONOS_validation"
+};
+
+/**
+ * Extensions that our engine uses, in this case SwapChain Extension
+ */
+constexpr std::array<const char*, 1> kDeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
+GPUContext::GPUContext(SDL_Window* sdlWindow)
 {
     const auto debugMessengerConfigInfo = GetDebugMessengerCreateInfo();
     CreateInstance(debugMessengerConfigInfo);
@@ -100,9 +115,9 @@ void GPUContext::CreateDebugMessenger(const VkDebugUtilsMessengerCreateInfoEXT& 
     }
 }
 
-void GPUContext::CreateSurface(SDL_Window* SDLWindow)
+void GPUContext::CreateSurface(SDL_Window* sdlWindow)
 {
-    if (!SDL_Vulkan_CreateSurface(SDLWindow, instance, nullptr, &surface))
+    if (!SDL_Vulkan_CreateSurface(sdlWindow, instance, nullptr, &surface))
     {
         throw std::runtime_error("failed to create window");
     }

@@ -4,8 +4,9 @@
 #include <optional>
 #include <ostream>
 #include <vector>
-#include <SDL3/SDL_video.h>
 #include <vulkan/vulkan.h>
+
+struct SDL_Window;
 
 #ifdef NDEBUG
 /**
@@ -16,32 +17,27 @@ constexpr bool kEnableValidationLayers = false;
 constexpr bool kEnableValidationLayers = true;
 #endif
 
+/**
+ * Which queue families this program uses on a GPU.
+ *
+ * A GPU sorts its queues into families, and every queue in a family can do the same kinds of
+ * work. Vulkan lists the families, and a family is named by its position in that list.
+ */
 struct QueueFamilyIndices
 {
-    /* optional means that it contains no value until it is assigned.
-     has_value() returns false if no value has ever been assigned. */
+    /** Position of a family that can run draw commands. Empty until FindQueueFamilies finds one. */
     std::optional<uint32_t> graphicsFamily;
+
+    /** Position of a family that can present images to the surface. Often the same as graphicsFamily. */
     std::optional<uint32_t> presentFamily;
 
+    /** @return true when both families were found */
     bool IsComplete() const
     {
         return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
 
-/**
- * Validation Layers that we want in our Vulkan Engine, A layer is code that sits between your program and the driver and inspects every Vulkan call.
- */
-constexpr std::array<const char*, 1> kValidationLayers = {
-    "VK_LAYER_KHRONOS_validation"
-};
-
-/**
- * Extensions that our engine uses, in this case SwapChain Extension
- */
-constexpr std::array<const char*, 1> kDeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
-};
 
 /**
  * Vulkan GPU Context is represented by a combination of three core objects that separate the application runtime, 
@@ -58,33 +54,7 @@ public:
     /**
      * Create: instance → messenger → surface → pick GPU → logical device.
      */
-    void InitializeGPUContext(SDL_Window* sdlWindow);
-
-    /**
-     * Creates a VkInstance, the global API connection & layer management
-     */
-    void CreateInstance(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo);
-
-    /**
-     * Creates the Debug Messenger Extension
-     */
-    void CreateDebugMessenger(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo);
-
-    /**
-     * Creates a Vulkan surface with the given SDL window, following that the Vulkan Surface will be the entry point for the screen
-     * @param SDLWindow The SDL window instance to use
-     */
-    void CreateSurface(SDL_Window* SDLWindow);
-
-    /**
-     * Picks the GPU device to be used
-     */
-    void PickPhysicalDevice();
-
-    /**
-     * Creates the VkDevice where the commands will execute.
-     */
-    void CreateLogicalDevice();
+    explicit GPUContext(SDL_Window* sdlWindow);
 
 
     /**
@@ -96,6 +66,14 @@ public:
     GPUContext& operator=(const GPUContext&) = delete;
     GPUContext(GPUContext&&) = delete;
     GPUContext& operator=(GPUContext&&) = delete;
+
+public:
+    VkDevice GetDevice() const { return device; }
+    VkPhysicalDevice GetPhysicalDevice() const { return physicalDevice; }
+    VkSurfaceKHR GetSurface() const { return surface; }
+    VkQueue GetGraphicsQueue() const { return graphicsQueue; }
+    VkQueue GetPresentQueue() const { return presentQueue; }
+    QueueFamilyIndices GetQueueFamilyIndices() const { return queueFamilyIndices; }
 
 private:
     /** The program's connection to the Vulkan library. Every other object here comes from it. */
@@ -113,7 +91,7 @@ private:
     /** The window, as Vulkan sees it. The swapchain presents its images to this. */
     VkSurfaceKHR surface = VK_NULL_HANDLE;
 
-    /** Family Indices of the selected Physical Device **/
+    /** The queue families of the chosen GPU. CreateLogicalDevice opens one queue in each. */
     QueueFamilyIndices queueFamilyIndices;
 
     /** Where draw commands are submitted. Vulkan destroys it together with the device. */
@@ -121,6 +99,32 @@ private:
 
     /** Where finished images are handed over to the window. Often the same queue as graphicsQueue. */
     VkQueue presentQueue = VK_NULL_HANDLE;
+
+    /**
+     * Creates a VkInstance, the global API connection & layer management
+     */
+    void CreateInstance(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo);
+
+    /**
+     * Creates the Debug Messenger Extension
+     */
+    void CreateDebugMessenger(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo);
+
+    /**
+     * Creates a Vulkan surface with the given SDL window, following that the Vulkan Surface will be the entry point for the screen
+     * @param sdlWindow The SDL window instance to use
+     */
+    void CreateSurface(SDL_Window* sdlWindow);
+
+    /**
+     * Picks the GPU device to be used
+     */
+    void PickPhysicalDevice();
+
+    /**
+     * Creates the VkDevice where the commands will execute.
+     */
+    void CreateLogicalDevice();
 
     /**
      * Application-defined debug messenger callback function
