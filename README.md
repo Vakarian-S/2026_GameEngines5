@@ -1045,8 +1045,9 @@ The demo grows its list with `push_back`, so the frame arena's high water is 38,
 12,000 bytes of data. That is the growth waste from point 4 in miniature. The engine's draw list
 reserves once, and its frame arena peaks at 12,000 bytes.
 
-The engine makes 2 calls to `new` while its scene starts: the 262,144 byte slab, and one block of
-about 8 KB that is most likely the scene's own entity list. The World used 109,040 of its slab's
+The engine makes 2 calls to `new` while its scene starts: the 262,144 byte slab, and the scene's
+own entity list, 1000 handles of 8 bytes that the monitor logs as 8039 bytes. A bare
+`std::vector<Entity>` reserving 1000 logs the same number. The World used 109,040 of its slab's
 bytes, and nothing fell to the heap.
 
 `EcsBench` runs each scale on the heap and on the arena. Means of three runs, 100,000 entities:
@@ -1145,8 +1146,8 @@ From the project root in PowerShell:
 .\scripts\run-tests.bat
 ```
 
-This builds the `MemoryMonitorTests` target with CMake and runs it through CTest in Debug and
-Release, for x64 and Win32. It configures a build tree first if there is not one already. CTest
+This builds the `MemoryMonitorTests`, `EcsTests` and `ArenaTests` targets with CMake and runs them
+through CTest in Debug and Release, for x64 and Win32. It configures a build tree first if there is not one already. CTest
 prefixes each line of the program's own output with `1:`.
 
 To run the tests without the script, against a tree that is already configured:
