@@ -29,6 +29,12 @@ public:
     VkFormat GetImageFormat() const { return imageFormat; }
     VkExtent2D GetExtent() const { return extent; }
 
+    /**
+    * Rebuilds the swapchain at the window's current size. Call it after a resize.
+    * @return false when the window has no area, as when minimized. Nothing is rebuilt then
+    */
+    bool Recreate();
+
 private:
     /** Where the device, the surface and the queue families come from. */
     const GPUContext& gpuContext;

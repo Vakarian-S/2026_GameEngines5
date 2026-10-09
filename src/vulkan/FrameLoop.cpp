@@ -20,7 +20,7 @@ FrameLoop::~FrameLoop()
     vkDeviceWaitIdle(device);
 
     /* Each vector has its own length, so each gets its own loop */
-    for (const VkSemaphore semaphore : renderFinishedSemaphores) vkDestroySemaphore(device, semaphore, nullptr);
+    DestroyRenderFinishedSemaphores();
     for (const VkSemaphore semaphore : imageAvailableSemaphores) vkDestroySemaphore(device, semaphore, nullptr);
     for (const VkFence fence : inFlightFences) vkDestroyFence(device, fence, nullptr);
 
@@ -39,20 +39,37 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor)
     - Present the swap chain image
     **/
 
+    /* A stale swapchain is rebuilt before anything else. While minimized, the frame is skipped */
+    if (swapchainNeedsRebuild && !RebuildSwapchain()) return;
+
     if (vkWaitForFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX) != VK_SUCCESS)
     {
         throw std::runtime_error("Failed to wait for fence!");
     }
-    vkResetFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame]);
+
 
     /* Index of the image currently available in our swapchain */
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(gpuContext.GetDevice(), swapchain.GetSwapchain(), UINT64_MAX,
                                             imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+
+    /* The swapchain no longer fits the window. No image was handed out, so nothing is drawn */
+    if (result == VK_ERROR_OUT_OF_DATE_KHR)
+    {
+        swapchainNeedsRebuild = true;
+        return;
+    }
     if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
     {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
+
+    /* Suboptimal still works, so this frame is drawn and the rebuild waits for the next one */
+    if (result == VK_SUBOPTIMAL_KHR) swapchainNeedsRebuild = true;
+
+
+    /* Reset only now. A reset above the early return would leave the fence unsignalled forever */
+    vkResetFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     RecordCommandBuffer(imageIndex, clearColor);
@@ -104,10 +121,15 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor)
     presentInfo.pImageIndices = &imageIndex;
     result = vkQueuePresentKHR(gpuContext.GetPresentQueue(), &presentInfo);
 
-    if (result != VK_SUCCESS)
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+    {
+        swapchainNeedsRebuild = true;
+    }
+    else if (result != VK_SUCCESS)
     {
         throw std::runtime_error("failed to present swap chain image!");
     }
+
     currentFrame = (currentFrame + 1) % kMaxFramesInFlight;
 }
 
@@ -143,7 +165,6 @@ void FrameLoop::CreateSyncObjects()
 {
     assert(imageAvailableSemaphores.empty() && renderFinishedSemaphores.empty() && inFlightFences.empty());
 
-    renderFinishedSemaphores.resize(swapchain.GetImages().size());
     imageAvailableSemaphores.resize(kMaxFramesInFlight);
     inFlightFences.resize(kMaxFramesInFlight);
 
@@ -154,15 +175,7 @@ void FrameLoop::CreateSyncObjects()
     fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
-    for (size_t i = 0; i < swapchain.GetImages().size(); i++)
-    {
-        if (vkCreateSemaphore(gpuContext.GetDevice(), &semaphoreCreateInfo, nullptr, &renderFinishedSemaphores[i]) !=
-            VK_SUCCESS)
-        {
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
-        }
-    }
-
+    CreateRenderFinishedSemaphores();
     for (size_t i = 0; i < kMaxFramesInFlight; i++)
     {
         if (vkCreateSemaphore(gpuContext.GetDevice(), &semaphoreCreateInfo, nullptr, &imageAvailableSemaphores[i]) !=
@@ -240,7 +253,8 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     }
 }
 
-void FrameLoop::TransitionImageLayout(const uint32_t imageIndex, const VkImageLayout oldLayout, const VkImageLayout newLayout,
+void FrameLoop::TransitionImageLayout(const uint32_t imageIndex, const VkImageLayout oldLayout,
+                                      const VkImageLayout newLayout,
                                       const VkAccessFlags2 srcAccessMask, const VkAccessFlags2 dstAccessMask,
                                       const VkPipelineStageFlags2 srcStageMask,
                                       const VkPipelineStageFlags2 dstStageMask) const
@@ -273,4 +287,40 @@ void FrameLoop::TransitionImageLayout(const uint32_t imageIndex, const VkImageLa
         .pImageMemoryBarriers = &barrier
     };
     vkCmdPipelineBarrier2(commandBuffers[currentFrame], &dependencyInfo);
+}
+
+void FrameLoop::CreateRenderFinishedSemaphores()
+{
+    VkSemaphoreCreateInfo semaphoreCreateInfo{};
+    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+    renderFinishedSemaphores.resize(swapchain.GetImages().size());
+    for (VkSemaphore& semaphore : renderFinishedSemaphores)
+    {
+        if (vkCreateSemaphore(gpuContext.GetDevice(), &semaphoreCreateInfo, nullptr, &semaphore) != VK_SUCCESS)
+        {
+            throw std::runtime_error("failed to create a render finished semaphore!");
+        }
+    }
+}
+
+void FrameLoop::DestroyRenderFinishedSemaphores()
+{
+    for (const VkSemaphore semaphore : renderFinishedSemaphores)
+    {
+        vkDestroySemaphore(gpuContext.GetDevice(), semaphore, nullptr);
+    }
+    renderFinishedSemaphores.clear();
+}
+
+bool FrameLoop::RebuildSwapchain()
+{
+    if (!swapchain.Recreate()) return false;
+
+    /* These belong to the images, and the new swapchain may hold a different number of them */
+    DestroyRenderFinishedSemaphores();
+    CreateRenderFinishedSemaphores();
+
+    swapchainNeedsRebuild = false;
+    return true;
 }

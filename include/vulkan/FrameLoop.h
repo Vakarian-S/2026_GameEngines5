@@ -60,6 +60,9 @@ private:
      */
     uint32_t currentFrame = 0;
 
+    /** Set when Vulkan reports that the swapchain no longer fits the window. The next DrawFrame rebuilds it. */
+    bool swapchainNeedsRebuild = false;
+
     /**
      * One list of recorded commands per frame slot. The CPU records into it, and the GPU plays
      * it back after the submit. There are two, because a buffer the GPU is still playing must
@@ -103,6 +106,18 @@ private:
      * each slot returns at once.
      */
     void CreateSyncObjects();
+
+    /** Creates one render finished semaphore per swapchain image. */
+    void CreateRenderFinishedSemaphores();
+
+    /** Destroys every render finished semaphore. */
+    void DestroyRenderFinishedSemaphores();
+
+    /**
+     * Rebuilds the swapchain and the semaphores that belong to its images.
+     * @return false when the window is minimized, so the caller skips the frame
+     */
+    bool RebuildSwapchain();
 
     /**
      * Records this frame's commands into the current slot's command buffer:

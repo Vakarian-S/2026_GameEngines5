@@ -208,3 +208,18 @@ VkExtent2D Swapchain::ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilit
         .height = std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
     };
 }
+
+bool Swapchain::Recreate()
+{
+    /* A minimized window has no area, and Vulkan cannot build a swapchain of size zero */
+    VkSurfaceCapabilitiesKHR capabilities{};
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(gpuContext.GetPhysicalDevice(), gpuContext.GetSurface(), &capabilities);
+    const bool minimized = (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED) != 0;
+    if (minimized || capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0) return false;
+
+    /* The GPU may still be drawing into the old images */
+    vkDeviceWaitIdle(gpuContext.GetDevice());
+    Destroy();
+    Create();
+    return true;
+}
