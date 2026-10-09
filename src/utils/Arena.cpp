@@ -16,13 +16,13 @@ namespace
     std::byte* AlignUp(std::byte* ptr, const std::size_t alignment)
     {
         const std::uintptr_t address = reinterpret_cast<std::uintptr_t>(ptr);
-        const std::uintptr_t aligned = (address + alignment - 1) & ~(static_cast<std::uintptr_t>(alignment) - 1);
+        const std::uintptr_t aligned = address + alignment - 1 & ~(static_cast<std::uintptr_t>(alignment) - 1);
         return reinterpret_cast<std::byte*>(aligned);
     }
 }
 
 Arena::Arena(const std::size_t capacityBytes)
-    : begin(capacityBytes > 0 ? static_cast<std::byte*>(::operator new(capacityBytes)) : nullptr),
+    : begin(capacityBytes > 0 ? static_cast<std::byte*>(operator new(capacityBytes)) : nullptr),
       current(begin),
       end(begin + capacityBytes)
 {
@@ -30,7 +30,7 @@ Arena::Arena(const std::size_t capacityBytes)
 
 Arena::~Arena()
 {
-    ::operator delete(begin);
+    operator delete(begin);
 }
 
 void* Arena::Allocate(const std::size_t size, const std::size_t alignment)

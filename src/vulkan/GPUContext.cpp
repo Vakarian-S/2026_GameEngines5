@@ -127,7 +127,7 @@ void GPUContext::PickPhysicalDevice()
 {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    std::cout << "Found " << deviceCount << " devices" << std::endl;
+    std::cout << "Found " << deviceCount << " devices" << '\n';
     if (deviceCount == 0)
     {
         throw std::runtime_error("Failed to find GPUs with Vulkan support!");
@@ -152,13 +152,13 @@ void GPUContext::PickPhysicalDevice()
         throw std::runtime_error("failed to find a suitable GPU!");
     }
     vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-    std::cout << "Using device: " << physicalDeviceProperties.deviceName << std::endl;
+    std::cout << "Using device: " << physicalDeviceProperties.deviceName << '\n';
 }
 
 void GPUContext::CreateLogicalDevice()
 {
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    const std::set<uint32_t> uniqueQueueFamilies = {
+    const std::set uniqueQueueFamilies = {
         queueFamilyIndices.graphicsFamily.value(), queueFamilyIndices.presentFamily.value()
     };
     constexpr float queuePriority = 1.0f;
@@ -183,8 +183,16 @@ void GPUContext::CreateLogicalDevice()
 
     /* 2 is the latest version */
     VkPhysicalDeviceFeatures2 deviceFeatures{};
+    VkPhysicalDeviceVulkan13Features deviceVulkan13Features{};
     deviceFeatures.features.samplerAnisotropy = VK_TRUE;
     deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+
+
+    // Chain Vulkan 1.3 Features into our already existing device features.
+    deviceVulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+    deviceVulkan13Features.dynamicRendering = VK_TRUE;
+    deviceVulkan13Features.synchronization2 = VK_TRUE;
+    deviceFeatures.pNext = &deviceVulkan13Features;
 
     VkDeviceCreateInfo createInfo{};
     /* sType is a VkStructureType value identifying this structure. */
@@ -314,15 +322,14 @@ VkApplicationInfo GPUContext::GetAppInfo()
     /** must be the highest version of Vulkan that the application is designed to use, encoded as described in Version Numbers.
      * The patch version number specified in apiVersion is ignored when creating an instance object.
      * The variant version of the instance must match that requested in apiVersion.*/
-    appInfo.apiVersion = VK_API_VERSION_1_1;
+    appInfo.apiVersion = VK_API_VERSION_1_3;
     return appInfo;
 }
 
 bool GPUContext::IsDeviceSuitable(VkPhysicalDevice candidate) const
 {
     /* ============ 1. Does it have the queue families I need? =========== */
-    QueueFamilyIndices indices = FindQueueFamilies(candidate);
-    if (!indices.IsComplete()) return false;
+    if (QueueFamilyIndices indices = FindQueueFamilies(candidate); !indices.IsComplete()) return false;
 
     /*  ============ 2. Does it support the swapchain extension? =========== */
     /** Check For Extension Support Overall, right now kDeviceExtensions only has swapchain. **/
@@ -351,10 +358,21 @@ bool GPUContext::IsDeviceSuitable(VkPhysicalDevice candidate) const
     if (swapChainSupport.formats.empty() || swapChainSupport.presentModes.empty()) return false;
 
     /*  ============ 4. Does it have the features I need?  ===========*/
+    /* Features added in Vulkan 1.3 live in their own struct, chained onto the first one */
+    VkPhysicalDeviceVulkan13Features supportedVulkan13Features{};
+    supportedVulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+
     VkPhysicalDeviceFeatures2 supportedFeatures{};
     supportedFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    supportedFeatures.pNext = &supportedVulkan13Features;
+
+    /* One call fills every struct in the chain */
     vkGetPhysicalDeviceFeatures2(candidate, &supportedFeatures);
-    return supportedFeatures.features.samplerAnisotropy == VK_TRUE;
+    return (
+        supportedFeatures.features.samplerAnisotropy == VK_TRUE
+        && supportedVulkan13Features.dynamicRendering == VK_TRUE
+        && supportedVulkan13Features.synchronization2 == VK_TRUE
+    );
 }
 
 QueueFamilyIndices GPUContext::FindQueueFamilies(const VkPhysicalDevice physicalDevice_) const

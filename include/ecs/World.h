@@ -167,7 +167,7 @@ public:
     uint32_t ArchetypeGeneration() const { return archetypeGeneration; }
 
     /** Fills out with every archetype that has all of `all` and none of `none`. */
-    void CollectMatching(ComponentMask all, ComponentMask none, std::vector<Archetype*>& out);
+    void CollectMatching(ComponentMask all, ComponentMask none, std::vector<Archetype*>& out) const;
 
     /** @return the counters for this frame */
     const FrameStats& Stats() const { return frameStats; }

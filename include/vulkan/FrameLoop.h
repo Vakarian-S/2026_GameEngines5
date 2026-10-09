@@ -1,7 +1,144 @@
 ﻿#pragma once
-
+#include "GPUContext.h"
+#include "Swapchain.h"
+/**
+ * Draws one frame per call.
+ *
+ * The constructor sets up the tools: a command pool, one command buffer per frame slot, and the
+ * semaphores and fences that keep the CPU and the GPU in step.
+ *
+ * DrawFrame then runs every pass of the main loop:
+ *   1. Wait for the fence of this frame slot, which the frame from two passes ago signals.
+ *   2. Ask the swapchain for a free image.
+ *   3. Record the commands for this frame into the slot's command buffer.
+ *   4. Submit the command buffer to the graphics queue.
+ *   5. Ask the present queue to show the image.
+ *
+ * Steps 4 and 5 only hand work over. The GPU does it later, in order, while the CPU moves on.
+ */
 class FrameLoop
 {
 public:
-    
+    /**
+     * Creates the command pool, the command buffers and the sync objects.
+     * @param gpuContext_ the device and queues to work with. It must outlive this object
+     * @param swapchain_ the images to draw into. It must outlive this object
+     */
+    FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_);
+
+    /** Waits for the GPU to finish, then destroys the sync objects and the command pool. */
+    ~FrameLoop();
+
+    /**
+     * Draws one frame: clears the next swapchain image to one colour and presents it.
+     * @param clearColor the color of the image is cleared to before anything is drawn
+     */
+    void DrawFrame(const VkClearColorValue& clearColor);
+
+    /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
+    FrameLoop(const FrameLoop&) = delete;
+    FrameLoop& operator=(const FrameLoop&) = delete;
+    FrameLoop(FrameLoop&&) = delete;
+    FrameLoop& operator=(FrameLoop&&) = delete;
+
+private:
+    /** Where the device and the two queues come from. */
+    const GPUContext& gpuContext;
+
+    /** The images this loop draws into and presents. */
+    Swapchain& swapchain;
+
+    /**
+     * The memory that command buffers record into. A buffer reuses this memory every frame, so
+     * recording allocates nothing new. Destroying the pool frees its command buffers.
+     */
+    VkCommandPool commandPool = VK_NULL_HANDLE;
+
+    /**
+     * Which frame slot this pass uses. It picks the command buffer, the fence and the
+     * imageAvailable semaphore. It has no link to the swapchain image index.
+     */
+    uint32_t currentFrame = 0;
+
+    /**
+     * One list of recorded commands per frame slot. The CPU records into it, and the GPU plays
+     * it back after the submit. There are two, because a buffer the GPU is still playing must
+     * not be recorded again.
+     */
+    std::vector<VkCommandBuffer> commandBuffers;
+
+    /**
+     * "The image is free now." One per frame slot.
+     * Signalled by: the acquire, once the screen has let go of the image.
+     * Waited on by: the GPU, before it starts drawing.
+     * Without it, the GPU could draw into an image that is still on screen.
+     */
+    std::vector<VkSemaphore> imageAvailableSemaphores;
+
+    /**
+     * "The drawing is done." One per swapchain image.
+     * Signalled by: the GPU, when it finishes this frame's commands.
+     * Waited on by: the present.
+     * Without it, the screen could show a half-drawn image.
+     */
+    std::vector<VkSemaphore> renderFinishedSemaphores;
+
+    /**
+     * "This slot's commands are finished." One per frame slot.
+     * In flight means submitted to the GPU and not finished yet.
+     * Signalled by: the GPU, when it finishes this frame's commands.
+     * Waited on by: the CPU, at the top of DrawFrame.
+     * Without it, the CPU could record over a command buffer the GPU is still reading.
+     */
+    std::vector<VkFence> inFlightFences;
+
+    /** Creates the command pool for the graphics queue family, with single buffer reset allowed. */
+    void CreateCommandPool();
+
+    /** Allocates one command buffer per frame slot from the pool. */
+    void CreateCommandBuffers();
+
+    /**
+     * Creates the semaphores and the fences. The fences start signalled, so the first wait on
+     * each slot returns at once.
+     */
+    void CreateSyncObjects();
+
+    /**
+     * Records this frame's commands into the current slot's command buffer:
+     *   1. Change the image's layout so the GPU can draw into it.
+     *   2. Begin rendering, which clears the image to clearColor.
+     *   3. End rendering. Draw calls will go between steps 2 and 3.
+     *   4. Change the image's layout so it can be presented.
+     *
+     * @param imageIndex which swapchain image to draw into
+     * @param clearColor the color the image is cleared to
+     */
+    void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor) const;
+
+    /**
+     * Records one layout change for a swapchain image.
+     *
+     * A layout is how the GPU arranges an image's memory for one kind of use. Drawing into an
+     * image and presenting it need different layouts, so the image is switched between them.
+     *
+     * The four masks tell the GPU what to wait for. The src pair names the earlier work that
+     * must finish before the change. The dst pair names the later work that must wait for it.
+     *
+     * @param imageIndex which swapchain image to change
+     * @param oldLayout the layout the image is in now. UNDEFINED means its contents may be thrown away
+     * @param newLayout the layout the image ends up in
+     * @param srcAccessMask how the earlier work touches the image
+     * @param dstAccessMask how the later work touches the image
+     * @param srcStageMask the pipeline stage where the earlier work happens
+     * @param dstStageMask the pipeline stage where the later work happens
+     */
+    void TransitionImageLayout(
+        uint32_t imageIndex,
+        VkImageLayout oldLayout,
+        VkImageLayout newLayout,
+        VkAccessFlags2 srcAccessMask,
+        VkAccessFlags2 dstAccessMask,
+        VkPipelineStageFlags2 srcStageMask,
+        VkPipelineStageFlags2 dstStageMask) const;
 };

@@ -1,7 +1,7 @@
 #include <exception>
 #include <iostream>
+#include <cmath>
 #include <SDL3/SDL.h>
-
 
 #include "core/Timer.h"
 #include "core/Window.h"
@@ -11,6 +11,7 @@
 #include "utils/ArenaResource.h"
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
+#include "vulkan/FrameLoop.h"
 #include "vulkan/GPUContext.h"
 #include "vulkan/Swapchain.h"
 
@@ -58,6 +59,7 @@ int main()
         Window window("GameEngines5", 1280, 720);
         GPUContext gpuContext(window.GetSDLWindow());
         Swapchain swapchain(gpuContext, window.GetSDLWindow());
+        FrameLoop frameLoop(gpuContext, swapchain);
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
          * and slot lives inside it, so the lines printed here are the slab and whatever the
@@ -81,6 +83,7 @@ int main()
         ArenaResource frameMemory(frameArena);
 
         SDL_Event event;
+        float elapsedSeconds = 0.0f;
         while (true)
         {
             Profiler::BeginFrame();
@@ -110,7 +113,13 @@ int main()
                 scene.MakeDrawList(drawList);
             }
 
-            /** Placeholder for Renderer consumption **/
+            {
+                PROFILE_SCOPE("FrameLoop");
+                /* Fades between green and blue, so a frame that stops updating is easy to see */
+                elapsedSeconds += timer.GetDeltaTime();
+                const float pulse = 0.5f + 0.5f * std::sin(elapsedSeconds);
+                frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}});
+            }
 
             {
                 PROFILE_SCOPE("Wait");

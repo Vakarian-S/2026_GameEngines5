@@ -114,7 +114,7 @@ bool World::Locate(const Entity entity, uint16_t& archetype, uint32_t& row) cons
     return true;
 }
 
-void World::CollectMatching(const ComponentMask all, const ComponentMask none, std::vector<Archetype*>& out)
+void World::CollectMatching(const ComponentMask all, const ComponentMask none, std::vector<Archetype*>& out) const
 {
     out.clear();
     for (Archetype* archetype : archetypes)
@@ -161,7 +161,7 @@ WorldMemoryStats World::MemoryStats() const
     return {arena.Stats(), memory.Stats()};
 }
 
-void World::AddComponentById(Entity entity, ComponentId id, const std::byte* value, uint32_t size)
+void World::AddComponentById(const Entity entity, const ComponentId id, const std::byte* value, const uint32_t size)
 {
     assert(id < kMaxComponents);
     if (!DoesEntityExist(entity)) return;
@@ -182,7 +182,7 @@ void World::AddComponentById(Entity entity, ComponentId id, const std::byte* val
     }
 }
 
-void World::RemoveComponentById(Entity entity, ComponentId id)
+void World::RemoveComponentById(const Entity entity, const ComponentId id)
 {
     assert(id < kMaxComponents);
     if (!DoesEntityExist(entity)) return;
@@ -192,7 +192,7 @@ void World::RemoveComponentById(Entity entity, ComponentId id)
     MoveEntity(entity, currentArchetypeMask & ~(ComponentMask{1} << id));
 }
 
-uint16_t World::ArchetypeIndexFor(ComponentMask mask)
+uint16_t World::ArchetypeIndexFor(const ComponentMask mask)
 {
     for (size_t i = 0; i < archetypes.size(); i++)
     {
