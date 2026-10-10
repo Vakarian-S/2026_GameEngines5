@@ -3,6 +3,8 @@
 #include <cassert>
 #include <stdexcept>
 
+#include "vulkan/Pipeline.h"
+
 constexpr uint32_t kMaxFramesInFlight = 2;
 
 FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_) : gpuContext(gpuContext_),
@@ -28,7 +30,7 @@ FrameLoop::~FrameLoop()
     vkDestroyCommandPool(device, commandPool, nullptr);
 }
 
-void FrameLoop::DrawFrame(const VkClearColorValue& clearColor)
+void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -72,7 +74,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor)
     vkResetFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    RecordCommandBuffer(imageIndex, clearColor);
+    RecordCommandBuffer(imageIndex, clearColor, pipeline);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -188,7 +190,8 @@ void FrameLoop::CreateSyncObjects()
     }
 }
 
-void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor) const
+void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
+                                    const Pipeline& pipeline) const
 {
     const VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
     VkCommandBufferBeginInfo beginInfo = {};
@@ -236,6 +239,26 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
         .pColorAttachments = &attachmentInfo
     };
     vkCmdBeginRendering(commandBuffer, &renderingInfo);
+
+    /* From here on, every draw in this command buffer uses the pipeline's settings */
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
+    /* The viewport stretches the picture over the whole swapchain image */
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchain.GetExtent().width);
+    viewport.height = static_cast<float>(swapchain.GetExtent().height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    /* The scissor trims every pixel outside its rectangle. Here it covers the whole image */
+    const VkRect2D scissor{.offset = {.x = 0, .y = 0}, .extent = swapchain.GetExtent()};
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    
+    /* Runs the vertex shader 3 times and draws the triangle once */
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+
     vkCmdEndRendering(commandBuffer);
     /* After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR */
     TransitionImageLayout(

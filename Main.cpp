@@ -13,6 +13,7 @@
 #include "utils/Profiler.h"
 #include "vulkan/FrameLoop.h"
 #include "vulkan/GPUContext.h"
+#include "vulkan/Pipeline.h"
 #include "vulkan/Swapchain.h"
 
 /*
@@ -59,6 +60,8 @@ int main()
         Window window("GameEngines5", 1280, 720);
         GPUContext gpuContext(window.GetSDLWindow());
         Swapchain swapchain(gpuContext, window.GetSDLWindow());
+        Pipeline pipeline(gpuContext, swapchain.GetImageFormat(), "shaders/triangle.vert.spv",
+                          "shaders/triangle.frag.spv");
         FrameLoop frameLoop(gpuContext, swapchain);
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
@@ -118,7 +121,7 @@ int main()
                 /* Fades between green and blue, so a frame that stops updating is easy to see */
                 elapsedSeconds += timer.GetDeltaTime();
                 const float pulse = 0.5f + 0.5f * std::sin(elapsedSeconds);
-                frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}});
+                frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}}, pipeline);
             }
 
             {

@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "GPUContext.h"
 #include "Swapchain.h"
+class Pipeline;
 /**
  * Draws one frame per call.
  *
@@ -30,10 +31,11 @@ public:
     ~FrameLoop();
 
     /**
-     * Draws one frame: clears the next swapchain image to one colour and presents it.
+     * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline and presents it.
      * @param clearColor the color of the image is cleared to before anything is drawn
+     * @param pipeline the settings to draw with
      */
-    void DrawFrame(const VkClearColorValue& clearColor);
+    void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline);
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
     FrameLoop(const FrameLoop&) = delete;
@@ -128,8 +130,9 @@ private:
      *
      * @param imageIndex which swapchain image to draw into
      * @param clearColor the color the image is cleared to
+     * @param pipeline the settings to draw with
      */
-    void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor) const;
+    void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline) const;
 
     /**
      * Records one layout change for a swapchain image.
