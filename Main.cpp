@@ -13,8 +13,11 @@
 #include "utils/Profiler.h"
 #include "vulkan/FrameLoop.h"
 #include "vulkan/GPUContext.h"
+#include "vulkan/TemporaryCommandBuffers.h"
 #include "vulkan/Pipeline.h"
 #include "vulkan/Swapchain.h"
+#include "vulkan/Buffer.h"
+#include "vulkan/Vertex.h"
 
 /*
  * Where the engine starts.
@@ -58,10 +61,48 @@ int main()
     try
     {
         Window window("GameEngines5", 1280, 720);
+        /*
+         * The order of these declarations matters. C++ destroys them in reverse, so FrameLoop goes
+         * first and waits for the GPU. The buffers and the pipeline are destroyed only after that.
+         */
         GPUContext gpuContext(window.GetSDLWindow());
+        TemporaryCommandBuffers temporaryCommandBuffers(gpuContext);
         Swapchain swapchain(gpuContext, window.GetSDLWindow());
         Pipeline pipeline(gpuContext, swapchain.GetImageFormat(), "shaders/triangle.vert.spv",
                           "shaders/triangle.frag.spv");
+
+        /* The eight corners of a cube: a position and a colour each */
+        constexpr Vertex cubeVertices[] = {
+            {.position = MATH::Vec3(-0.5f, -0.5f, 0.5f), .color = MATH::Vec3(1.0, 0.37f, 0.38f)},
+            {.position = MATH::Vec3(0.5f, -0.5f, 0.5f), .color = MATH::Vec3(1.0f, 0.6f, 0.4f)},
+            {.position = MATH::Vec3(0.5f, 0.5f, 0.5f), .color = MATH::Vec3(0.5f, 0.0, 0.5)},
+            {.position = MATH::Vec3(-0.5f, 0.5f, 0.5f), .color = MATH::Vec3(0.18f, 0.11f, 0.41f)},
+            {.position = MATH::Vec3(-0.5f, -0.5f, -0.5f), .color = MATH::Vec3(1.0, 0.37f, 0.38f)},
+            {.position = MATH::Vec3(0.5f, -0.5f, -0.5f), .color = MATH::Vec3(1.0f, 0.6f, 0.4f)},
+            {.position = MATH::Vec3(0.5f, 0.5f, -0.5f), .color = MATH::Vec3(0.5f, 0.0, 0.5)},
+            {.position = MATH::Vec3(-0.5f, 0.5f, -0.5f), .color = MATH::Vec3(0.18f, 0.11f, 0.41f)},
+        };
+        /* Each number is a position in cubeVertices. Every three numbers make one triangle */
+        constexpr uint32_t cubeIndices[] = {
+            /* near face */
+            4, 5, 6, 6, 7, 4,
+            /* far face */
+            0, 2, 1, 0, 3, 2,
+            /* right face */
+            5, 1, 2, 2, 6, 5,
+            /* left face */
+            0, 4, 7, 7, 3, 0,
+            /* top face */
+            0, 1, 5, 5, 4, 0,
+            /* bottom face */
+            3, 7, 6, 6, 2, 3,
+        };
+
+        /* Both arrays are copied into GPU memory once, here. The frame loop only reads them */
+        Buffer cubeVertexBuffer(gpuContext, temporaryCommandBuffers, cubeVertices, sizeof(cubeVertices),
+                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        Buffer indexBuffer(gpuContext, temporaryCommandBuffers, cubeIndices, sizeof(cubeIndices),
+                           VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
         FrameLoop frameLoop(gpuContext, swapchain);
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
@@ -121,7 +162,8 @@ int main()
                 /* Fades between green and blue, so a frame that stops updating is easy to see */
                 elapsedSeconds += timer.GetDeltaTime();
                 const float pulse = 0.5f + 0.5f * std::sin(elapsedSeconds);
-                frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}}, pipeline);
+                frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}}, pipeline, cubeVertexBuffer,
+                                    indexBuffer, std::size(cubeIndices));
             }
 
             {

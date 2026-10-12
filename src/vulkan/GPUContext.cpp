@@ -385,6 +385,7 @@ QueueFamilyIndices GPUContext::FindQueueFamilies(const VkPhysicalDevice physical
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice_, &queueFamilyCount, queueFamilies.data());
 
+    /* queueFlags holds one bit per ability: graphics, compute, transfer. Only the graphics bit is tested here */
     for (uint32_t i = 0; i < queueFamilyCount; ++i)
     {
         if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
@@ -428,6 +429,23 @@ SwapChainSupportDetails GPUContext::QuerySwapChainSupport(const VkPhysicalDevice
                                                   details.presentModes.data());
     }
     return details;
+}
+
+uint32_t GPUContext::FindMemoryType(const uint32_t typeFilter, const VkMemoryPropertyFlags properties) const
+{
+    VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalDeviceMemoryProperties);
+
+    for (uint32_t i = 0; i < physicalDeviceMemoryProperties.memoryTypeCount; i++)
+    {
+        if ((typeFilter & (1 << i)) && (physicalDeviceMemoryProperties.memoryTypes[i].
+                propertyFlags & properties) ==
+            properties)
+        {
+            return i;
+        }
+    }
+    throw std::runtime_error("failed to find suitable memory type!");
 }
 
 

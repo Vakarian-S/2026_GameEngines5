@@ -1,7 +1,9 @@
 ﻿#pragma once
 #include "GPUContext.h"
 #include "Swapchain.h"
+
 class Pipeline;
+class Buffer;
 /**
  * Draws one frame per call.
  *
@@ -34,8 +36,12 @@ public:
      * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline and presents it.
      * @param clearColor the color of the image is cleared to before anything is drawn
      * @param pipeline the settings to draw with
+     * @param vertexBuffer the vertices to draw
+     * @param indexBuffer the corner numbers that pick vertices from vertexBuffer
+     * @param indexCount how many numbers to read from indexBuffer
      */
-    void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline);
+    void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const Buffer& vertexBuffer,
+                   const Buffer& indexBuffer, uint32_t indexCount);
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
     FrameLoop(const FrameLoop&) = delete;
@@ -125,14 +131,19 @@ private:
      * Records this frame's commands into the current slot's command buffer:
      *   1. Change the image's layout so the GPU can draw into it.
      *   2. Begin rendering, which clears the image to clearColor.
-     *   3. End rendering. Draw calls will go between steps 2 and 3.
-     *   4. Change the image's layout so it can be presented.
+     *   3. Bind the pipeline and both buffers, set the viewport and scissor, and draw.
+     *   4. End rendering.
+     *   5. Change the image's layout so it can be presented.
      *
      * @param imageIndex which swapchain image to draw into
      * @param clearColor the color the image is cleared to
      * @param pipeline the settings to draw with
+     * @param vertexBuffer the vertices to draw
+     * @param indexBuffer the corner numbers that pick vertices from vertexBuffer
+     * @param indexCount how many numbers to read from indexBuffer
      */
-    void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline) const;
+    void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline,
+                             const Buffer& vertexBuffer, const Buffer& indexBuffer, uint32_t indexCount) const;
 
     /**
      * Records one layout change for a swapchain image.

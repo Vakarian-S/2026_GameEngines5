@@ -1,4 +1,5 @@
 ﻿#include "vulkan/FrameLoop.h"
+#include "vulkan/Buffer.h"
 
 #include <cassert>
 #include <stdexcept>
@@ -30,7 +31,9 @@ FrameLoop::~FrameLoop()
     vkDestroyCommandPool(device, commandPool, nullptr);
 }
 
-void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline)
+void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const Buffer& vertexBuffer,
+                          const Buffer& indexBuffer, uint32_t
+                          indexCount)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -74,7 +77,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
     vkResetFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    RecordCommandBuffer(imageIndex, clearColor, pipeline);
+    RecordCommandBuffer(imageIndex, clearColor, pipeline, vertexBuffer, indexBuffer, indexCount);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -191,7 +194,8 @@ void FrameLoop::CreateSyncObjects()
 }
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
-                                    const Pipeline& pipeline) const
+                                    const Pipeline& pipeline, const Buffer& vertexBuffer, const Buffer& indexBuffer,
+                                    uint32_t indexCount) const
 {
     const VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
     VkCommandBufferBeginInfo beginInfo = {};
@@ -254,9 +258,17 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     /* The scissor trims every pixel outside its rectangle. Here it covers the whole image */
     const VkRect2D scissor{.offset = {.x = 0, .y = 0}, .extent = swapchain.GetExtent()};
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-    
-    /* Runs the vertex shader 3 times and draws the triangle once */
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+
+    /* The draws that follow read their vertices from this buffer, starting at byte 0 */
+    const VkBuffer vertexBuffers[] = {vertexBuffer.GetBuffer()};
+    constexpr VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+    /* The draws that follow read their corner numbers from this buffer, as 32-bit values */
+    vkCmdBindIndexBuffer(commandBuffer, indexBuffer.GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
+
+    /* Reads indexCount numbers from the index buffer and draws one triangle per three */
+    vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
 
 
     vkCmdEndRendering(commandBuffer);

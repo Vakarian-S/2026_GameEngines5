@@ -23,10 +23,19 @@ public:
     Swapchain(Swapchain&&) = delete;
     Swapchain& operator=(Swapchain&&) = delete;
 
+    /** @return the swapchain handle, which the acquire and present calls take */
     VkSwapchainKHR GetSwapchain() const { return swapChain; }
+
+    /** @return the swapchain's images, in the order that the acquire call numbers them */
     const std::vector<VkImage>& GetImages() const { return images; }
+
+    /** @return one view per swapchain image, in the same order as GetImages */
     const std::vector<VkImageView>& GetImageViews() const { return imageViews; }
+
+    /** @return the pixel format of every swapchain image. A pipeline that draws into them needs it */
     VkFormat GetImageFormat() const { return imageFormat; }
+
+    /** @return the size of every swapchain image in pixels */
     VkExtent2D GetExtent() const { return extent; }
 
     /**
@@ -78,17 +87,17 @@ private:
      * It is also pretty much the standard color space for images, like the textures we’ll use later on.
      * Because of that we should also use an SRGB color format, of which one of the most common ones is vk::Format::eB8G8R8A8Srgb.
      * IF not available we just pick the first one we find.
-     * @param availableFormats 
-     * @return 
+     * @param availableFormats the formats and colour spaces the window can show
+     * @return the SRGB format when the list has it, or else the first format in the list
      */
     static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 
     /**
      * The swap extent is the resolution of the swap chain images,
      * and it’s almost always exactly equal to the resolution of the window that we’re drawing to in pixels
-     * @param capabilities
-     * @param window 
-     * @return 
+     * @param capabilities the smallest and biggest image sizes the surface allows
+     * @param window the window, asked for its size in pixels
+     * @return the window's size in pixels, kept inside the allowed sizes
      */
     static VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, SDL_Window* window);
 };

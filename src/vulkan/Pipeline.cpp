@@ -1,4 +1,5 @@
 ﻿#include "vulkan/Pipeline.h"
+#include "vulkan/Vertex.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -60,9 +61,16 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
      */
 
     /* ============= 1. Vertex Input ============= */
-    /* How the bytes of a vertex buffer are laid out. Empty, because the corners live in the shader */
+    /* How the bytes of a vertex buffer are laid out: the size of one vertex, and where each field sits in it */
+    const VkVertexInputBindingDescription bindingDescription = Vertex::GetVertexInputBindingDescription();
+    const auto attributeDescriptions = Vertex::GetVertexInputAttributeDescription();
+
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     /* ============= 2. Input Assembly ============= */
     /* How vertices join into shapes. Triangle list means every three vertices make one triangle */
@@ -99,7 +107,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     viewportState.pScissors = nullptr;
 
     /* ============= 6. Rasterizer ============= */
-    /* How a triangle becomes pixels. Culling is off so a wrong corner order cannot hide the triangle */
+    /* How a triangle becomes pixels. Back faces are skipped, and clockwise corners mark the front */
     VkPipelineRasterizationStateCreateInfo rasterizerCreateInfo{};
     rasterizerCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     /* depthClampEnable controls whether to clamp the fragment's depth values as described in Depth Test */
@@ -111,9 +119,9 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     /*  is the width of rasterized line segments.*/
     rasterizerCreateInfo.lineWidth = 1.0f;
     /*  is the triangle facing direction used for primitive culling */
-    rasterizerCreateInfo.cullMode = VK_CULL_MODE_NONE;
+    rasterizerCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
     /*  is a VkFrontFace value specifying the front-facing triangle orientation to be used for culling. */
-    rasterizerCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizerCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
     /* controls whether to bias fragment depth values. */
     rasterizerCreateInfo.depthBiasEnable = VK_FALSE;
 

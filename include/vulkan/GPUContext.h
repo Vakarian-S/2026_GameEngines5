@@ -85,11 +85,22 @@ public:
     GPUContext& operator=(GPUContext&&) = delete;
 
 public:
+    /** @return the program's session on the chosen GPU. Almost every Vulkan call takes it */
     VkDevice GetDevice() const { return device; }
+
+    /** @return the chosen GPU itself, used to ask what the GPU supports */
     VkPhysicalDevice GetPhysicalDevice() const { return physicalDevice; }
+
+    /** @return the window, as Vulkan sees it */
     VkSurfaceKHR GetSurface() const { return surface; }
+
+    /** @return the queue that draw commands and copy commands are submitted to */
     VkQueue GetGraphicsQueue() const { return graphicsQueue; }
+
+    /** @return the queue that hands finished images to the window */
     VkQueue GetPresentQueue() const { return presentQueue; }
+
+    /** @return the positions of the graphics and present queue families on the chosen GPU */
     QueueFamilyIndices GetQueueFamilyIndices() const { return queueFamilyIndices; }
 
 
@@ -99,6 +110,14 @@ public:
      * @return A struct containing the information of the supported features of the given swapchain.
      */
     SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice physicalDevice_) const;
+
+    /**
+     * Picks which kind of GPU memory a buffer or image gets. A GPU offers a short list of memory types.
+     * @param typeFilter the memory types the buffer or image allows, one bit per type
+     * @param properties what the memory must offer, such as host visible or device local
+     * @return the position of the first memory type that passes both tests. Throws when none does
+     */
+    uint32_t FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
 
 private:
     /** The program's connection to the Vulkan library. Every other object here comes from it. */
