@@ -1,15 +1,17 @@
 ﻿#include "vulkan/FrameLoop.h"
 #include "vulkan/Buffer.h"
-
-#include <cassert>
-#include <stdexcept>
-
 #include "vulkan/Pipeline.h"
 
-constexpr uint32_t kMaxFramesInFlight = 2;
+#include <cassert>
+#include <span>
+#include <stdexcept>
 
-FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_) : gpuContext(gpuContext_),
-                                                                             swapchain(swapchain_)
+
+
+FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_) :
+    gpuContext(gpuContext_),
+    swapchain(swapchain_),
+    descriptors(descriptors_)
 {
     CreateCommandPool();
     CreateCommandBuffers();
@@ -33,7 +35,7 @@ FrameLoop::~FrameLoop()
 
 void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const Buffer& vertexBuffer,
                           const Buffer& indexBuffer, uint32_t
-                          indexCount)
+                          indexCount, std::span<const MATH::Matrix4> modelMatrices, const CameraStruct& camera)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -44,6 +46,9 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
     - Present the swap chain image
     **/
 
+    /* ============= 1. Wait For This Slot ============= */
+    /* Rebuilds a stale swapchain, then waits until the GPU has finished this slot's last frame */
+
     /* A stale swapchain is rebuilt before anything else. While minimized, the frame is skipped */
     if (swapchainNeedsRebuild && !RebuildSwapchain()) return;
 
@@ -52,6 +57,12 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
         throw std::runtime_error("Failed to wait for fence!");
     }
 
+    /* ============= 2. Write The Camera ============= */
+    /* The fence above proves the GPU finished this slot's last frame, so its camera buffer is free to overwrite */
+    descriptors.WriteCamera(currentFrame, camera);
+
+    /* ============= 3. Acquire An Image ============= */
+    /* Asks the swapchain for an image to draw into, and handles a swapchain that no longer fits the window */
 
     /* Index of the image currently available in our swapchain */
     uint32_t imageIndex;
@@ -72,13 +83,17 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
     /* Suboptimal still works, so this frame is drawn and the rebuild waits for the next one */
     if (result == VK_SUBOPTIMAL_KHR) swapchainNeedsRebuild = true;
 
+    /* ============= 4. Record ============= */
+    /* Clears this slot's fence and command buffer, then records this frame's commands into it */
 
     /* Reset only now. A reset above the early return would leave the fence unsignalled forever */
     vkResetFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    RecordCommandBuffer(imageIndex, clearColor, pipeline, vertexBuffer, indexBuffer, indexCount);
+    RecordCommandBuffer(imageIndex, clearColor, pipeline, vertexBuffer, indexBuffer, indexCount, modelMatrices);
 
+    /* ============= 5. Submit ============= */
+    /* Hands the commands to the graphics queue. The GPU waits for the image, then signals when drawing is done */
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
@@ -108,6 +123,8 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
         throw std::runtime_error("failed to submit draw command buffer!");
     }
 
+    /* ============= 6. Present ============= */
+    /* Asks the present queue to show the image once drawing is done, then moves on to the next frame slot */
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
@@ -195,8 +212,10 @@ void FrameLoop::CreateSyncObjects()
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
                                     const Pipeline& pipeline, const Buffer& vertexBuffer, const Buffer& indexBuffer,
-                                    uint32_t indexCount) const
+                                    uint32_t indexCount, std::span<const MATH::Matrix4> modelMatrices) const
 {
+    /* ============= 1. Begin Recording ============= */
+    /* Opens this slot's command buffer. Every vkCmd call below adds to it */
     const VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
     VkCommandBufferBeginInfo beginInfo = {};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -205,17 +224,42 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
         throw std::runtime_error("failed to begin recording command buffer!");
     }
 
-    // Before starting rendering, transition the swapchain image to vk::ImageLayout::eColorAttachmentOptimal
+    /* ============= 2. Prepare The Images ============= */
+    /* Moves the colour image and the depth image into the layouts that drawing needs */
+
+    /*
+     * The swapchain image becomes something to draw into. Its old contents are thrown away, so
+     * there is no earlier work to wait for
+     */
     TransitionImageLayout(
-        imageIndex,
+        swapchain.GetImages()[imageIndex],
+        VK_IMAGE_ASPECT_COLOR_BIT,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        {}, // srcAccessMask (no need to wait for previous operations)
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, // dstAccessMask
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, // srcStage
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT // dstStage
+        {},
+        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
     );
-    // We set up the color attachment:
+    /*
+     * The depth image is cleared every frame, so its old contents may be thrown away. The masks wait
+     * for the previous frame's depth tests, because both frames share this one image
+     */
+    TransitionImageLayout(
+        swapchain.GetDepthImage(),
+        VK_IMAGE_ASPECT_DEPTH_BIT,
+        VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+    );
+
+    /* ============= 3. Begin Rendering ============= */
+    /* Names the two images drawn into, clears both, and starts drawing */
+
+    /* The colour attachment. It is cleared to clearColor and kept afterwards, because the screen shows it */
     VkRenderingAttachmentInfo attachmentInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
         .pNext = nullptr,
@@ -230,6 +274,17 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
         .clearValue = {.color = clearColor},
     };
 
+    /* The depth attachment. Clearing to 1.0 means "as far as possible", so every real pixel is nearer */
+    const VkRenderingAttachmentInfo depthAttachmentInfo = {
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+        .pNext = nullptr,
+        .imageView = swapchain.GetDepthImageView(),
+        .imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        /* Nothing reads the depth after the frame, so the GPU need not keep it */
+        .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .clearValue = {.depthStencil = {.depth = 1.0f, .stencil = 0}},
+    };
     const VkRenderingInfo renderingInfo = {
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .pNext = nullptr,
@@ -240,15 +295,25 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
         /* colorAttachmentCount is the number of elements in pColorAttachments. */
         .colorAttachmentCount = 1,
         /* pColorAttachments is a pointer to an array of colorAttachmentCount VkRenderingAttachmentInfo structures describing any color attachments used. */
-        .pColorAttachments = &attachmentInfo
+        .pColorAttachments = &attachmentInfo,
+        /* pDepthAttachment is a pointer to a VkRenderingAttachmentInfo structure describing a depth attachment. */
+        .pDepthAttachment = &depthAttachmentInfo
     };
     vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
+    /* ============= 4. Bind State ============= */
+    /* Sets everything the draws share: pipeline, camera set, viewport, scissor, vertices and indices */
+
     /* From here on, every draw in this command buffer uses the pipeline's settings */
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
+    
+    /* Points the shader's set 0 at this slot's camera buffer. The draws that follow read their camera there */
+    const VkDescriptorSet descriptorSet = descriptors.GetSet(currentFrame);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 0, 1,
+                            &descriptorSet, 0, nullptr);
     /* The viewport stretches the picture over the whole swapchain image */
     VkViewport viewport{};
-    viewport.x = 0.0f;
+    viewport.x = 0.0f; 
     viewport.y = 0.0f;
     viewport.width = static_cast<float>(swapchain.GetExtent().width);
     viewport.height = static_cast<float>(swapchain.GetExtent().height);
@@ -267,20 +332,31 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     /* The draws that follow read their corner numbers from this buffer, as 32-bit values */
     vkCmdBindIndexBuffer(commandBuffer, indexBuffer.GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
 
-    /* Reads indexCount numbers from the index buffer and draws one triangle per three */
-    vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
+    /* ============= 5. Draw ============= */
+    /* One push and one draw per object. Every object uses the same vertices with its own model matrix */
+    for (uint32_t i = 0; i < modelMatrices.size(); i++)
+    {
+        ModelMatrixPushConstant modelMatrixPushConst;
+        modelMatrixPushConst.modelMatrix = modelMatrices[i];
+        vkCmdPushConstants(commandBuffer, pipeline.GetLayout(),
+                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ModelMatrixPushConstant), &modelMatrixPushConst);
+        vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
+    }
 
-
+    /* ============= 6. Finish ============= */
+    /* Ends drawing, readies the colour image for the screen, and closes the command buffer */
     vkCmdEndRendering(commandBuffer);
-    /* After rendering, transition the swapchain image to vk::ImageLayout::ePresentSrcKHR */
+
+    /* The finished colour image becomes something the screen can show. Nothing after this frame waits on it */
     TransitionImageLayout(
-        imageIndex,
+        swapchain.GetImages()[imageIndex],
+        VK_IMAGE_ASPECT_COLOR_BIT,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        {}, // dstAccessMask
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, // srcStage
-        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT // dstStage
+        {},
+        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
     );
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
     {
@@ -288,9 +364,10 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     }
 }
 
-void FrameLoop::TransitionImageLayout(const uint32_t imageIndex, const VkImageLayout oldLayout,
-                                      const VkImageLayout newLayout,
-                                      const VkAccessFlags2 srcAccessMask, const VkAccessFlags2 dstAccessMask,
+void FrameLoop::TransitionImageLayout(VkImage image, VkImageAspectFlags aspectMask,
+                                      const VkImageLayout oldLayout,
+                                      const VkImageLayout newLayout, const VkAccessFlags2 srcAccessMask,
+                                      const VkAccessFlags2 dstAccessMask,
                                       const VkPipelineStageFlags2 srcStageMask,
                                       const VkPipelineStageFlags2 dstStageMask) const
 {
@@ -305,9 +382,9 @@ void FrameLoop::TransitionImageLayout(const uint32_t imageIndex, const VkImageLa
         .newLayout = newLayout,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = swapchain.GetImages()[static_cast<int>(imageIndex)],
+        .image = image,
         .subresourceRange = {
-            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .aspectMask = aspectMask,
             .baseMipLevel = 0,
             .levelCount = 1,
             .baseArrayLayer = 0,

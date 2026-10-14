@@ -9,27 +9,21 @@ layout (location = 1) in vec3 inColor;
 /* Goes to the fragment shader. The GPU blends the three corner values across the triangle. */
 layout (location = 0) out vec3 fragColor;
 
-/* TEMPORARY: fixed turn angles, so three faces of the cube show. The camera replaces them */
-const float angleY = radians(35.0);
-const float angleX = radians(25.0);
+
+/* One object's model matrix, set by vkCmdPushConstants before each draw */
+layout (push_constant) uniform PushConstants {
+    mat4 modelMatrix;
+} pushConstants;
+
+/* The camera’s view and projection matrices, read from the uniform buffer bound at set 0, binding 0 */
+layout (set = 0, binding = 0) uniform Camera {
+    mat4 view;
+    mat4 projection;
+} camera;
+
 
 void main()
 {
-    vec3 position = inPosition;
-
-/* Turn around the Y axis: x and z change, y stays */
-    position = vec3(
-    position.x * cos(angleY) + position.z * sin(angleY),
-    position.y,
-    -position.x * sin(angleY) + position.z * cos(angleY));
-
-/* Turn around the X axis: y and z change, x stays */
-    position = vec3(
-    position.x,
-    position.y * cos(angleX) - position.z * sin(angleX),
-    position.y * sin(angleX) + position.z * cos(angleX));
-
-/* Vulkan keeps only depth from 0 to 1, so move z from the -1 to 1 range into it */
-    gl_Position = vec4(position.x, position.y, position.z * 0.5 + 0.5, 1.0);
+    gl_Position = camera.projection * camera.view * pushConstants.modelMatrix * vec4(inPosition, 1.0);
     fragColor = inColor;
 }

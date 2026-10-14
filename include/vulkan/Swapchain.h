@@ -38,6 +38,16 @@ public:
     /** @return the size of every swapchain image in pixels */
     VkExtent2D GetExtent() const { return extent; }
 
+    /** @return the depth image, which the layout change at the start of each frame takes */
+    VkImage GetDepthImage() const { return depthImage; }
+
+    /** @return the view of the depth image, which the depth attachment takes */
+    VkImageView GetDepthImageView() const { return depthImageView; }
+
+    /** @return the depth format. The pipeline needs it, so it must match */
+    VkFormat GetDepthFormat() const { return depthFormat; }
+
+
     /**
     * Rebuilds the swapchain at the window's current size. Call it after a resize.
     * @return false when the window has no area, as when minimized. Nothing is rebuilt then
@@ -66,10 +76,24 @@ private:
     /** The size of every image in pixels. */
     VkExtent2D extent{};
 
-    /** Builds the swapchain and its image views from the window's current size. */
+
+    /* ========== Depth ========== */
+    /* Dev Note: We have depth logic in here for convenience, since we can rebuild depth at the same time the swapchain
+     * does, but now the "Swapchain" class owns something not related to the swapchain, this is a code smell
+     * TODO: if this class gets another non swapchain feature, we have to migrate said feature and depth out of here crumbums */
+    /** The depth image: one depth per pixel. Older APIs call it a "depth buffer", but in Vulkan it is a VkImage. */
+    VkImage depthImage = VK_NULL_HANDLE;
+    /** The view of the depth image. The depth attachment targets the view, never the image directly. */
+    VkImageView depthImageView = VK_NULL_HANDLE;
+    /** The memory behind the depth image. The swapchain's own images need none, because Vulkan allocates those. */
+    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+    /** The format of the depth image. */
+    VkFormat depthFormat = VK_FORMAT_UNDEFINED;
+
+    /** Builds the swapchain, its image views and the depth image from the window's current size. */
     void Create();
 
-    /** Destroys the image views and the swapchain. Create can run again afterwards. */
+    /** Destroys the image views, the swapchain and the depth image. Create can run again afterwards. */
     void Destroy();
 
 

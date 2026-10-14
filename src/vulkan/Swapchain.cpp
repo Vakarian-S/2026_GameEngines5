@@ -148,6 +148,70 @@ void Swapchain::Create()
 
     std::cout << "Swapchain: " << imageCount << " images, format " << imageFormat << ", "
         << extent.width << "x" << extent.height << std::endl;
+
+    /* Then the depth image, its memory and its view, using extent. */
+    depthFormat = VK_FORMAT_D32_SFLOAT;
+    /* Format features answer "can this GPU do this with this format?". Here: use it as a depth attachment */
+    VkFormatProperties physicalProperties;
+    vkGetPhysicalDeviceFormatProperties(gpuContext.GetPhysicalDevice(), depthFormat, &physicalProperties);
+    if (!(physicalProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))
+    {
+        throw std::runtime_error("depth format not supported!");
+    }
+
+    VkImageCreateInfo imageCreateInfo{};
+    imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCreateInfo.imageType = VK_IMAGE_TYPE_2D;
+    imageCreateInfo.format = depthFormat;
+    /* The same size as the colour images. The third number is 1 because the image is flat */
+    imageCreateInfo.extent = {.width = extent.width, .height = extent.height, .depth = 1};
+    imageCreateInfo.mipLevels = 1;
+    imageCreateInfo.arrayLayers = 1;
+    imageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    /* Optimal tiling lets the GPU arrange the pixels in whatever order is fastest for it */
+    imageCreateInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+    /* usage says what the image is for. Here the GPU tests and writes depth in it */
+    imageCreateInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    if (vkCreateImage(gpuContext.GetDevice(), &imageCreateInfo, nullptr, &depthImage) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create the depth image!");
+    }
+
+    /* Memory is similar to the one we use in Buffer, but its image version */
+    VkMemoryRequirements memoryRequirements;
+    vkGetImageMemoryRequirements(gpuContext.GetDevice(), depthImage, &memoryRequirements);
+    VkMemoryAllocateInfo memoryAllocateInfo{};
+    memoryAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    memoryAllocateInfo.allocationSize = memoryRequirements.size;
+    memoryAllocateInfo.memoryTypeIndex = gpuContext.FindMemoryType(memoryRequirements.memoryTypeBits,
+                                                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    if (vkAllocateMemory(gpuContext.GetDevice(), &memoryAllocateInfo, nullptr, &depthImageMemory) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to allocate the depth image memory!");
+    }
+    if (vkBindImageMemory(gpuContext.GetDevice(), depthImage, depthImageMemory, 0) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to bind the depth image memory!");
+    }
+    
+    /* Same as the color views */
+    VkImageViewCreateInfo imageViewCreateInfo{};
+    imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    imageViewCreateInfo.image = depthImage;
+    imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    imageViewCreateInfo.format = depthFormat;
+    imageViewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
+    imageViewCreateInfo.subresourceRange.levelCount = 1;
+    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
+    imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+    if (vkCreateImageView(gpuContext.GetDevice(), &imageViewCreateInfo, nullptr, &depthImageView) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to create a depth image view!");
+    }
 }
 
 void Swapchain::Destroy()
@@ -164,6 +228,22 @@ void Swapchain::Destroy()
     {
         vkDestroySwapchainKHR(gpuContext.GetDevice(), swapChain, nullptr);
         swapChain = VK_NULL_HANDLE;
+    }
+
+    if (depthImageView != VK_NULL_HANDLE)
+    {
+        vkDestroyImageView(gpuContext.GetDevice(), depthImageView, nullptr);
+        depthImageView = VK_NULL_HANDLE;
+    }
+    if (depthImage != VK_NULL_HANDLE)
+    {
+        vkDestroyImage(gpuContext.GetDevice(), depthImage, nullptr);
+        depthImage = VK_NULL_HANDLE;
+    }
+    if (depthImageMemory != VK_NULL_HANDLE)
+    {
+        vkFreeMemory(gpuContext.GetDevice(), depthImageMemory, nullptr);
+        depthImageMemory = VK_NULL_HANDLE;
     }
 }
 

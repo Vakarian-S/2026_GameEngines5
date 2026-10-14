@@ -7,8 +7,10 @@
 #include "core/Paths.h"
 
 
-Pipeline::Pipeline(const GPUContext& gpuContext_, const VkFormat colorFormat_, const std::string& vertFile,
-                   const std::string& fragFile_) : gpuContext(gpuContext_), colorFormat(colorFormat_)
+Pipeline::Pipeline(const GPUContext& gpuContext_, const VkFormat colorFormat_, VkFormat depthFormat_,
+                   const std::string& vertFile,
+                   const std::string& fragFile_, VkDescriptorSetLayout descriptorSetLayout_) : gpuContext(gpuContext_),
+    colorFormat(colorFormat_), depthFormat(depthFormat_), descriptorSetLayout(descriptorSetLayout_)
 {
     CreatePipelineLayout();
     CreateGraphicsPipeline(vertFile, fragFile_);
@@ -144,7 +146,23 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
 
-    /* ============= 9. Color Blend ============= */
+    /* ============= 9. Depth Test ============= */
+    /* Keeps a pixel only when it is nearer than the one already stored, then stores its depth */
+    VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo{};
+    depthStencilCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    /* depthTestEnable controls whether a new pixel is compared with the stored depth */
+    depthStencilCreateInfo.depthTestEnable = VK_TRUE;
+    /* depthWriteEnable controls whether a pixel that passes replaces the stored depth */
+    depthStencilCreateInfo.depthWriteEnable = VK_TRUE;
+    /* depthCompareOp is the comparison. LESS keeps the pixel with the smaller depth, which is the nearer one */
+    depthStencilCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+    /* depthBoundsTestEnable would also throw away pixels outside a chosen depth range */
+    depthStencilCreateInfo.depthBoundsTestEnable = VK_FALSE;
+    /* The depth format has no stencil part, so there is nothing to test */
+    depthStencilCreateInfo.stencilTestEnable = VK_FALSE;
+
+
+    /* ============= 10. Color Blend ============= */
     /* The new color replaces the old one in the image. All four channels are written */
     VkPipelineColorBlendAttachmentState colorBlendAttachment{};
     /* is a bitmask of VkColorComponentFlagBits specifying which of the R, G, B, and/or A components are enabled for writing */
@@ -163,7 +181,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     colorBlending.blendConstants[2] = 0.0f;
     colorBlending.blendConstants[3] = 0.0f;
 
-    /* ============= 10. Output Image ============= */
+    /* ============= 11. Output Image ============= */
     /* The format of the image drawn into. This struct takes the place of a render pass */
     VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo{};
     pipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
@@ -171,6 +189,8 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     pipelineRenderingCreateInfo.colorAttachmentCount = 1;
     /* is a pointer to an array of VkFormat values defining the format of color attachments used in this pipeline.*/
     pipelineRenderingCreateInfo.pColorAttachmentFormats = &colorFormat;
+    /* is a VkFormat value defining the format of the depth attachment used in this pipeline. */
+    pipelineRenderingCreateInfo.depthAttachmentFormat = depthFormat;
 
     /* ============= Dynamic State ============= */
     /* Not a pipeline step. It lists the settings left out of the pipeline, which FrameLoop sets each frame */
@@ -204,6 +224,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     pipelineCreateInfo.pViewportState = &viewportState;
     pipelineCreateInfo.pRasterizationState = &rasterizerCreateInfo;
     pipelineCreateInfo.pMultisampleState = &multisamplingCreateInfo;
+    pipelineCreateInfo.pDepthStencilState = &depthStencilCreateInfo;
     pipelineCreateInfo.pColorBlendState = &colorBlending;
     pipelineCreateInfo.pDynamicState = &dynamicStateCreateInfo;
 
@@ -223,8 +244,19 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
 
 void Pipeline::CreatePipelineLayout()
 {
+    /* The push constant: one model matrix, read by the vertex shader */
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(ModelMatrixPushConstant);
+
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    /* The descriptor sets: set 0 holds the camera */
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     if (vkCreatePipelineLayout(gpuContext.GetDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout)
         != VK_SUCCESS)
     {

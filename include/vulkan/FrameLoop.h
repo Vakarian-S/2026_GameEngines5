@@ -1,9 +1,14 @@
 ﻿#pragma once
+#include <span>
+
+#include "Descriptors.h"
 #include "GPUContext.h"
+#include "Matrix.h"
 #include "Swapchain.h"
 
 class Pipeline;
 class Buffer;
+class Descriptors;
 /**
  * Draws one frame per call.
  *
@@ -23,25 +28,29 @@ class FrameLoop
 {
 public:
     /**
-     * Creates the command pool, the command buffers and the sync objects.
-     * @param gpuContext_ the device and queues to work with. It must outlive this object
-     * @param swapchain_ the images to draw into. It must outlive this object
+     * Creates the command pool, the command buffers, and the sync objects.
+     * @param gpuContext_ The device and queues to work with. It must outlive this object
+     * @param swapchain_ The images to draw into. It must outlive this object
+     * @param descriptors_ The camera sets and buffers, one per frame slot. It must outlive this object
      */
-    FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_);
+    FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_);
 
     /** Waits for the GPU to finish, then destroys the sync objects and the command pool. */
     ~FrameLoop();
 
     /**
-     * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline and presents it.
-     * @param clearColor the color of the image is cleared to before anything is drawn
+     * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline, and presents it.
+     * @param clearColor the colour of the image is cleared to before anything is drawn
      * @param pipeline the settings to draw with
      * @param vertexBuffer the vertices to draw
      * @param indexBuffer the corner numbers that pick vertices from vertexBuffer
      * @param indexCount how many numbers to read from indexBuffer
+     * @param modelMatrices One model matrix per object. Each one is pushed before its own draw
+     * @param camera the view and projection for this frame, copied into this slot's camera buffer
      */
     void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const Buffer& vertexBuffer,
-                   const Buffer& indexBuffer, uint32_t indexCount);
+                   const Buffer& indexBuffer, uint32_t indexCount, std::span<const MATH::Matrix4> modelMatrices,
+                   const CameraStruct& camera);
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
     FrameLoop(const FrameLoop&) = delete;
@@ -56,6 +65,9 @@ private:
     /** The images this loop draws into and presents. */
     Swapchain& swapchain;
 
+    /** The camera sets and buffers. DrawFrame writes this slot's camera and binds this slot's set. */
+    const Descriptors& descriptors;
+
     /**
      * The memory that command buffers record into. A buffer reuses this memory every frame, so
      * recording allocates nothing new. Destroying the pool frees its command buffers.
@@ -63,7 +75,7 @@ private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
     /**
-     * Which frame slot this pass uses. It picks the command buffer, the fence and the
+     * Which frame slot this pass uses. It picks the command buffer, the fence, and the
      * imageAvailable semaphore. It has no link to the swapchain image index.
      */
     uint32_t currentFrame = 0;
@@ -141,12 +153,14 @@ private:
      * @param vertexBuffer the vertices to draw
      * @param indexBuffer the corner numbers that pick vertices from vertexBuffer
      * @param indexCount how many numbers to read from indexBuffer
+     * @param modelMatrices One model matrix per object. Each one is pushed before its own draw
      */
     void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline,
-                             const Buffer& vertexBuffer, const Buffer& indexBuffer, uint32_t indexCount) const;
+                             const Buffer& vertexBuffer, const Buffer& indexBuffer, uint32_t indexCount,
+                             std::span<const MATH::Matrix4> modelMatrices) const;
 
     /**
-     * Records one layout change for a swapchain image.
+     * Records one layout change for one image.
      *
      * A layout is how the GPU arranges an image's memory for one kind of use. Drawing into an
      * image and presenting it need different layouts, so the image is switched between them.
@@ -154,7 +168,8 @@ private:
      * The four masks tell the GPU what to wait for. The src pair names the earlier work that
      * must finish before the change. The dst pair names the later work that must wait for it.
      *
-     * @param imageIndex which swapchain image to change
+     * @param image The image to change. A swapchain image or the depth image
+     * @param aspectMask which part of the image changes: VK_IMAGE_ASPECT_COLOR_BIT or VK_IMAGE_ASPECT_DEPTH_BIT
      * @param oldLayout the layout the image is in now. UNDEFINED means its contents may be thrown away
      * @param newLayout the layout the image ends up in
      * @param srcAccessMask how the earlier work touches the image
@@ -163,11 +178,11 @@ private:
      * @param dstStageMask the pipeline stage where the later work happens
      */
     void TransitionImageLayout(
-        uint32_t imageIndex,
+        VkImage image,
+        VkImageAspectFlags aspectMask,
         VkImageLayout oldLayout,
         VkImageLayout newLayout,
         VkAccessFlags2 srcAccessMask,
         VkAccessFlags2 dstAccessMask,
-        VkPipelineStageFlags2 srcStageMask,
-        VkPipelineStageFlags2 dstStageMask) const;
+        VkPipelineStageFlags2 srcStageMask, VkPipelineStageFlags2 dstStageMask) const;
 };

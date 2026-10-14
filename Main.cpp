@@ -3,6 +3,7 @@
 #include <cmath>
 #include <SDL3/SDL.h>
 
+#include "MMath.h"
 #include "core/Timer.h"
 #include "core/Window.h"
 #include "core/Scene.h"
@@ -17,6 +18,7 @@
 #include "vulkan/Pipeline.h"
 #include "vulkan/Swapchain.h"
 #include "vulkan/Buffer.h"
+#include "vulkan/Descriptors.h"
 #include "vulkan/Vertex.h"
 
 /*
@@ -63,13 +65,15 @@ int main()
         Window window("GameEngines5", 1280, 720);
         /*
          * The order of these declarations matters. C++ destroys them in reverse, so FrameLoop goes
-         * first and waits for the GPU. The buffers and the pipeline are destroyed only after that.
+         * first and waits for the GPU. The descriptors, buffers and the pipeline are destroyed only after that.
          */
         GPUContext gpuContext(window.GetSDLWindow());
+        Descriptors descriptors(gpuContext);
         TemporaryCommandBuffers temporaryCommandBuffers(gpuContext);
         Swapchain swapchain(gpuContext, window.GetSDLWindow());
-        Pipeline pipeline(gpuContext, swapchain.GetImageFormat(), "shaders/triangle.vert.spv",
-                          "shaders/triangle.frag.spv");
+        Pipeline pipeline(gpuContext, swapchain.GetImageFormat(), swapchain.GetDepthFormat(),
+                          "shaders/triangle.vert.spv",
+                          "shaders/triangle.frag.spv", descriptors.GetLayout());
 
         /* The eight corners of a cube: a position and a colour each */
         constexpr Vertex cubeVertices[] = {
@@ -103,7 +107,7 @@ int main()
                                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
         Buffer indexBuffer(gpuContext, temporaryCommandBuffers, cubeIndices, sizeof(cubeIndices),
                            VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-        FrameLoop frameLoop(gpuContext, swapchain);
+        FrameLoop frameLoop(gpuContext, swapchain, descriptors);
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
          * and slot lives inside it, so the lines printed here are the slab and whatever the
@@ -162,8 +166,27 @@ int main()
                 /* Fades between green and blue, so a frame that stops updating is easy to see */
                 elapsedSeconds += timer.GetDeltaTime();
                 const float pulse = 0.5f + 0.5f * std::sin(elapsedSeconds);
+                /* Width over height, read every frame, so a resize keeps the cubes' proportions */
+                float aspect = static_cast<float>(swapchain.GetExtent().width) / static_cast<float>(swapchain.
+                    GetExtent().
+                    height);
+                /** CameraStruct is temporary **/
+                CameraStruct cameraStruct{
+                    .view = MMath::lookAt(MATH::Vec3{0, 0, 3}, MATH::Vec3{0, 0, 0}, MATH::Vec3{0, 1, 0}),
+                    .projection = MMath::PerspectiveVulkan(45.0f, aspect, 0.1f, 100.0f)
+                };
+                /* Element 5 is the Y scale. The math library assumes +Y is up, and Vulkan's +Y points down the screen */
+                cameraStruct.projection[5] *= -1.0f;
+                /* TEMPORARY: two cubes. The second orbits the first, so it passes behind it and tests depth */
+                Matrix4 modelMatrices[] = {
+                    MATH::MMath::rotate(fmod(elapsedSeconds * 35.0f, 360.f), MATH::Vec3(0.0f, 1.0f, 0.f)),
+                    MATH::MMath::rotate(fmod(elapsedSeconds * 55.0f, 360.f), MATH::Vec3(0.0f, 1.0f, 0.f)) *
+                    MMath::translate(0.0f, 0.0f, -2.0f)
+                };
+                std::span<const Matrix4> modelMatricesSpan = modelMatrices;
                 frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}}, pipeline, cubeVertexBuffer,
-                                    indexBuffer, std::size(cubeIndices));
+                                    indexBuffer, std::size(cubeIndices),
+                                    modelMatricesSpan, cameraStruct);
             }
 
             {

@@ -17,6 +17,8 @@ constexpr bool kEnableValidationLayers = false;
 constexpr bool kEnableValidationLayers = true;
 #endif
 
+constexpr uint32_t kMaxFramesInFlight = 2;
+
 /**
  * Which queue families this program uses on a GPU.
  *

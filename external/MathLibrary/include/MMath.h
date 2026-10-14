@@ -64,7 +64,7 @@ namespace  MATH {
 		/// depth to 0.0 .. 1.0 instead, so with the OpenGL version everything in the near
 		/// half of the frustum is thrown away and half the depth buffer's
 		/// precision is wasted.
-		inline Matrix4 PerspectiveVulkan(float fovy_, float aspect_, float zNear_, float zFar_) {
+		static Matrix4 PerspectiveVulkan(float fovy_, float aspect_, float zNear_, float zFar_) {
 			float cot = 1.0f / tan(fovy_ * 0.5f * DEGREES_TO_RADIANS);
 			return Matrix4(
 				cot / aspect_, 0.0f, 0.0f, 0.0f,
