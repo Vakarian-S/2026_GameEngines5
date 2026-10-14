@@ -7,13 +7,13 @@
 #include "core/Paths.h"
 
 
-Pipeline::Pipeline(const GPUContext& gpuContext_, const VkFormat colorFormat_, VkFormat depthFormat_,
-                   const std::string& vertFile,
-                   const std::string& fragFile_, VkDescriptorSetLayout descriptorSetLayout_) : gpuContext(gpuContext_),
-    colorFormat(colorFormat_), depthFormat(depthFormat_), descriptorSetLayout(descriptorSetLayout_)
+Pipeline::Pipeline(const GPUContext& gpuContext_, const VkFormat colorFormat_, const VkFormat depthFormat_,
+                   const std::string& vertFile_,
+                   const std::string& fragFile_, const std::span<const VkDescriptorSetLayout> descriptorSetLayouts_) :
+    gpuContext(gpuContext_), colorFormat(colorFormat_), depthFormat(depthFormat_)
 {
-    CreatePipelineLayout();
-    CreateGraphicsPipeline(vertFile, fragFile_);
+    CreatePipelineLayout(descriptorSetLayouts_);
+    CreateGraphicsPipeline(vertFile_, fragFile_);
 }
 
 Pipeline::~Pipeline()
@@ -242,7 +242,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     vkDestroyShaderModule(gpuContext.GetDevice(), fragShaderModule, nullptr);
 }
 
-void Pipeline::CreatePipelineLayout()
+void Pipeline::CreatePipelineLayout(const std::span<const VkDescriptorSetLayout> descriptorSetLayouts)
 {
     /* The push constant: one model matrix, read by the vertex shader */
     VkPushConstantRange pushConstantRange{};
@@ -254,9 +254,9 @@ void Pipeline::CreatePipelineLayout()
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
     pipelineLayoutInfo.pushConstantRangeCount = 1;
-    /* The descriptor sets: set 0 holds the camera */
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    /* The descriptor sets. Entry i describes set i */
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
+    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
     if (vkCreatePipelineLayout(gpuContext.GetDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout)
         != VK_SUCCESS)
     {

@@ -71,9 +71,11 @@ int main()
         Descriptors descriptors(gpuContext);
         TemporaryCommandBuffers temporaryCommandBuffers(gpuContext);
         Swapchain swapchain(gpuContext, window.GetSDLWindow());
+        /* Entry i describes set i of the shaders. Today there is only set 0, the camera */
+        const VkDescriptorSetLayout descriptorSetLayouts[] = {descriptors.GetLayout()};
         Pipeline pipeline(gpuContext, swapchain.GetImageFormat(), swapchain.GetDepthFormat(),
                           "shaders/triangle.vert.spv",
-                          "shaders/triangle.frag.spv", descriptors.GetLayout());
+                          "shaders/triangle.frag.spv", descriptorSetLayouts);
 
         /* The eight corners of a cube: a position and a colour each */
         constexpr Vertex cubeVertices[] = {

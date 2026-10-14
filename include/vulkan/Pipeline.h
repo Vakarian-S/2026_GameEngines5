@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <span>
 #include <string>
 #include <vector>
 #include <vulkan/vulkan_core.h>
@@ -29,11 +30,11 @@ public:
      * @param depthFormat_ the format of the depth image the pipeline tests against, taken from the swapchain
      * @param vertFile_ the compiled vertex shader, as a path next to the executable
      * @param fragFile_ the compiled fragment shader, as a path next to the executable
-     * @param descriptorSetLayout_ the shape of set 0, which the shaders read the camera through
+     * @param descriptorSetLayouts_ The shape of every set the shaders read. Entry i describes set i
      */
     explicit Pipeline(const GPUContext& gpuContext_, VkFormat colorFormat_, VkFormat depthFormat_,
                       const std::string& vertFile_,
-                      const std::string& fragFile_, VkDescriptorSetLayout descriptorSetLayout_);
+                      const std::string& fragFile_, std::span<const VkDescriptorSetLayout> descriptorSetLayouts_);
     /** Destroys the pipeline, then the pipeline layout. */
     ~Pipeline();
 
@@ -61,9 +62,6 @@ private:
     /** The format of the depth image the pipeline tests against. It must match the swapchain's depth format. */
     VkFormat depthFormat = VK_FORMAT_UNDEFINED;
 
-    /** The shape of set 0. The pipeline layout stores it, so the shaders know what set 0 holds. */
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-
     /**
      * Reads a whole file into memory.
      * @param filename a path next to the executable, such as "shaders/triangle.vert.spv"
@@ -84,6 +82,9 @@ private:
      */
     void CreateGraphicsPipeline(const std::string& vertFile, const std::string& fragFile);
 
-    /** Creates the pipeline layout: one descriptor set layout and one push constant range, both for the vertex shader. */
-    void CreatePipelineLayout();
+    /**
+    * Creates the pipeline layout: the set layouts, and one push constant range for the vertex shader.
+    * @param descriptorSetLayouts The shape of every set the shaders read. Entry i describes set i
+    */
+    void CreatePipelineLayout(std::span<const VkDescriptorSetLayout> descriptorSetLayouts);
 };

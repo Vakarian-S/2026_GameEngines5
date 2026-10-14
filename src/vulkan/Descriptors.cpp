@@ -8,7 +8,7 @@ Descriptors::Descriptors(const GPUContext& gpuContext_) : gpuContext(gpuContext_
     CreateLayout();
     CreateDescriptorPool();
     CreateDescriptorSets();
-    CreateCameraBuffers();
+    CreateUniformBuffers();
     PointSetsAtBuffers();
 }
 
@@ -21,27 +21,31 @@ Descriptors::~Descriptors()
 
 void Descriptors::WriteCamera(const uint32_t frameSlot, const CameraStruct& camera) const
 {
-    cameraBuffers[frameSlot]->Write(&camera, sizeof(CameraStruct));
+    uniformBuffers[kCameraBinding][frameSlot]->Write(&camera, sizeof(CameraStruct));
 }
 
 /* ============= 1. Set Layout ============= */
 /* The shape of a set. It says what sits at each binding number, and holds no data */
 void Descriptors::CreateLayout()
 {
-    VkDescriptorSetLayoutBinding cameraBinding{};
-    /* binding is the number the shader uses: layout (set = 0, binding = 0) */
-    cameraBinding.binding = 0;
-    /* descriptorType is the kind of thing the descriptor points at */
-    cameraBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    /* descriptorCount is more than 1 only when the shader declares an array at this binding */
-    cameraBinding.descriptorCount = 1;
-    /* stageFlags lists the shader stages that may read this binding */
-    cameraBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    /* One layout binding per row of kUniformBindings. Row i becomes binding i */
+    std::array<VkDescriptorSetLayoutBinding, kUniformBindings.size()> layoutBindings{};
+    for (uint32_t binding = 0; binding < kUniformBindings.size(); ++binding)
+    {
+        /* binding is the number the shader uses: layout (set = 0, binding = N) */
+        layoutBindings[binding].binding = binding;
+        /* descriptorType is the kind of thing the descriptor points at */
+        layoutBindings[binding].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        /* descriptorCount is more than 1 only when the shader declares an array at this binding */
+        layoutBindings[binding].descriptorCount = 1;
+        /* stageFlags lists the shader stages that may read this binding */
+        layoutBindings[binding].stageFlags = kUniformBindings[binding].stages;
+    }
 
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
     descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descriptorSetLayoutCreateInfo.bindingCount = 1;
-    descriptorSetLayoutCreateInfo.pBindings = &cameraBinding;
+    descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    descriptorSetLayoutCreateInfo.pBindings = layoutBindings.data();
 
     if (vkCreateDescriptorSetLayout(gpuContext.GetDevice(), &descriptorSetLayoutCreateInfo, nullptr,
                                     &descriptorSetLayout) != VK_SUCCESS)
@@ -56,8 +60,8 @@ void Descriptors::CreateDescriptorPool()
 {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    /* Every set holds one uniform buffer descriptor, and there is one set per frame slot */
-    poolSize.descriptorCount = kMaxFramesInFlight;
+    /* Every set holds one uniform buffer descriptor per binding, and there is one set per frame slot */
+    poolSize.descriptorCount = static_cast<uint32_t>(kUniformBindings.size()) * kMaxFramesInFlight;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -94,38 +98,49 @@ void Descriptors::CreateDescriptorSets()
 
 /* ============= 4. Buffers ============= */
 /* The data itself. The CPU writes these every frame, so they use memory the CPU can reach */
-void Descriptors::CreateCameraBuffers()
+void Descriptors::CreateUniformBuffers()
 {
-    for (std::unique_ptr<Buffer>& cameraBuffer : cameraBuffers)
+    for (uint32_t binding = 0; binding < kUniformBindings.size(); ++binding)
     {
-        cameraBuffer = std::make_unique<Buffer>(gpuContext, sizeof(CameraStruct), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                                                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        for (std::unique_ptr<Buffer>& uniformBuffer : uniformBuffers[binding])
+        {
+            uniformBuffer = std::make_unique<Buffer>(gpuContext, kUniformBindings[binding].size,
+                                                     VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        }
     }
 }
 
 /* ============= 5. Buffer Info And Write ============= */
-/* Fills each set once: binding 0 of set i points at camera buffer i. The sets never change after this */
+/* Fills each set once: binding N of set i points at binding N's buffer for slot i. The sets never change after this */
 void Descriptors::PointSetsAtBuffers() const
 {
-    for (uint32_t i = 0; i < kMaxFramesInFlight; ++i)
+    for (uint32_t frameSlot = 0; frameSlot < kMaxFramesInFlight; ++frameSlot)
     {
-        /* Which buffer, and which bytes of it, the descriptor points at */
-        VkDescriptorBufferInfo bufferInfo{};
-        bufferInfo.buffer = cameraBuffers[i]->GetBuffer();
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(CameraStruct);
+        /* The writes point into bufferInfos, so both arrays must live until vkUpdateDescriptorSets returns */
+        std::array<VkDescriptorBufferInfo, kUniformBindings.size()> bufferInfos{};
+        std::array<VkWriteDescriptorSet, kUniformBindings.size()> descriptorWrites{};
 
-        /* Which set and which binding receive that pointer */
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = descriptorSets[i];
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pBufferInfo = &bufferInfo;
+        for (uint32_t binding = 0; binding < kUniformBindings.size(); ++binding)
+        {
+            /* Which buffer, and which bytes of it, the descriptor points at */
+            bufferInfos[binding].buffer = uniformBuffers[binding][frameSlot]->GetBuffer();
+            bufferInfos[binding].offset = 0;
+            bufferInfos[binding].range = kUniformBindings[binding].size;
 
-        vkUpdateDescriptorSets(gpuContext.GetDevice(), 1, &descriptorWrite, 0, nullptr);
+            /* Which set and which binding receive that pointer */
+            descriptorWrites[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            descriptorWrites[binding].dstSet = descriptorSets[frameSlot];
+            descriptorWrites[binding].dstBinding = binding;
+            descriptorWrites[binding].dstArrayElement = 0;
+            descriptorWrites[binding].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+            descriptorWrites[binding].descriptorCount = 1;
+            descriptorWrites[binding].pBufferInfo = &bufferInfos[binding];
+        }
+
+        /* One call fills every binding of this slot's set */
+        vkUpdateDescriptorSets(gpuContext.GetDevice(), static_cast<uint32_t>(descriptorWrites.size()),
+                               descriptorWrites.data(), 0, nullptr);
     }
 }

@@ -26,7 +26,7 @@ class Descriptors
 {
 public:
     /**
-     * Creates the set layout, the pool, the sets, and the camera buffers.
+     * Creates the set layout, the pool, the sets, and the uniform buffers.
      * @param gpuContext_ the device to build on. It must outlive this object
      */
     explicit Descriptors(const GPUContext& gpuContext_);
@@ -45,7 +45,7 @@ public:
 
     /**
     * @param frameSlot which frame slot is being recorded
-    * @return the set that points at that slot's camera buffer, which vkCmdBindDescriptorSets takes
+    * @return the set that points at that slot's uniform buffer, which vkCmdBindDescriptorSets takes
     */
     VkDescriptorSet GetSet(const uint32_t frameSlot) const { return descriptorSets[frameSlot]; }
 
@@ -57,33 +57,53 @@ public:
     void WriteCamera(uint32_t frameSlot, const CameraStruct& camera) const;
 
 private:
+    /** What one uniform buffer binding holds. */
+    struct UniformBinding
+    {
+        /** The size in bytes of the struct the shader reads at this binding. */
+        VkDeviceSize size;
+        /** The shader stages that read this binding. */
+        VkShaderStageFlags stages;
+    };
+
+    /**
+     * Every uniform buffer binding in the set. Row i is binding i, so a row's position is the binding
+     * number the shader uses. To add a binding, add a row here and a Write function for it.
+     */
+    static constexpr std::array<UniformBinding, 1> kUniformBindings{{
+        {.size = sizeof(CameraStruct), .stages = VK_SHADER_STAGE_VERTEX_BIT},
+    }};
+
+    /** The row of the camera in kUniformBindings, which is also its binding number. */
+    static constexpr uint32_t kCameraBinding = 0;
+
     /** Where the device comes from. */
     const GPUContext& gpuContext;
 
-    /** The shape of a set: binding 0 is one uniform buffer, read by the vertex shader. It holds no data. */
+    /** The shape of a set: one uniform buffer per row of kUniformBindings. It holds no data. */
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
 
     /** The memory that the sets are allocated from. Destroying it frees them. */
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
 
-    /** One set per frame slot. A set holds pointers, not data: set i points at cameraBuffers[i]. */
+    /** One set per frame slot. A set holds pointers, not data: set i points at frame slot i's buffers. */
     std::array<VkDescriptorSet, kMaxFramesInFlight> descriptorSets{};
 
-    /** One camera buffer per frame slot, in memory the CPU can write. */
-    std::array<std::unique_ptr<Buffer>, kMaxFramesInFlight> cameraBuffers;
+    /** One buffer per binding per frame slot, in memory the CPU can write: uniformBuffers[binding][frameSlot]. */
+    std::array<std::array<std::unique_ptr<Buffer>, kMaxFramesInFlight>, kUniformBindings.size()> uniformBuffers;
 
     /** Creates the set layout. It describes a set and holds no data. */
     void CreateLayout();
 
-    /** Creates the pool, with room for one set and one uniform buffer descriptor per frame slot. */
+    /** Creates the pool, with room for one set per frame slot and one descriptor per binding in each set. */
     void CreateDescriptorPool();
 
     /** Allocates one set per frame slot from the pool. The sets point at nothing yet. */
     void CreateDescriptorSets();
 
-    /** Creates one camera buffer per frame slot. */
-    void CreateCameraBuffers();
+    /** Creates one buffer per binding per frame slot. */
+    void CreateUniformBuffers();
 
-    /** Points set i at camera buffer i. CreateDescriptorSets and CreateCameraBuffers must run first. */
+    /** Points each set's bindings at that slot's buffers. CreateDescriptorSets and CreateUniformBuffers must run first. */
     void PointSetsAtBuffers() const;
 };
