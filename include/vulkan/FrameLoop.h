@@ -4,6 +4,7 @@
 #include "Descriptors.h"
 #include "GPUContext.h"
 #include "Matrix.h"
+#include "ResourceStore.h"
 #include "Swapchain.h"
 
 class Pipeline;
@@ -42,15 +43,12 @@ public:
      * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline, and presents it.
      * @param clearColor the colour of the image is cleared to before anything is drawn
      * @param pipeline the settings to draw with
-     * @param vertexBuffer the vertices to draw
-     * @param indexBuffer the corner numbers that pick vertices from vertexBuffer
-     * @param indexCount how many numbers to read from indexBuffer
-     * @param modelMatrices One model matrix per object. Each one is pushed before its own draw
+     * @param resourceStore where the meshes named in drawList live
+     * @param drawList what to draw: one mesh and one model matrix per item
      * @param camera the view and projection for this frame, copied into this slot's camera buffer
      */
-    void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const Buffer& vertexBuffer,
-                   const Buffer& indexBuffer, uint32_t indexCount, std::span<const MATH::Matrix4> modelMatrices,
-                   const CameraStruct& camera);
+    void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const ResourceStore& resourceStore,
+                   const DrawList& drawList, const CameraUniform& camera);
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
     FrameLoop(const FrameLoop&) = delete;
@@ -150,14 +148,11 @@ private:
      * @param imageIndex which swapchain image to draw into
      * @param clearColor the color the image is cleared to
      * @param pipeline the settings to draw with
-     * @param vertexBuffer the vertices to draw
-     * @param indexBuffer the corner numbers that pick vertices from vertexBuffer
-     * @param indexCount how many numbers to read from indexBuffer
-     * @param modelMatrices One model matrix per object. Each one is pushed before its own draw
+     * @param resourceStore where the meshes named in drawList live
+     * @param drawList what to draw: one mesh and one model matrix per item
      */
     void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline,
-                             const Buffer& vertexBuffer, const Buffer& indexBuffer, uint32_t indexCount,
-                             std::span<const MATH::Matrix4> modelMatrices) const;
+                             const ResourceStore& resourceStore, const DrawList& drawList) const;
 
     /**
      * Records one layout change for one image.

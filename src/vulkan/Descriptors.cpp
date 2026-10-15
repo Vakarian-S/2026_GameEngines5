@@ -19,9 +19,9 @@ Descriptors::~Descriptors()
     vkDestroyDescriptorSetLayout(gpuContext.GetDevice(), descriptorSetLayout, nullptr);
 }
 
-void Descriptors::WriteCamera(const uint32_t frameSlot, const CameraStruct& camera) const
+void Descriptors::WriteCamera(const uint32_t frameSlot, const CameraUniform& camera) const
 {
-    uniformBuffers[kCameraBinding][frameSlot]->Write(&camera, sizeof(CameraStruct));
+    uniformBuffers[kCameraBinding][frameSlot]->Write(&camera, sizeof(CameraUniform));
 }
 
 /* ============= 1. Set Layout ============= */

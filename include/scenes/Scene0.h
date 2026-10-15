@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "core/Camera.h"
 #include "core/Scene.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/Query.h"
@@ -7,7 +8,10 @@
 class Scene0 : public Scene
 {
 public:
-    Scene0();
+    /**
+    * @param cubeMesh_ The mesh every entity is drawn with. The renderer's store created it
+    */
+    explicit Scene0(MeshHandle cubeMesh_);
     ~Scene0() override = default;
 
     void HandleEvents(const SDL_Event& sdlEvent) override;
@@ -19,10 +23,17 @@ public:
     /** @return this scene's world, so Main can read its counters */
     const World& GetWorld() const { return world; }
 
+    /** @return the camera this scene is seen through */
+    const Camera& GetCamera() const override { return camera; }
+
 private:
     World world;
     CommandBuffer commandBuffer;
     Query movers;
+    /** Where the scene is seen from. It looks at the centre of the grid from far enough back to see all of it */
+    Camera camera;
+    /** The mesh every entity is drawn with */
+    MeshHandle cubeMesh;
 
     /** Every entity this scene spawned, in spawn order */
     std::vector<Entity> entities;
@@ -31,8 +42,14 @@ private:
     /** True while the first entities carry the Hit tag */
     bool hitOn = false;
 
-    /** Entities OnCreate spawns */
-    static constexpr uint32_t kEntityCount = 1000;
+    /** Entities along each side of the grid OnCreate spawns */
+    static constexpr uint32_t kGridSide = 10;
+    /** Entities OnCreate spawns: one per grid cell */
+    static constexpr uint32_t kEntityCount = kGridSide * kGridSide * kGridSide;
+    /** Metres between neighbouring entities in the grid */
+    static constexpr float kGridSpacing = 2.0f;
+    /** Half the width of the box entities move in. Past one wall, an entity comes back in through the other */
+    static constexpr float kBoxHalfWidth = 10.0f;
     /** Bytes in the world's slab. This scene's four archetypes use about 110,000. */
     static constexpr std::size_t kWorldArenaBytes = 256 * 1024;
     /** Entities each damage frame tags or untags */

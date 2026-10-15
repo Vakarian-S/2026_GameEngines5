@@ -145,10 +145,6 @@ void Swapchain::Create()
             throw std::runtime_error("failed to create a swapchain image view!");
         }
     }
-
-    std::cout << "Swapchain: " << imageCount << " images, format " << imageFormat << ", "
-        << extent.width << "x" << extent.height << std::endl;
-
     /* Then the depth image, its memory and its view, using extent. */
     depthFormat = VK_FORMAT_D32_SFLOAT;
     /* Format features answer "can this GPU do this with this format?". Here: use it as a depth attachment */

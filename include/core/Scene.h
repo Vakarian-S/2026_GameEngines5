@@ -1,18 +1,36 @@
 ﻿#pragma once
 
+#include <cstdint>
 #include <memory_resource>
 #include <vector>
 
+#include "Matrix.h"
+
+struct Camera;
 union SDL_Event;
 
-/** One thing to draw. A placeholder holding a position, until a renderer asks for more. */
+
+/**
+ * A handle for a single mesh in the store
+ */
+struct MeshHandle
+{
+    uint32_t index;
+};
+
+/** One thing to draw: which mesh, and where it sits in the world. */
 struct DrawItem
 {
-    float x, y, z;
+    MeshHandle mesh;
+    MATH::Matrix4 transform;
 };
+
+/* 4 bytes of handle and 16 floats of matrix. The frame arena in Main.cpp is sized from this */
+static_assert(sizeof(DrawItem) == 68);
 
 /** Everything to draw this frame. The caller picks the memory, so a frame arena can stand behind it. */
 using DrawList = std::pmr::vector<DrawItem>;
+
 
 class Scene
 {
@@ -43,7 +61,7 @@ public:
     virtual void OnDestroy() = 0;
 
     /**
-     * Function that qmakes the list of all components to be rendered to be passed to the renderer
+     * Function that makes the list of all components to be rendered to be passed to the renderer
      * @param drawList reference to the list where the elements to be rendered will be stored
      */
     virtual void MakeDrawList(DrawList& drawList) = 0;
@@ -53,4 +71,9 @@ public:
      * @param sdlEvent Event recognized by SDL
      */
     virtual void HandleEvents(const SDL_Event& sdlEvent) = 0;
+
+    /**
+    * @return The game camera corresponding to this scene
+    */
+    virtual const Camera& GetCamera() const = 0;
 };

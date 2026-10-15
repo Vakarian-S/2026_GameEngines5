@@ -3,9 +3,11 @@
 #include "vulkan/Pipeline.h"
 
 #include <cassert>
+#include <cstdint>
 #include <span>
 #include <stdexcept>
 
+#include "utils/Profiler.h"
 
 
 FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_) :
@@ -33,9 +35,9 @@ FrameLoop::~FrameLoop()
     vkDestroyCommandPool(device, commandPool, nullptr);
 }
 
-void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const Buffer& vertexBuffer,
-                          const Buffer& indexBuffer, uint32_t
-                          indexCount, std::span<const MATH::Matrix4> modelMatrices, const CameraStruct& camera)
+
+void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline,
+                          const ResourceStore& resourceStore, const DrawList& drawList, const CameraUniform& camera)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -90,7 +92,11 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
     vkResetFences(gpuContext.GetDevice(), 1, &inFlightFences[currentFrame]);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    RecordCommandBuffer(imageIndex, clearColor, pipeline, vertexBuffer, indexBuffer, indexCount, modelMatrices);
+    {
+        /* Times the CPU side of recording: one push and one draw per item. The GPU's work is not in here */
+        PROFILE_SCOPE("Record");
+        RecordCommandBuffer(imageIndex, clearColor, pipeline, resourceStore, drawList);
+    }
 
     /* ============= 5. Submit ============= */
     /* Hands the commands to the graphics queue. The GPU waits for the image, then signals when drawing is done */
@@ -211,8 +217,8 @@ void FrameLoop::CreateSyncObjects()
 }
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
-                                    const Pipeline& pipeline, const Buffer& vertexBuffer, const Buffer& indexBuffer,
-                                    uint32_t indexCount, std::span<const MATH::Matrix4> modelMatrices) const
+                                    const Pipeline& pipeline, const ResourceStore& resourceStore,
+                                    const DrawList& drawList) const
 {
     /* ============= 1. Begin Recording ============= */
     /* Opens this slot's command buffer. Every vkCmd call below adds to it */
@@ -306,14 +312,14 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
 
     /* From here on, every draw in this command buffer uses the pipeline's settings */
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
-    
+
     /* Points the shader's set 0 at this slot's camera buffer. The draws that follow read their camera there */
     const VkDescriptorSet descriptorSet = descriptors.GetSet(currentFrame);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 0, 1,
                             &descriptorSet, 0, nullptr);
     /* The viewport stretches the picture over the whole swapchain image */
     VkViewport viewport{};
-    viewport.x = 0.0f; 
+    viewport.x = 0.0f;
     viewport.y = 0.0f;
     viewport.width = static_cast<float>(swapchain.GetExtent().width);
     viewport.height = static_cast<float>(swapchain.GetExtent().height);
@@ -324,23 +330,29 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     const VkRect2D scissor{.offset = {.x = 0, .y = 0}, .extent = swapchain.GetExtent()};
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    /* The draws that follow read their vertices from this buffer, starting at byte 0 */
-    const VkBuffer vertexBuffers[] = {vertexBuffer.GetBuffer()};
-    constexpr VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-    /* The draws that follow read their corner numbers from this buffer, as 32-bit values */
-    vkCmdBindIndexBuffer(commandBuffer, indexBuffer.GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
     /* ============= 5. Draw ============= */
-    /* One push and one draw per object. Every object uses the same vertices with its own model matrix */
-    for (uint32_t i = 0; i < modelMatrices.size(); i++)
+    /* One push and one draw per item. The mesh's buffers are bound again only when the mesh changes */
+
+    /* No mesh is bound yet. No handle has this index, so the first item always binds */
+    uint32_t boundMesh = UINT32_MAX;
+    for (const DrawItem& item : drawList)
     {
-        ModelMatrixPushConstant modelMatrixPushConst;
-        modelMatrixPushConst.modelMatrix = modelMatrices[i];
-        vkCmdPushConstants(commandBuffer, pipeline.GetLayout(),
-                           VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ModelMatrixPushConstant), &modelMatrixPushConst);
-        vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0);
+        const Mesh& mesh = resourceStore.GetMesh(item.mesh);
+        if (item.mesh.index != boundMesh)
+        {
+            /* The draws that follow read their vertices from this buffer, starting at byte 0 */
+            const VkBuffer vertexBuffers[] = {mesh.vertexBuffer.GetBuffer()};
+            constexpr VkDeviceSize offsets[] = {0};
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+            /* The draws that follow read their corner numbers from this buffer, as 32-bit values */
+            vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
+            boundMesh = item.mesh.index;
+        }
+
+        const ModelMatrixPushConstant pushConstant{.modelMatrix = item.transform};
+        vkCmdPushConstants(commandBuffer, pipeline.GetLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
+                           sizeof(ModelMatrixPushConstant), &pushConstant);
+        vkCmdDrawIndexed(commandBuffer, mesh.indexCount, 1, 0, 0, 0);
     }
 
     /* ============= 6. Finish ============= */

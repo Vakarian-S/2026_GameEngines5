@@ -7,19 +7,13 @@
 #include "core/Timer.h"
 #include "core/Window.h"
 #include "core/Scene.h"
+#include "core/Camera.h"
 #include "scenes/Scene0.h"
 #include "utils/Arena.h"
 #include "utils/ArenaResource.h"
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
-#include "vulkan/FrameLoop.h"
-#include "vulkan/GPUContext.h"
-#include "vulkan/TemporaryCommandBuffers.h"
-#include "vulkan/Pipeline.h"
-#include "vulkan/Swapchain.h"
-#include "vulkan/Buffer.h"
-#include "vulkan/Descriptors.h"
-#include "vulkan/Vertex.h"
+#include "vulkan/VulkanRenderer.h"
 
 /*
  * Where the engine starts.
@@ -40,8 +34,8 @@
 
 namespace
 {
-    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 12,000. */
-    constexpr std::size_t kFrameArenaBytes = 64 * 1024;
+    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 68,000. */
+    constexpr std::size_t kFrameArenaBytes = 128 * 1024;
 }
 
 int main()
@@ -63,53 +57,8 @@ int main()
     try
     {
         Window window("GameEngines5", 1280, 720);
-        /*
-         * The order of these declarations matters. C++ destroys them in reverse, so FrameLoop goes
-         * first and waits for the GPU. The descriptors, buffers and the pipeline are destroyed only after that.
-         */
-        GPUContext gpuContext(window.GetSDLWindow());
-        Descriptors descriptors(gpuContext);
-        TemporaryCommandBuffers temporaryCommandBuffers(gpuContext);
-        Swapchain swapchain(gpuContext, window.GetSDLWindow());
-        /* Entry i describes set i of the shaders. Today there is only set 0, the camera */
-        const VkDescriptorSetLayout descriptorSetLayouts[] = {descriptors.GetLayout()};
-        Pipeline pipeline(gpuContext, swapchain.GetImageFormat(), swapchain.GetDepthFormat(),
-                          "shaders/triangle.vert.spv",
-                          "shaders/triangle.frag.spv", descriptorSetLayouts);
-
-        /* The eight corners of a cube: a position and a colour each */
-        constexpr Vertex cubeVertices[] = {
-            {.position = MATH::Vec3(-0.5f, -0.5f, 0.5f), .color = MATH::Vec3(1.0, 0.37f, 0.38f)},
-            {.position = MATH::Vec3(0.5f, -0.5f, 0.5f), .color = MATH::Vec3(1.0f, 0.6f, 0.4f)},
-            {.position = MATH::Vec3(0.5f, 0.5f, 0.5f), .color = MATH::Vec3(0.5f, 0.0, 0.5)},
-            {.position = MATH::Vec3(-0.5f, 0.5f, 0.5f), .color = MATH::Vec3(0.18f, 0.11f, 0.41f)},
-            {.position = MATH::Vec3(-0.5f, -0.5f, -0.5f), .color = MATH::Vec3(1.0, 0.37f, 0.38f)},
-            {.position = MATH::Vec3(0.5f, -0.5f, -0.5f), .color = MATH::Vec3(1.0f, 0.6f, 0.4f)},
-            {.position = MATH::Vec3(0.5f, 0.5f, -0.5f), .color = MATH::Vec3(0.5f, 0.0, 0.5)},
-            {.position = MATH::Vec3(-0.5f, 0.5f, -0.5f), .color = MATH::Vec3(0.18f, 0.11f, 0.41f)},
-        };
-        /* Each number is a position in cubeVertices. Every three numbers make one triangle */
-        constexpr uint32_t cubeIndices[] = {
-            /* near face */
-            4, 5, 6, 6, 7, 4,
-            /* far face */
-            0, 2, 1, 0, 3, 2,
-            /* right face */
-            5, 1, 2, 2, 6, 5,
-            /* left face */
-            0, 4, 7, 7, 3, 0,
-            /* top face */
-            0, 1, 5, 5, 4, 0,
-            /* bottom face */
-            3, 7, 6, 6, 2, 3,
-        };
-
-        /* Both arrays are copied into GPU memory once, here. The frame loop only reads them */
-        Buffer cubeVertexBuffer(gpuContext, temporaryCommandBuffers, cubeVertices, sizeof(cubeVertices),
-                                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-        Buffer indexBuffer(gpuContext, temporaryCommandBuffers, cubeIndices, sizeof(cubeIndices),
-                           VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-        FrameLoop frameLoop(gpuContext, swapchain, descriptors);
+        VulkanRenderer vulkanRenderer(window.GetSDLWindow());
+        const MeshHandle cube = vulkanRenderer.GetResourceStore().CreateCube();
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
          * and slot lives inside it, so the lines printed here are the slab and whatever the
@@ -117,7 +66,7 @@ int main()
          */
         MemoryMonitor::SetLogging(true);
 
-        Scene0 scene;
+        Scene0 scene(cube);
         if (!scene.OnCreate())
         {
             std::cerr << "Scene0::OnCreate failed" << std::endl;
@@ -133,7 +82,6 @@ int main()
         ArenaResource frameMemory(frameArena);
 
         SDL_Event event;
-        float elapsedSeconds = 0.0f;
         while (true)
         {
             Profiler::BeginFrame();
@@ -164,31 +112,8 @@ int main()
             }
 
             {
-                PROFILE_SCOPE("FrameLoop");
-                /* Fades between green and blue, so a frame that stops updating is easy to see */
-                elapsedSeconds += timer.GetDeltaTime();
-                const float pulse = 0.5f + 0.5f * std::sin(elapsedSeconds);
-                /* Width over height, read every frame, so a resize keeps the cubes' proportions */
-                float aspect = static_cast<float>(swapchain.GetExtent().width) / static_cast<float>(swapchain.
-                    GetExtent().
-                    height);
-                /** CameraStruct is temporary **/
-                CameraStruct cameraStruct{
-                    .view = MMath::lookAt(MATH::Vec3{0, 0, 3}, MATH::Vec3{0, 0, 0}, MATH::Vec3{0, 1, 0}),
-                    .projection = MMath::PerspectiveVulkan(45.0f, aspect, 0.1f, 100.0f)
-                };
-                /* Element 5 is the Y scale. The math library assumes +Y is up, and Vulkan's +Y points down the screen */
-                cameraStruct.projection[5] *= -1.0f;
-                /* TEMPORARY: two cubes. The second orbits the first, so it passes behind it and tests depth */
-                Matrix4 modelMatrices[] = {
-                    MATH::MMath::rotate(fmod(elapsedSeconds * 35.0f, 360.f), MATH::Vec3(0.0f, 1.0f, 0.f)),
-                    MATH::MMath::rotate(fmod(elapsedSeconds * 55.0f, 360.f), MATH::Vec3(0.0f, 1.0f, 0.f)) *
-                    MMath::translate(0.0f, 0.0f, -2.0f)
-                };
-                std::span<const Matrix4> modelMatricesSpan = modelMatrices;
-                frameLoop.DrawFrame({.float32 = {0.0f, pulse, 1.0f - pulse, 1.0f}}, pipeline, cubeVertexBuffer,
-                                    indexBuffer, std::size(cubeIndices),
-                                    modelMatricesSpan, cameraStruct);
+                PROFILE_SCOPE("Render");
+                vulkanRenderer.DrawFrame(scene.GetCamera(), drawList);
             }
 
             {
@@ -220,11 +145,11 @@ int main()
         const ArenaStats frameStats = frameArena.Stats();
 
         std::cout << "-- Arena Report --\n"
-            << "  world slab          " << worldMemory.arena.capacity << " bytes\n"
+            << "  world capacity          " << worldMemory.arena.capacity << " bytes\n"
             << "  world used          " << worldMemory.arena.used << " bytes\n"
             << "  world allocations   " << worldMemory.resource.fromArena
             << " (" << worldMemory.resource.fromHeap << " fell to the heap)\n"
-            << "  frame slab          " << frameStats.capacity << " bytes\n"
+            << "  frame capacity          " << frameStats.capacity << " bytes\n"
             << "  frame high water    " << frameStats.highWater << " bytes\n"
             << "  frame resets        " << frameStats.resets
             << " (" << frameMemory.Stats().fromHeap << " fell to the heap)\n";

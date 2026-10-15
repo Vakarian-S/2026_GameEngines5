@@ -9,7 +9,7 @@ class Buffer;
  * The camera data that the vertex shader reads. The uniform block in the shader must list the
  * same fields in the same order.
  */
-struct CameraStruct
+struct CameraUniform
 {
     /** Moves the world so the camera sits at the origin. */
     MATH::Matrix4 view;
@@ -54,7 +54,7 @@ public:
      * @param frameSlot which frame slot to write. The GPU must have finished that slot's last frame
      * @param camera the view and projection matrices for this frame
      */
-    void WriteCamera(uint32_t frameSlot, const CameraStruct& camera) const;
+    void WriteCamera(uint32_t frameSlot, const CameraUniform& camera) const;
 
 private:
     /** What one uniform buffer binding holds. */
@@ -71,7 +71,7 @@ private:
      * number the shader uses. To add a binding, add a row here and a Write function for it.
      */
     static constexpr std::array<UniformBinding, 1> kUniformBindings{{
-        {.size = sizeof(CameraStruct), .stages = VK_SHADER_STAGE_VERTEX_BIT},
+        {.size = sizeof(CameraUniform), .stages = VK_SHADER_STAGE_VERTEX_BIT},
     }};
 
     /** The row of the camera in kUniformBindings, which is also its binding number. */
