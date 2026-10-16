@@ -6,15 +6,20 @@
 
 VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_) : gpuContext(sdlWindow_),
                                                          descriptors(gpuContext),
+                                                         textureDescriptors(gpuContext),
                                                          temporaryCommandBuffers(gpuContext),
                                                          swapchain(gpuContext, sdlWindow_),
-                                                         /* Entry i describes set i of the shaders. Today there is only set 0, the camera */
+                                                         resourceStore(gpuContext, temporaryCommandBuffers,
+                                                                       textureDescriptors),
+                                                         /* Entry i describes set i of the shaders: set 0 the camera, set 1 the texture */
                                                          pipeline(gpuContext, swapchain.GetImageFormat(),
                                                                   swapchain.GetDepthFormat(),
                                                                   "shaders/mesh.vert.spv",
                                                                   "shaders/mesh.frag.spv",
-                                                                  std::array{descriptors.GetLayout()}),
-                                                         resourceStore(gpuContext, temporaryCommandBuffers),
+                                                                  std::array{
+                                                                      descriptors.GetLayout(),
+                                                                      textureDescriptors.GetLayout()
+                                                                  }),
                                                          frameLoop(gpuContext, swapchain, descriptors)
 {
 }
@@ -30,7 +35,7 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const DrawList& drawList)
         .view = camera.view,
         .projection = MMath::PerspectiveVulkan(camera.fovYDegrees, aspect, camera.nearPlane, camera.farPlane)
     };
-    
+
     /* Element 5 is the Y scale. The math library assumes +Y is up, and Vulkan's +Y points down the screen */
     cameraUniform.projection[5] *= -1.0f;
 

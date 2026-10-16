@@ -153,31 +153,4 @@ private:
      */
     void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline,
                              const ResourceStore& resourceStore, const DrawList& drawList) const;
-
-    /**
-     * Records one layout change for one image.
-     *
-     * A layout is how the GPU arranges an image's memory for one kind of use. Drawing into an
-     * image and presenting it need different layouts, so the image is switched between them.
-     *
-     * The four masks tell the GPU what to wait for. The src pair names the earlier work that
-     * must finish before the change. The dst pair names the later work that must wait for it.
-     *
-     * @param image The image to change. A swapchain image or the depth image
-     * @param aspectMask which part of the image changes: VK_IMAGE_ASPECT_COLOR_BIT or VK_IMAGE_ASPECT_DEPTH_BIT
-     * @param oldLayout the layout the image is in now. UNDEFINED means its contents may be thrown away
-     * @param newLayout the layout the image ends up in
-     * @param srcAccessMask how the earlier work touches the image
-     * @param dstAccessMask how the later work touches the image
-     * @param srcStageMask the pipeline stage where the earlier work happens
-     * @param dstStageMask the pipeline stage where the later work happens
-     */
-    void TransitionImageLayout(
-        VkImage image,
-        VkImageAspectFlags aspectMask,
-        VkImageLayout oldLayout,
-        VkImageLayout newLayout,
-        VkAccessFlags2 srcAccessMask,
-        VkAccessFlags2 dstAccessMask,
-        VkPipelineStageFlags2 srcStageMask, VkPipelineStageFlags2 dstStageMask) const;
 };

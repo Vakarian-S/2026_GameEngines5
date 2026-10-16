@@ -16,6 +16,9 @@ struct Vertex
 
     /** The corner's colour, as red, green and blue from 0 to 1. The shader reads it at location 1. */
     MATH::Vec3 color;
+    
+    /** Where the corner sits on the texture, from 0 to 1. The shader reads it at location 2 */
+    MATH::Vec2 uv;
 
     /**
      * Tells the pipeline how big one Vertex is, so the GPU knows how far to step from one vertex to the next.
@@ -35,9 +38,9 @@ struct Vertex
      * Tells the pipeline where each field sits inside a Vertex, and which shader "in" variable receives it.
      * @return one description per field: position first, then colour
      */
-    static std::array<VkVertexInputAttributeDescription, 2> GetVertexInputAttributeDescription()
+    static std::array<VkVertexInputAttributeDescription, 3> GetVertexInputAttributeDescription()
     {
-        std::array<VkVertexInputAttributeDescription, 2> attributeDescriptions{};
+        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
         /*  the binding number which this attribute takes its data from. */
         attributeDescriptions[0].binding = 0;
         /* is the shader input location number for this attribute. */
@@ -51,10 +54,15 @@ struct Vertex
         attributeDescriptions[1].location = 1;
         attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
         attributeDescriptions[1].offset = offsetof(Vertex, color);
+        
+        attributeDescriptions[2].binding = 0;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[2].offset = offsetof(Vertex, uv);
 
         return attributeDescriptions;
     }
 };
 
-/* Six floats and nothing else. Extra bytes inside the struct would shift every field the GPU reads */
-static_assert(sizeof(Vertex) == 24);
+/* Eight floats and nothing else. Extra bytes inside the struct would shift every field the GPU reads */
+static_assert(sizeof(Vertex) == 32);

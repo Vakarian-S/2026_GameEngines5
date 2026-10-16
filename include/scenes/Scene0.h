@@ -1,4 +1,6 @@
 ﻿#pragma once
+#include <array>
+
 #include "core/Camera.h"
 #include "core/Scene.h"
 #include "ecs/CommandBuffer.h"
@@ -10,8 +12,10 @@ class Scene0 : public Scene
 public:
     /**
     * @param cubeMesh_ The mesh every entity is drawn with. The renderer's store created it
+    * @param firstTexture_ The texture on every other cube. The renderer's store created it
+    * @param secondTexture_ The texture on the cubes in between. Pass firstTexture_ again for one texture
     */
-    explicit Scene0(MeshHandle cubeMesh_);
+    Scene0(MeshHandle cubeMesh_, TextureHandle firstTexture_, TextureHandle secondTexture_);
     ~Scene0() override = default;
 
     void HandleEvents(const SDL_Event& sdlEvent) override;
@@ -34,6 +38,8 @@ private:
     Camera camera;
     /** The mesh every entity is drawn with */
     MeshHandle cubeMesh;
+    /** The two textures the cubes alternate between, so neighbouring draw items differ */
+    std::array<TextureHandle, 2> textures;
 
     /** Every entity this scene spawned, in spawn order */
     std::vector<Entity> entities;

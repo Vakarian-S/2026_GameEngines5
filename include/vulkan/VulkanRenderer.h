@@ -6,6 +6,7 @@
 #include "ResourceStore.h"
 #include "Swapchain.h"
 #include "TemporaryCommandBuffers.h"
+#include "TextureDescriptors.h"
 
 
 class VulkanRenderer
@@ -39,15 +40,20 @@ private:
     /** Where the device comes from. */
     GPUContext gpuContext;
 
+    /** Set 0: the camera, one set and one buffer per frame slot. */
     Descriptors descriptors;
+
+    /** Set 1: one set per texture. Declared before resourceStore, which allocates from it */
+    TextureDescriptors textureDescriptors;
 
     TemporaryCommandBuffers temporaryCommandBuffers;
 
     Swapchain swapchain;
 
-    Pipeline pipeline;
-
+    /** Every mesh and texture. Declared before pipeline only for reading order; the pipeline does not use it */
     ResourceStore resourceStore;
+
+    Pipeline pipeline;
 
     FrameLoop frameLoop;
 };

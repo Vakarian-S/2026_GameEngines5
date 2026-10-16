@@ -18,15 +18,24 @@ struct MeshHandle
     uint32_t index;
 };
 
-/** One thing to draw: which mesh, and where it sits in the world. */
+/**
+ * A handle for a single texture in the store
+ */
+struct TextureHandle
+{
+    uint32_t index;
+};
+
+/** One thing to draw: which mesh, which texture on it, and where it sits in the world. */
 struct DrawItem
 {
     MeshHandle mesh;
+    TextureHandle texture;
     MATH::Matrix4 transform;
 };
 
-/* 4 bytes of handle and 16 floats of matrix. The frame arena in Main.cpp is sized from this */
-static_assert(sizeof(DrawItem) == 68);
+/* Two 4-byte handles and 16 floats of matrix. The frame arena in Main.cpp is sized from this */
+static_assert(sizeof(DrawItem) == 72);
 
 /** Everything to draw this frame. The caller picks the memory, so a frame arena can stand behind it. */
 using DrawList = std::pmr::vector<DrawItem>;

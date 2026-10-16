@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 #include "utils/Profiler.h"
+#include "vulkan/ImageBarrier.h"
 
 
 FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_) :
@@ -237,29 +238,36 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
      * The swapchain image becomes something to draw into. Its old contents are thrown away, so
      * there is no earlier work to wait for
      */
-    TransitionImageLayout(
+
+    RecordImageBarrier(
+        commandBuffer,
         swapchain.GetImages()[imageIndex],
         VK_IMAGE_ASPECT_COLOR_BIT,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        {},
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+        {
+            .srcAccessMask = {},
+            .dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+        }
     );
     /*
      * The depth image is cleared every frame, so its old contents may be thrown away. The masks wait
      * for the previous frame's depth tests, because both frames share this one image
      */
-    TransitionImageLayout(
+    RecordImageBarrier(
+        commandBuffer,
         swapchain.GetDepthImage(),
         VK_IMAGE_ASPECT_DEPTH_BIT,
         VK_IMAGE_LAYOUT_UNDEFINED,
         VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-        VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+        {
+            .srcAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            .srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT
+        }
     );
 
     /* ============= 3. Begin Rendering ============= */
@@ -331,10 +339,11 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     /* ============= 5. Draw ============= */
-    /* One push and one draw per item. The mesh's buffers are bound again only when the mesh changes */
+    /* One push and one draw per item. A mesh's buffers and a texture's set are bound again only when they change */
 
-    /* No mesh is bound yet. No handle has this index, so the first item always binds */
+    /* No mesh and no texture are bound yet. No handle has this index, so the first item always binds both */
     uint32_t boundMesh = UINT32_MAX;
+    uint32_t boundTexture = UINT32_MAX;
     for (const DrawItem& item : drawList)
     {
         const Mesh& mesh = resourceStore.GetMesh(item.mesh);
@@ -348,7 +357,14 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
             vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
             boundMesh = item.mesh.index;
         }
-
+        if (item.texture.index != boundTexture)
+        {
+            /* Points the shader's set 1 at this texture. Set 0, the camera, stays bound */
+            const VkDescriptorSet textureSet = resourceStore.GetTextureSet(item.texture);
+            vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 1, 1,
+                                    &textureSet, 0, nullptr);
+            boundTexture = item.texture.index;
+        }
         const ModelMatrixPushConstant pushConstant{.modelMatrix = item.transform};
         vkCmdPushConstants(commandBuffer, pipeline.GetLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
                            sizeof(ModelMatrixPushConstant), &pushConstant);
@@ -360,57 +376,23 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     vkCmdEndRendering(commandBuffer);
 
     /* The finished colour image becomes something the screen can show. Nothing after this frame waits on it */
-    TransitionImageLayout(
+    RecordImageBarrier(
+        commandBuffer,
         swapchain.GetImages()[imageIndex],
         VK_IMAGE_ASPECT_COLOR_BIT,
         VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-        {},
-        VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-        VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+        {
+            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = {},
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+        }
     );
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
     {
         throw std::runtime_error("failed to end the command buffer!");
     }
-}
-
-void FrameLoop::TransitionImageLayout(VkImage image, VkImageAspectFlags aspectMask,
-                                      const VkImageLayout oldLayout,
-                                      const VkImageLayout newLayout, const VkAccessFlags2 srcAccessMask,
-                                      const VkAccessFlags2 dstAccessMask,
-                                      const VkPipelineStageFlags2 srcStageMask,
-                                      const VkPipelineStageFlags2 dstStageMask) const
-{
-    VkImageMemoryBarrier2 barrier = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-        .pNext = nullptr,
-        .srcStageMask = srcStageMask,
-        .srcAccessMask = srcAccessMask,
-        .dstStageMask = dstStageMask,
-        .dstAccessMask = dstAccessMask,
-        .oldLayout = oldLayout,
-        .newLayout = newLayout,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = image,
-        .subresourceRange = {
-            .aspectMask = aspectMask,
-            .baseMipLevel = 0,
-            .levelCount = 1,
-            .baseArrayLayer = 0,
-            .layerCount = 1
-        }
-    };
-    const VkDependencyInfo dependencyInfo = {
-        .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-        .pNext = nullptr,
-        .dependencyFlags = {},
-        .imageMemoryBarrierCount = 1,
-        .pImageMemoryBarriers = &barrier
-    };
-    vkCmdPipelineBarrier2(commandBuffers[currentFrame], &dependencyInfo);
 }
 
 void FrameLoop::CreateRenderFinishedSemaphores()

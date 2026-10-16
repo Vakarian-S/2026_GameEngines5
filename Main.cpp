@@ -34,7 +34,7 @@
 
 namespace
 {
-    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 68,000. */
+    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 72,000. */
     constexpr std::size_t kFrameArenaBytes = 128 * 1024;
 }
 
@@ -59,6 +59,9 @@ int main()
         Window window("GameEngines5", 1280, 720);
         VulkanRenderer vulkanRenderer(window.GetSDLWindow());
         const MeshHandle cube = vulkanRenderer.GetResourceStore().CreateCube();
+        const TextureHandle skull = vulkanRenderer.GetResourceStore().
+                                                   CreateTexture("assets/textures/skull_texture.jpg");
+        const TextureHandle mario = vulkanRenderer.GetResourceStore().CreateTexture("assets/textures/mario_main.png");
         /*
          * What a scene costs to start. The World takes one slab and every archetype, column
          * and slot lives inside it, so the lines printed here are the slab and whatever the
@@ -66,7 +69,7 @@ int main()
          */
         MemoryMonitor::SetLogging(true);
 
-        Scene0 scene(cube);
+        Scene0 scene(cube, skull, mario);
         if (!scene.OnCreate())
         {
             std::cerr << "Scene0::OnCreate failed" << std::endl;

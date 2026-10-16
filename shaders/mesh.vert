@@ -6,8 +6,12 @@ layout (location = 0) in vec3 inPosition;
 /* One corner's colour, read from the vertex buffer. The location matches Vertex.h */
 layout (location = 1) in vec3 inColor;
 
+layout(location = 2) in vec2 inUV;
+
 /* Goes to the fragment shader. The GPU blends the three corner values across the triangle. */
 layout (location = 0) out vec3 fragColor;
+
+layout (location = 1) out vec2 fragUV;
 
 
 /* One object's model matrix, set by vkCmdPushConstants before each draw */
@@ -26,4 +30,5 @@ void main()
 {
     gl_Position = camera.projection * camera.view * pushConstants.modelMatrix * vec4(inPosition, 1.0);
     fragColor = inColor;
+    fragUV = inUV;
 }

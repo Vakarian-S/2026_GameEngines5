@@ -19,17 +19,17 @@ cmake_minimum_required(VERSION 3.25)
 # C is here for SDL3, which is a C library. Our own code is all C++.
 project(GameEngines5 LANGUAGES CXX C)
 
-if(NOT MSVC)
+if (NOT MSVC)
     message(FATAL_ERROR
-        "MemoryMonitor uses SRWLOCK and _aligned_malloc, which are Microsoft only. "
-        "See \"It does not build outside Windows and MSVC\" in README.md.")
-endif()
+            "MemoryMonitor uses SRWLOCK and _aligned_malloc, which are Microsoft only. "
+            "See \"It does not build outside Windows and MSVC\" in README.md.")
+endif ()
 
 # Four configurations existed and four survive. CMake would otherwise add RelWithDebInfo
 # and MinSizeRel, which nothing here has ever been built with.
-if(CMAKE_CONFIGURATION_TYPES)
+if (CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
-endif()
+endif ()
 
 # CMake hands MSVC /DWIN32 and /D_WINDOWS on every platform. The old build defined WIN32 on
 # 32 bit only and never defined _WINDOWS, so they are taken out here and WIN32 is put back
@@ -53,11 +53,11 @@ set(CMAKE_PDB_OUTPUT_DIRECTORY "${GE5_OUTPUT_DIR}")
 
 # Start the IDE on something that runs. The engine is 64 bit only, so on Win32 it is the demo
 # that the IDE opens on.
-if(GE5_PLATFORM STREQUAL "x64")
+if (GE5_PLATFORM STREQUAL "x64")
     set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT GameEngines5)
-else()
+else ()
     set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT MemoryMonitorDemo)
-endif()
+endif ()
 
 
 # ============================== MemoryMonitor ==============================
@@ -72,8 +72,8 @@ endif()
 # each program, it is always there and that trap is gone.
 
 set(MEMORYMONITOR_SOURCES
-    src/utils/MemoryMonitor.cpp
-    include/utils/MemoryMonitor.h
+        src/utils/MemoryMonitor.cpp
+        include/utils/MemoryMonitor.h
 )
 
 
@@ -84,8 +84,8 @@ set(MEMORYMONITOR_SOURCES
 
 add_library(MathLibraryHeaders INTERFACE)
 target_include_directories(MathLibraryHeaders INTERFACE
-    external/MathLibrary/include
-    external/glm
+        external/MathLibrary/include
+        external/glm
 )
 
 # Globbed because these headers are browsing material for the IDE. They compile nothing:
@@ -93,11 +93,11 @@ target_include_directories(MathLibraryHeaders INTERFACE
 file(GLOB MATHLIBRARY_HEADERS CONFIGURE_DEPENDS "external/MathLibrary/include/*.h")
 
 add_library(MathLibrary STATIC
-    # DebugUtlities.cpp needs glm, vendored next door under external/glm
-    external/MathLibrary/include/DebugUtlities.cpp
-    external/MathLibrary/include/Fourier.cpp
-    external/MathLibrary/include/Randomizer.cpp
-    ${MATHLIBRARY_HEADERS}
+        # DebugUtlities.cpp needs glm, vendored next door under external/glm
+        external/MathLibrary/include/DebugUtlities.cpp
+        external/MathLibrary/include/Fourier.cpp
+        external/MathLibrary/include/Randomizer.cpp
+        ${MATHLIBRARY_HEADERS}
 )
 target_link_libraries(MathLibrary PUBLIC MathLibraryHeaders)
 ge5_apply_common_settings(MathLibrary)
@@ -113,26 +113,26 @@ ge5_apply_common_settings(MathLibrary)
 # demo and the tests still build for both platforms, and those are what
 # scripts/capture-output.sh and scripts/run-tests.bat measure.
 
-if(GE5_PLATFORM STREQUAL "x64")
+if (GE5_PLATFORM STREQUAL "x64")
 
     # Vulkan comes from the installed SDK and is never vendored. There is nothing to ship
     # either: vulkan-1.dll already sits in System32, put there by the graphics driver, and the
     # validation layers are found by the loader wherever the SDK installed them.
     find_package(Vulkan QUIET)
-    if(NOT Vulkan_FOUND)
+    if (NOT Vulkan_FOUND)
         message(FATAL_ERROR
-            "The Vulkan SDK was not found. Install it from https://vulkan.lunarg.com, then open "
-            "a new terminal so that VULKAN_SDK is set.
+                "The Vulkan SDK was not found. Install it from https://vulkan.lunarg.com, then open "
+                "a new terminal so that VULKAN_SDK is set.
 "
-            "GameEngines5 is the only target that needs it. MemoryMonitorDemo and "
-            "MemoryMonitorTests build without it, and the Win32 preset skips the engine "
-            "altogether.")
-    endif()
-    if(NOT Vulkan_GLSLC_EXECUTABLE)
+                "GameEngines5 is the only target that needs it. MemoryMonitorDemo and "
+                "MemoryMonitorTests build without it, and the Win32 preset skips the engine "
+                "altogether.")
+    endif ()
+    if (NOT Vulkan_GLSLC_EXECUTABLE)
         message(FATAL_ERROR
-            "The Vulkan SDK was found at ${Vulkan_INCLUDE_DIR} but glslc.exe was not. Shaders "
-            "cannot be compiled without it. A full SDK install ships it under Bin.")
-    endif()
+                "The Vulkan SDK was found at ${Vulkan_INCLUDE_DIR} but glslc.exe was not. Shaders "
+                "cannot be compiled without it. A full SDK install ships it under Bin.")
+    endif ()
 
     # SDL3 is built from source at a pinned tag rather than vendored as binaries, so a fresh
     # clone of this repository builds without a prepared machine. Shared, because that is how
@@ -145,10 +145,10 @@ if(GE5_PLATFORM STREQUAL "x64")
     set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
     set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(SDL3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG release-3.2.18
-        GIT_SHALLOW TRUE
-        GIT_PROGRESS TRUE
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+            GIT_TAG release-3.2.18
+            GIT_SHALLOW TRUE
+            GIT_PROGRESS TRUE
     )
     FetchContent_MakeAvailable(SDL3)
 
@@ -164,21 +164,24 @@ if(GE5_PLATFORM STREQUAL "x64")
     file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS "include/*.h")
 
     add_executable(GameEngines5
-        Main.cpp
-        ${ENGINE_SOURCES}
-        ${ENGINE_HEADERS}
+            Main.cpp
+            ${ENGINE_SOURCES}
+            ${ENGINE_HEADERS}
     )
 
     # Its own headers, reached as "core/Window.h" and "utils/MemoryMonitor.h"
     target_include_directories(GameEngines5 PRIVATE include)
+    # stb_image, reached as "stb_image.h". SYSTEM marks it as someone else's code, so its
+    # warnings stay out of our build output.
+    target_include_directories(GameEngines5 SYSTEM PRIVATE external/stb)
     target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3 Vulkan::Vulkan)
 
     # glm defaults to the OpenGL depth range of -1 to 1. Vulkan's is 0 to 1, and a projection
     # matrix built for the wrong one is wrong quietly: things still draw, at the wrong depth.
     # GLM_FORCE_RADIANS only removes a deprecated degrees path, but it is worth being explicit.
     target_compile_definitions(GameEngines5 PRIVATE
-        GLM_FORCE_DEPTH_ZERO_TO_ONE
-        GLM_FORCE_RADIANS
+            GLM_FORCE_DEPTH_ZERO_TO_ONE
+            GLM_FORCE_RADIANS
     )
 
     ge5_apply_common_settings(GameEngines5)
@@ -191,41 +194,65 @@ if(GE5_PLATFORM STREQUAL "x64")
     # triangle.vert becomes shaders/triangle.vert.spv. Dropping the stage would make
     # triangle.vert and triangle.frag fight over one output file.
     file(GLOB_RECURSE SHADER_SOURCES CONFIGURE_DEPENDS
-        "shaders/*.vert"
-        "shaders/*.frag"
-        "shaders/*.comp"
-        "shaders/*.geom"
-        "shaders/*.tesc"
-        "shaders/*.tese"
+            "shaders/*.vert"
+            "shaders/*.frag"
+            "shaders/*.comp"
+            "shaders/*.geom"
+            "shaders/*.tesc"
+            "shaders/*.tese"
     )
 
     set(SPIRV_FILES "")
-    foreach(shader IN LISTS SHADER_SOURCES)
+    foreach (shader IN LISTS SHADER_SOURCES)
         file(RELATIVE_PATH shader_relative "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "${shader}")
         set(spirv "${GE5_OUTPUT_DIR}/shaders/${shader_relative}.spv")
         get_filename_component(spirv_directory "${spirv}" DIRECTORY)
         add_custom_command(
-            OUTPUT "${spirv}"
-            COMMAND "${CMAKE_COMMAND}" -E make_directory "${spirv_directory}"
-            COMMAND "${Vulkan_GLSLC_EXECUTABLE}" "${shader}" -o "${spirv}"
-            DEPENDS "${shader}"
-            COMMENT "glslc shaders/${shader_relative}"
-            VERBATIM
+                OUTPUT "${spirv}"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${spirv_directory}"
+                COMMAND "${Vulkan_GLSLC_EXECUTABLE}" "${shader}" -o "${spirv}"
+                DEPENDS "${shader}"
+                COMMENT "glslc shaders/${shader_relative}"
+                VERBATIM
         )
         list(APPEND SPIRV_FILES "${spirv}")
-    endforeach()
+    endforeach ()
 
     # SOURCES puts the shaders in the IDE tree, where they can be opened and edited.
     add_custom_target(Shaders DEPENDS ${SPIRV_FILES} SOURCES ${SHADER_SOURCES})
     add_dependencies(GameEngines5 Shaders)
 
-else()
+    # Assets. Every file under assets/ is copied next to the executable with its folder layout:
+    # assets/textures/skull_texture.jpg lands in bin/<platform>/<config>/assets/textures/. Like
+    # the shaders, each file has its own rule, so only a changed file is copied again.
+    file(GLOB_RECURSE ASSET_SOURCES CONFIGURE_DEPENDS "assets/*")
+
+    set(ASSET_COPIES "")
+    foreach (asset IN LISTS ASSET_SOURCES)
+        file(RELATIVE_PATH asset_relative "${CMAKE_CURRENT_SOURCE_DIR}" "${asset}")
+        set(asset_copy "${GE5_OUTPUT_DIR}/${asset_relative}")
+        get_filename_component(asset_directory "${asset_copy}" DIRECTORY)
+        add_custom_command(
+                OUTPUT "${asset_copy}"
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "${asset_directory}"
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${asset}" "${asset_copy}"
+                DEPENDS "${asset}"
+                COMMENT "copy ${asset_relative}"
+                VERBATIM
+        )
+        list(APPEND ASSET_COPIES "${asset_copy}")
+    endforeach ()
+
+    add_custom_target(Assets DEPENDS ${ASSET_COPIES} SOURCES ${ASSET_SOURCES})
+    add_dependencies(GameEngines5 Assets)
+
+else ()
 
     message(STATUS
-        "GameEngines5 and SDL3 are skipped on ${GE5_PLATFORM}. The Vulkan SDK has no 32 bit "
-        "vulkan-1.lib. MathLibrary, the demo and the tests still build.")
+            "GameEngines5 and SDL3 are skipped on ${GE5_PLATFORM}. The Vulkan SDK has no 32 bit "
+            "vulkan-1.lib. MathLibrary, the demo and the tests still build.")
 
-endif()
+endif ()
 
 
 # ============================== MemoryMonitorDemo ==============================
@@ -235,8 +262,8 @@ endif()
 # math headers, and that is all it needs.
 
 add_executable(MemoryMonitorDemo
-    demo/MemoryMonitorDemo.cpp
-    ${MEMORYMONITOR_SOURCES}
+        demo/MemoryMonitorDemo.cpp
+        ${MEMORYMONITOR_SOURCES}
 )
 target_include_directories(MemoryMonitorDemo PRIVATE include)
 target_link_libraries(MemoryMonitorDemo PRIVATE MathLibraryHeaders)
@@ -257,8 +284,8 @@ ge5_apply_common_settings(MemoryMonitorDemo)
 # so what ships is still built with it.
 
 add_executable(MemoryMonitorTests
-    tests/MemoryMonitorTests.cpp
-    ${MEMORYMONITOR_SOURCES}
+        tests/MemoryMonitorTests.cpp
+        ${MEMORYMONITOR_SOURCES}
 )
 target_include_directories(MemoryMonitorTests PRIVATE include)
 ge5_apply_common_settings(MemoryMonitorTests SDL_CHECK OFF)
@@ -280,9 +307,9 @@ list(APPEND ECS_SOURCES src/utils/Arena.cpp src/utils/ArenaResource.cpp)
 list(APPEND ECS_HEADERS include/utils/Arena.h include/utils/ArenaResource.h)
 
 add_executable(EcsTests
-    tests/EcsTests.cpp
-    ${ECS_SOURCES}
-    ${ECS_HEADERS}
+        tests/EcsTests.cpp
+        ${ECS_SOURCES}
+        ${ECS_HEADERS}
 )
 target_include_directories(EcsTests PRIVATE include)
 ge5_apply_common_settings(EcsTests)
@@ -308,10 +335,10 @@ ge5_apply_common_settings(ArenaTests)
 # platforms: it compiles the ECS, the arena and the monitor, and nothing else.
 
 add_executable(ArenaDemo
-    demo/ArenaDemo.cpp
-    ${MEMORYMONITOR_SOURCES}
-    ${ECS_SOURCES}
-    ${ECS_HEADERS}
+        demo/ArenaDemo.cpp
+        ${MEMORYMONITOR_SOURCES}
+        ${ECS_SOURCES}
+        ${ECS_HEADERS}
 )
 target_include_directories(ArenaDemo PRIVATE include)
 ge5_apply_common_settings(ArenaDemo)
@@ -327,11 +354,11 @@ ge5_apply_common_settings(ArenaDemo)
 # else, so there is no SDL and no Vulkan in it.
 
 add_executable(EcsBench
-    bench/EcsBench.cpp
-    src/utils/Profiler.cpp
-    include/utils/Profiler.h
-    ${ECS_SOURCES}
-    ${ECS_HEADERS}
+        bench/EcsBench.cpp
+        src/utils/Profiler.cpp
+        include/utils/Profiler.h
+        ${ECS_SOURCES}
+        ${ECS_HEADERS}
 )
 target_include_directories(EcsBench PRIVATE include)
 ge5_apply_common_settings(EcsBench)
