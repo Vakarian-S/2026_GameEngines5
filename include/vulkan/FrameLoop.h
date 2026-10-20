@@ -1,9 +1,7 @@
 ﻿#pragma once
-#include <span>
 
 #include "Descriptors.h"
 #include "GPUContext.h"
-#include "Matrix.h"
 #include "ResourceStore.h"
 #include "Swapchain.h"
 
@@ -46,9 +44,10 @@ public:
      * @param resourceStore where the meshes named in drawList live
      * @param drawList what to draw: one mesh and one model matrix per item
      * @param camera the view and projection for this frame, copied into this slot's camera buffer
+     * @param lights the lights for this frame, copied into this slot's light buffer
      */
     void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const ResourceStore& resourceStore,
-                   const DrawList& drawList, const CameraUniform& camera);
+                   const DrawList& drawList, const CameraUniform& camera, const LightUniform& lights);
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
     FrameLoop(const FrameLoop&) = delete;

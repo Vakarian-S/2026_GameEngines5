@@ -68,8 +68,8 @@ uint32_t CommandBuffer::AppendPayload(const std::byte* value, const uint32_t siz
     return offset;
 }
 
-void CommandBuffer::Record(CommandKind kind, Entity target, ComponentId type, uint32_t payloadOffset,
-                           uint32_t payloadSize)
+void CommandBuffer::Record(const CommandKind kind, const Entity target, const ComponentId type, const uint32_t payloadOffset,
+                           const uint32_t payloadSize)
 {
     commands.push_back({kind, type, target, payloadOffset, payloadSize});
 }

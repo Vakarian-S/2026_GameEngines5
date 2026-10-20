@@ -171,9 +171,10 @@ if (GE5_PLATFORM STREQUAL "x64")
 
     # Its own headers, reached as "core/Window.h" and "utils/MemoryMonitor.h"
     target_include_directories(GameEngines5 PRIVATE include)
-    # stb_image, reached as "stb_image.h". SYSTEM marks it as someone else's code, so its
+    # stb_image and tiny_obj_loader, reached as "stb_image.h" and "tiny_obj_loader.h" respectively. SYSTEM marks them as someone else's code, so its
     # warnings stay out of our build output.
     target_include_directories(GameEngines5 SYSTEM PRIVATE external/stb)
+    target_include_directories(GameEngines5 SYSTEM PRIVATE external/tinyobjloader)
     target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3 Vulkan::Vulkan)
 
     # glm defaults to the OpenGL depth range of -1 to 1. Vulkan's is 0 to 1, and a projection

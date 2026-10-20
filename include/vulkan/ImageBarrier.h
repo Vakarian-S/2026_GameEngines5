@@ -30,5 +30,5 @@ struct TransitionMasks
  * @param transitionMasks Masks for the image
  */
 void RecordImageBarrier(VkCommandBuffer commandBuffer, VkImage image, VkImageAspectFlags aspectMask,
-                        const VkImageLayout oldLayout,
-                        const VkImageLayout newLayout, const TransitionMasks& transitionMasks);
+                        VkImageLayout oldLayout,
+                        VkImageLayout newLayout, const TransitionMasks& transitionMasks);

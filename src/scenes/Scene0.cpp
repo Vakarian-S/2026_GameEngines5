@@ -24,11 +24,11 @@ namespace
     }
 }
 
-Scene0::Scene0(const MeshHandle cubeMesh_, const TextureHandle firstTexture_, const TextureHandle secondTexture_) :
+Scene0::Scene0(const MeshHandle cubeMesh_, const MaterialHandle firstMaterial_, const MaterialHandle secondMaterial_) :
     world(WorldConfig{kEntityCount, kWorldArenaBytes}),
     movers(world, COMPONENTS::MaskOf<Position, Velocity>()),
     cubeMesh(cubeMesh_),
-    textures{firstTexture_, secondTexture_}
+    materials{firstMaterial_, secondMaterial_}
 {
     /* The grid is centred on the origin and spans about 20 metres, so 40 metres back shows all of it */
     camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 0.0f, 40.0f), MATH::Vec3(0.0f, 0.0f, 0.0f),
@@ -61,9 +61,9 @@ void Scene0::MakeDrawList(DrawList& drawList)
         const uint32_t rows = archetype->Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            /* Even rows take the first texture and odd rows the second, so every item binds a new set: the worst case */
+            /* Even rows take the first material and odd rows the second, so every item binds a new set: the worst case */
             drawList.push_back({
-                cubeMesh, textures[row % 2],
+                cubeMesh, materials[row % 2],
                 MATH::MMath::translate(positions[row].x, positions[row].y, positions[row].z)
             });
         }

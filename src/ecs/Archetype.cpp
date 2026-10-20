@@ -34,7 +34,7 @@ Archetype::Archetype(const ComponentMask mask, std::pmr::memory_resource* memory
     entities.reserve(reservedRows);
 }
 
-std::byte* Archetype::ElementAt(ComponentId type, uint32_t row)
+std::byte* Archetype::ElementAt(const ComponentId type, const uint32_t row)
 {
     ComponentColumn* column = FindColumn(type);
     if (column == nullptr) return nullptr;
@@ -57,7 +57,7 @@ uint32_t Archetype::AddRow(const Entity entity)
     return row;
 }
 
-Entity Archetype::RemoveRow(uint32_t row)
+Entity Archetype::RemoveRow(const uint32_t row)
 {
     assert(row < entities.size());
 

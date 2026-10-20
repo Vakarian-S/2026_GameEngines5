@@ -6,7 +6,7 @@
 #include "ResourceStore.h"
 #include "Swapchain.h"
 #include "TemporaryCommandBuffers.h"
-#include "TextureDescriptors.h"
+#include "MaterialDescriptors.h"
 
 
 class VulkanRenderer
@@ -24,11 +24,12 @@ public:
     VulkanRenderer(VulkanRenderer&&) = delete;
     VulkanRenderer& operator=(VulkanRenderer&&) = delete;
     /**
-     * Draws one frame: every item in the list, seen through the camera.
-     * @param camera the scene's camera. The projection is built from it here, for Vulkan
-     * @param drawList what to draw this frame
-     */
-    void DrawFrame(const Camera& camera, const DrawList& drawList);
+    * Draws one frame: every item in the list, seen through the camera.
+    * @param camera the scene's camera. The projection is built from it here, for Vulkan
+    * @param lighting the scene's lights. More than kMaxLights throws
+    * @param drawList what to draw this frame
+    */
+    void DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList);
 
 
     ResourceStore& GetResourceStore() { return resourceStore; }
@@ -43,8 +44,8 @@ private:
     /** Set 0: the camera, one set and one buffer per frame slot. */
     Descriptors descriptors;
 
-    /** Set 1: one set per texture. Declared before resourceStore, which allocates from it */
-    TextureDescriptors textureDescriptors;
+    /** Set 1: one set per material. Declared before resourceStore, which allocates from it */
+    MaterialDescriptors materialDescriptors;
 
     TemporaryCommandBuffers temporaryCommandBuffers;
 

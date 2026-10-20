@@ -4,33 +4,18 @@
 #include <memory_resource>
 #include <vector>
 
+#include "Handles.h"
+#include "Light.h"
 #include "Matrix.h"
 
 struct Camera;
 union SDL_Event;
 
-
-/**
- * A handle for a single mesh in the store
- */
-struct MeshHandle
-{
-    uint32_t index;
-};
-
-/**
- * A handle for a single texture in the store
- */
-struct TextureHandle
-{
-    uint32_t index;
-};
-
-/** One thing to draw: which mesh, which texture on it, and where it sits in the world. */
+/** One thing to draw: which mesh, which material on it, and where it sits in the world. */
 struct DrawItem
 {
     MeshHandle mesh;
-    TextureHandle texture;
+    MaterialHandle material;
     MATH::Matrix4 transform;
 };
 
@@ -85,4 +70,9 @@ public:
     * @return The game camera corresponding to this scene
     */
     virtual const Camera& GetCamera() const = 0;
+
+    /**
+     * @return Struct containing the light on the scene, which is ambient and a collection of lights
+     */
+    virtual SceneLighting GetLighting() const = 0;
 };

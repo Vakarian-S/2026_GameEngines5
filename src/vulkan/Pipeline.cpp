@@ -109,7 +109,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     viewportState.pScissors = nullptr;
 
     /* ============= 6. Rasterizer ============= */
-    /* How a triangle becomes pixels. Back faces are skipped, and clockwise corners mark the front */
+    /* How a triangle becomes pixels. Back faces are skipped, and counter clockwise corners mark the front */
     VkPipelineRasterizationStateCreateInfo rasterizerCreateInfo{};
     rasterizerCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     /* depthClampEnable controls whether to clamp the fragment's depth values as described in Depth Test */
@@ -123,7 +123,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     /*  is the triangle facing direction used for primitive culling */
     rasterizerCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
     /*  is a VkFrontFace value specifying the front-facing triangle orientation to be used for culling. */
-    rasterizerCreateInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizerCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     /* controls whether to bias fragment depth values. */
     rasterizerCreateInfo.depthBiasEnable = VK_FALSE;
 

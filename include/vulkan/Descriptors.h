@@ -15,7 +15,38 @@ struct CameraUniform
     MATH::Matrix4 view;
     /** Makes far things smaller, and maps depth into Vulkan's 0 to 1 range. */
     MATH::Matrix4 projection;
+    /** Where the camera sits in world space. The fragment shader measures the direction to the eye from it. w is unused. */
+    MATH::Vec4 position;
 };
+
+/** The most lights a frame can hold. MAX_LIGHTS in phong.frag must match. */
+static constexpr uint32_t kMaxLights = 4;
+
+/**
+ * One light as the fragment shader reads it. Both fields are vec4, because the uniform buffer
+ * rules start every array element on a 16-byte boundary. w is unused.
+ */
+struct GpuLight
+{
+    MATH::Vec4 position;
+    MATH::Vec4 color;
+};
+
+/** Every light this frame, as the fragment shader reads it. The uniform block in phong.frag lists the same fields in the same order. */
+struct LightUniform
+{
+    /** Only the first count entries are read. */   
+    GpuLight lights[kMaxLights];
+    /** Light that reaches every surface. Added once, not once per light. w is unused. */
+    MATH::Vec4 ambient;
+    /** How many entries of lights are in use, from 0 to kMaxLights. */
+    uint32_t count;
+    /** Fills the struct to a multiple of 16 bytes, the size the uniform buffer rules give the shader's block. */
+    uint32_t padding[3];
+};
+
+/* 4 lights of 32 bytes, then ambient at byte 128, then count at byte 144, padded to 160 */
+static_assert(sizeof(LightUniform) == 160);
 
 /**
  * A shader cannot read a buffer directly. It reads through a descriptor, which is a pointer to
@@ -56,6 +87,13 @@ public:
      */
     void WriteCamera(uint32_t frameSlot, const CameraUniform& camera) const;
 
+    /**
+    * Copies the lights into one frame slot's buffer.
+    * @param frameSlot which frame slot to write. The GPU must have finished that slot's last frame
+    * @param lights every light this frame, and how many there are
+    */
+    void WriteLights(uint32_t frameSlot, const LightUniform& lights) const;
+
 private:
     /** What one uniform buffer binding holds. */
     struct UniformBinding
@@ -70,12 +108,18 @@ private:
      * Every uniform buffer binding in the set. Row i is binding i, so a row's position is the binding
      * number the shader uses. To add a binding, add a row here and a Write function for it.
      */
-    static constexpr std::array<UniformBinding, 1> kUniformBindings{{
-        {.size = sizeof(CameraUniform), .stages = VK_SHADER_STAGE_VERTEX_BIT},
-    }};
+    static constexpr std::array<UniformBinding, 2> kUniformBindings{
+        {
+            {.size = sizeof(CameraUniform), .stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT},
+            {.size = sizeof(LightUniform), .stages = VK_SHADER_STAGE_FRAGMENT_BIT}
+        }
+    };
 
     /** The row of the camera in kUniformBindings, which is also its binding number. */
     static constexpr uint32_t kCameraBinding = 0;
+
+    /** The row of the lights in kUniformBindings, which is also its binding number. */
+    static constexpr uint32_t kLightBinding = 1;
 
     /** Where the device comes from. */
     const GPUContext& gpuContext;

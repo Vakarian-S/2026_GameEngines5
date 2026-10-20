@@ -38,7 +38,7 @@ public:
      * @param fps_ frames per second to aim for
      * @return milliseconds to sleep, or zero when the frame already ran long
      */
-    unsigned int GetSleepTime(const unsigned int fps_) const;
+    unsigned int GetSleepTime(unsigned int fps_) const;
 
     /**
     * Seconds elapsed at the last reading. Constant for the whole frame.

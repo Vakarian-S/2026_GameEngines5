@@ -12,10 +12,10 @@ class Scene0 : public Scene
 public:
     /**
     * @param cubeMesh_ The mesh every entity is drawn with. The renderer's store created it
-    * @param firstTexture_ The texture on every other cube. The renderer's store created it
-    * @param secondTexture_ The texture on the cubes in between. Pass firstTexture_ again for one texture
+    * @param firstMaterial_ The material on every other cube. The renderer's store created it
+    * @param secondMaterial_ The material on the cubes in between. Pass firstMaterial_ again for one material
     */
-    Scene0(MeshHandle cubeMesh_, TextureHandle firstTexture_, TextureHandle secondTexture_);
+    Scene0(MeshHandle cubeMesh_, MaterialHandle firstMaterial_, MaterialHandle secondMaterial_);
     ~Scene0() override = default;
 
     void HandleEvents(const SDL_Event& sdlEvent) override;
@@ -30,16 +30,29 @@ public:
     /** @return the camera this scene is seen through */
     const Camera& GetCamera() const override { return camera; }
 
+    /** @return the ambient light and this scene's one light */
+    SceneLighting GetLighting() const override { return {.ambient = ambient, .lights = lights}; }
+
 private:
     World world;
     CommandBuffer commandBuffer;
     Query movers;
     /** Where the scene is seen from. It looks at the centre of the grid from far enough back to see all of it */
     Camera camera;
+
+    /** Light that reaches every surface, so the sides facing away from the light are not black */
+    MATH::Vec3 ambient{0.05f, 0.05f, 0.2f};
+    /** One white light above and in front of the grid, between it and the camera */
+    std::array<Light, 1> lights{
+        {
+            {.position = MATH::Vec3(0.0f, 20.0f, 30.0f), .color = MATH::Vec3(1.0f, 1.0f, 1.0f)},
+        }
+    };
+
     /** The mesh every entity is drawn with */
     MeshHandle cubeMesh;
-    /** The two textures the cubes alternate between, so neighbouring draw items differ */
-    std::array<TextureHandle, 2> textures;
+    /** The two materials the cubes alternate between, so neighbouring draw items differ */
+    std::array<MaterialHandle, 2> materials;
 
     /** Every entity this scene spawned, in spawn order */
     std::vector<Entity> entities;

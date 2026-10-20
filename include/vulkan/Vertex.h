@@ -14,9 +14,9 @@ struct Vertex
     /** Where the corner is, as x, y and z. The shader reads it at location 0. */
     MATH::Vec3 position;
 
-    /** The corner's colour, as red, green and blue from 0 to 1. The shader reads it at location 1. */
-    MATH::Vec3 color;
-    
+    /** The corner's Normal as a Vec3, The shader reads it at location 1. */
+    MATH::Vec3 normal;
+
     /** Where the corner sits on the texture, from 0 to 1. The shader reads it at location 2 */
     MATH::Vec2 uv;
 
@@ -36,7 +36,7 @@ struct Vertex
 
     /**
      * Tells the pipeline where each field sits inside a Vertex, and which shader "in" variable receives it.
-     * @return one description per field: position first, then colour
+     * @return one description per field: position first, next normal, and then uv
      */
     static std::array<VkVertexInputAttributeDescription, 3> GetVertexInputAttributeDescription()
     {
@@ -53,8 +53,8 @@ struct Vertex
         attributeDescriptions[1].binding = 0;
         attributeDescriptions[1].location = 1;
         attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(Vertex, color);
-        
+        attributeDescriptions[1].offset = offsetof(Vertex, normal);
+
         attributeDescriptions[2].binding = 0;
         attributeDescriptions[2].location = 2;
         attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;

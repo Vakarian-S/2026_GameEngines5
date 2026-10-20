@@ -9,6 +9,7 @@
 #include "core/Scene.h"
 #include "core/Camera.h"
 #include "scenes/Scene0.h"
+#include "scenes/Scene1.h"
 #include "utils/Arena.h"
 #include "utils/ArenaResource.h"
 #include "utils/MemoryMonitor.h"
@@ -59,6 +60,7 @@ int main()
         Window window("GameEngines5", 1280, 720);
         VulkanRenderer vulkanRenderer(window.GetSDLWindow());
         const MeshHandle cube = vulkanRenderer.GetResourceStore().CreateCube();
+        const MeshHandle marioMesh = vulkanRenderer.GetResourceStore().CreateMesh("assets/meshes/Mario.obj");
         const TextureHandle skull = vulkanRenderer.GetResourceStore().
                                                    CreateTexture("assets/textures/skull_texture.jpg");
         const TextureHandle mario = vulkanRenderer.GetResourceStore().CreateTexture("assets/textures/mario_main.png");
@@ -69,10 +71,17 @@ int main()
          */
         MemoryMonitor::SetLogging(true);
 
-        Scene0 scene(cube, skull, mario);
+        /* A shiny Mario next to matte skull cubes, so the two materials show different highlights under the same light */
+        const MaterialHandle shinyMario = vulkanRenderer.GetResourceStore().CreateMaterial(
+            {.albedo = mario, .shininess = 32.0f, .specularStrength = 0.5f});
+        const MaterialHandle matteSkull = vulkanRenderer.GetResourceStore().CreateMaterial(
+            {.albedo = skull, .shininess = 4.0f, .specularStrength = 0.1f});
+
+        /* Scene0 stays for measuring Record: build Scene0 scene(cube, matteSkull, shinyMario) here instead */
+        Scene1 scene(marioMesh, shinyMario, cube, matteSkull);
         if (!scene.OnCreate())
         {
-            std::cerr << "Scene0::OnCreate failed" << std::endl;
+            std::cerr << "Scene1::OnCreate failed" << std::endl;
             return 1;
         }
 
@@ -116,7 +125,7 @@ int main()
 
             {
                 PROFILE_SCOPE("Render");
-                vulkanRenderer.DrawFrame(scene.GetCamera(), drawList);
+                vulkanRenderer.DrawFrame(scene.GetCamera(), scene.GetLighting(), drawList);
             }
 
             {

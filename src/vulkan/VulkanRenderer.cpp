@@ -1,30 +1,33 @@
 ﻿#include "vulkan/VulkanRenderer.h"
 #include "core/Camera.h"
-#include <array>
 #include "MMath.h"
+
+#include <array>
+#include <stdexcept>
+#include <string>
 
 
 VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_) : gpuContext(sdlWindow_),
                                                          descriptors(gpuContext),
-                                                         textureDescriptors(gpuContext),
+                                                         materialDescriptors(gpuContext),
                                                          temporaryCommandBuffers(gpuContext),
                                                          swapchain(gpuContext, sdlWindow_),
                                                          resourceStore(gpuContext, temporaryCommandBuffers,
-                                                                       textureDescriptors),
-                                                         /* Entry i describes set i of the shaders: set 0 the camera, set 1 the texture */
+                                                                       materialDescriptors),
+                                                         /* Entry i describes set i of the shaders: set 0 the camera and the lights, set 1 the material */
                                                          pipeline(gpuContext, swapchain.GetImageFormat(),
                                                                   swapchain.GetDepthFormat(),
-                                                                  "shaders/mesh.vert.spv",
-                                                                  "shaders/mesh.frag.spv",
+                                                                  "shaders/phong.vert.spv",
+                                                                  "shaders/phong.frag.spv",
                                                                   std::array{
                                                                       descriptors.GetLayout(),
-                                                                      textureDescriptors.GetLayout()
+                                                                      materialDescriptors.GetLayout()
                                                                   }),
                                                          frameLoop(gpuContext, swapchain, descriptors)
 {
 }
 
-void VulkanRenderer::DrawFrame(const Camera& camera, const DrawList& drawList)
+void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList)
 {
     /* Width over height, read every frame, so a resize keeps the cubes' proportions */
     const auto [width, height] = swapchain.GetExtent();
@@ -39,5 +42,27 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const DrawList& drawList)
     /* Element 5 is the Y scale. The math library assumes +Y is up, and Vulkan's +Y points down the screen */
     cameraUniform.projection[5] *= -1.0f;
 
-    frameLoop.DrawFrame(kClearColor, pipeline, resourceStore, drawList, cameraUniform);
+    /* The view matrix moves the world so the camera sits at the origin. Its inverse moves the origin back to the camera, so its last column is the camera's position */
+    const MATH::Matrix4 cameraToWorld = MMath::inverse(camera.view);
+    cameraUniform.position = MATH::Vec4(cameraToWorld[12], cameraToWorld[13], cameraToWorld[14], 1.0f);
+
+    /* The uniform buffer has room for kMaxLights. Saying so here names the count, where the shader would drop the extra lights */
+    if (lighting.lights.size() > kMaxLights)
+    {
+        throw std::runtime_error("the scene has " + std::to_string(lighting.lights.size()) +
+            " lights, and the renderer takes at most " + std::to_string(kMaxLights));
+    }
+    
+    LightUniform lightUniform{};
+    for (std::size_t i = 0; i < lighting.lights.size(); ++i)
+    {
+        const Light& light = lighting.lights[i];
+        lightUniform.lights[i].position = MATH::Vec4(light.position.x, light.position.y, light.position.z, 1.0f);
+        lightUniform.lights[i].color = MATH::Vec4(light.color.x, light.color.y, light.color.z, 1.0f);
+    }
+    lightUniform.ambient = MATH::Vec4(lighting.ambient.x, lighting.ambient.y, lighting.ambient.z, 1.0f);
+    lightUniform.count = static_cast<uint32_t>(lighting.lights.size());
+
+    frameLoop.DrawFrame(kClearColor, pipeline, resourceStore, drawList, cameraUniform, lightUniform);
+    
 }

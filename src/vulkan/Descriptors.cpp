@@ -24,6 +24,11 @@ void Descriptors::WriteCamera(const uint32_t frameSlot, const CameraUniform& cam
     uniformBuffers[kCameraBinding][frameSlot]->Write(&camera, sizeof(CameraUniform));
 }
 
+void Descriptors::WriteLights(uint32_t frameSlot, const LightUniform& lights) const
+{
+    uniformBuffers[kLightBinding][frameSlot]->Write(&lights, sizeof(LightUniform));
+}
+
 /* ============= 1. Set Layout ============= */
 /* The shape of a set. It says what sits at each binding number, and holds no data */
 void Descriptors::CreateLayout()

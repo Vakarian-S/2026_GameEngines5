@@ -38,7 +38,8 @@ FrameLoop::~FrameLoop()
 
 
 void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline,
-                          const ResourceStore& resourceStore, const DrawList& drawList, const CameraUniform& camera)
+                          const ResourceStore& resourceStore, const DrawList& drawList, const CameraUniform& camera,
+                          const LightUniform& lights)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -60,9 +61,10 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
         throw std::runtime_error("Failed to wait for fence!");
     }
 
-    /* ============= 2. Write The Camera ============= */
-    /* The fence above proves the GPU finished this slot's last frame, so its camera buffer is free to overwrite */
+    /* ============= 2. Write The Descriptors ============= */
+    /* The fence above proves the GPU finished this slot's last frame, so its buffers are free to overwrite */
     descriptors.WriteCamera(currentFrame, camera);
+    descriptors.WriteLights(currentFrame, lights);
 
     /* ============= 3. Acquire An Image ============= */
     /* Asks the swapchain for an image to draw into, and handles a swapchain that no longer fits the window */
@@ -339,11 +341,10 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     /* ============= 5. Draw ============= */
-    /* One push and one draw per item. A mesh's buffers and a texture's set are bound again only when they change */
-
-    /* No mesh and no texture are bound yet. No handle has this index, so the first item always binds both */
+    /* One push and one draw per item. A mesh's buffers and a material's set are bound again only when they change */
+    /* No mesh and no material are bound yet. No handle has this index, so the first item always binds both */
     uint32_t boundMesh = UINT32_MAX;
-    uint32_t boundTexture = UINT32_MAX;
+    uint32_t boundMaterial = UINT32_MAX;
     for (const DrawItem& item : drawList)
     {
         const Mesh& mesh = resourceStore.GetMesh(item.mesh);
@@ -357,13 +358,13 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
             vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer.GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
             boundMesh = item.mesh.index;
         }
-        if (item.texture.index != boundTexture)
+        if (item.material.index != boundMaterial)
         {
-            /* Points the shader's set 1 at this texture. Set 0, the camera, stays bound */
-            const VkDescriptorSet textureSet = resourceStore.GetTextureSet(item.texture);
+            /* Points the shader's set 1 at this material. Set 0, the camera and the lights, stays bound */
+            const VkDescriptorSet materialSet = resourceStore.GetMaterialSet(item.material);
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 1, 1,
-                                    &textureSet, 0, nullptr);
-            boundTexture = item.texture.index;
+                                    &materialSet, 0, nullptr);
+            boundMaterial = item.material.index;
         }
         const ModelMatrixPushConstant pushConstant{.modelMatrix = item.transform};
         vkCmdPushConstants(commandBuffer, pipeline.GetLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
