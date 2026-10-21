@@ -1,0 +1,143 @@
+﻿#include "app/Application.h"
+
+#include <charconv>
+#include <iterator>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <iostream>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_timer.h>
+
+#include "scenes/Scene0.h"
+#include "scenes/Scene1.h"
+#include "utils/MemoryMonitor.h"
+#include "utils/Profiler.h"
+
+namespace
+{
+    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 72,000. */
+    constexpr std::size_t kFrameArenaBytes = 128 * 1024;
+
+    /** Every scene the program can run. F1 picks row 0, F2 row 1. At file scope, so it outlives the manager's span */
+    constexpr SceneEntry kScenes[] = {
+        {.name = "Scene0", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene0>(); }},
+        {.name = "Scene1", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene1>(); }},
+    };
+
+    /**
+     * Reads the starting scene from the command line.
+     * @return the row in argv[1], or the last row when no argument is given. Throws with the scene list on a bad argument
+     */
+    std::size_t PickScene(const int argc, char* argv[])
+    {
+        const std::size_t sceneCount = std::size(kScenes);
+        if (argc < 2) return sceneCount - 1;
+
+        const std::string_view text = argv[1];
+        std::size_t index = 0;
+        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), index);
+
+        /* Bad when it is not a number, has extra characters after the number, or is past the table */
+        if (error != std::errc() || end != text.data() + text.size() || index >= sceneCount)
+        {
+            std::string message = "no scene \"" + std::string(text) + "\". Pick one of:\n";
+            for (std::size_t i = 0; i < sceneCount; ++i)
+            {
+                message += "  " + std::to_string(i) + ": " + kScenes[i].name + "\n";
+            }
+            throw std::invalid_argument(message);
+        }
+        return index;
+    }
+}
+
+Application::Application(const int argc, char* argv[]) :
+    window("GameEngines5", 1280, 720),
+    renderer(window.GetSDLWindow()),
+    sceneManager(kScenes, renderer.GetResourceStore()),
+    frameArena(kFrameArenaBytes),
+    frameMemory(frameArena)
+{
+    const std::size_t sceneIndex = PickScene(argc, argv);
+    /*
+     * What a scene costs to start. The World takes one slab and every archetype, column
+     * and slot lives inside it, so the lines printed here are the slab and whatever the
+     * scene itself allocates outside the World.
+     */
+    MemoryMonitor::SetLogging(true);
+    sceneManager.Start(sceneIndex);
+    MemoryMonitor::SetLogging(false);
+    timer.Start();
+}
+
+void Application::Run()
+{
+    while (true)
+    {
+        Profiler::BeginFrame();
+        /* Everything the last frame put in the frame arena is gone from here on. */
+        frameArena.Reset();
+        DrawList drawList(&frameMemory);
+        {
+            PROFILE_SCOPE("Events");
+            SDL_Event event;
+            while (window.NextEvent(event))
+            {
+                HandleEvent(event);
+            }
+        }
+
+        /* Between frames, so nothing below still uses the old scene */
+        sceneManager.ApplyPendingSwitch();
+
+        if (window.ShouldClose()) break;
+
+        timer.UpdateFrameTicks();
+
+        {
+            PROFILE_SCOPE("Scene::Update");
+            sceneManager.GetCurrentScene().Update(timer.GetDeltaTime());
+        }
+
+        {
+            PROFILE_SCOPE("MakeDrawList");
+            sceneManager.GetCurrentScene().MakeDrawList(drawList);
+        }
+
+        {
+            PROFILE_SCOPE("Render");
+            renderer.DrawFrame(sceneManager.GetCurrentScene().GetCamera(),
+                               sceneManager.GetCurrentScene().GetLighting(), drawList);
+        }
+
+        {
+            PROFILE_SCOPE("Wait");
+            SDL_Delay(timer.GetSleepTime(60));
+        }
+        Profiler::EndFrame();
+
+        /* Over budget, so dump the frame while its numbers are still in the table. */
+        if (Profiler::LastFrameMilliseconds() > 30.0) Profiler::ReportFrame();
+    }
+
+    const ArenaStats frameStats = frameArena.Stats();
+
+    std::cout << "-- Frame Arena Report --\n"
+        << "  frame capacity          " << frameStats.capacity << " bytes\n"
+        << "  frame high water    " << frameStats.highWater << " bytes\n"
+        << "  frame resets        " << frameStats.resets
+        << " (" << frameMemory.Stats().fromHeap << " fell to the heap)\n";
+}
+
+void Application::HandleEvent(const SDL_Event& event)
+{
+    /* F1 to F4 pick a row in the scene table. The scene never sees these keys */
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+        event.key.scancode >= SDL_SCANCODE_F1 && event.key.scancode <= SDL_SCANCODE_F4)
+    {
+        sceneManager.RequestSwitch(event.key.scancode - SDL_SCANCODE_F1);
+        return;
+    }
+    sceneManager.GetCurrentScene().HandleEvents(event);
+}

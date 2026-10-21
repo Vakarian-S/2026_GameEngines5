@@ -4,29 +4,39 @@
 
 #include "ConstantsConversions.h"
 #include "MMath.h"
+#include "core/ResourceLoader.h"
 #include "ecs/Archetype.h"
 #include "game/Components.h"
 #include "utils/Profiler.h"
 
-Scene1::Scene1(const MeshHandle marioMesh_, const MaterialHandle marioMaterial_, const MeshHandle cubeMesh_,
-               const MaterialHandle cubeMaterial_) :
+Scene1::Scene1() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
     spinners(world, COMPONENTS::MaskOf<Rotation, Spin>()),
-    drawables(world, COMPONENTS::MaskOf<Position, Rotation, Renderable>()),
-    marioMesh(marioMesh_),
-    marioMaterial(marioMaterial_),
-    cubeMesh(cubeMesh_),
-    cubeMaterial(cubeMaterial_)
+    drawables(world, COMPONENTS::MaskOf<Position, Rotation, Renderable>())
+
 {
     /* Mario is about 2.6 metres tall and centred on the origin, so 6 metres back shows all of him */
     camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 1.0f, 6.0f), MATH::Vec3(0.0f, 0.0f, 0.0f),
                                       MATH::Vec3(0.0f, 1.0f, 0.0f));
 }
 
-bool Scene1::OnCreate()
+bool Scene1::OnCreate(ResourceLoader& resourceLoader)
 {
     std::cout << "lighting: " << kSchemes[activeScheme].name << ". Keys 1 to " << kSchemes.size() << " switch\n";
     PROFILE_SCOPE_ECS(world, "OnCreate");
+
+    const TextureHandle marioTexture = resourceLoader.CreateTexture("assets/textures/mario_main.png");
+    const TextureHandle skullTexture = resourceLoader.
+        CreateTexture("assets/textures/skull_texture.jpg");
+
+    marioMesh = resourceLoader.CreateMesh("assets/meshes/Mario.obj");
+    marioMaterial = resourceLoader.CreateMaterial({
+        .albedo = marioTexture, .shininess = 32.0f, .specularStrength = 0.5f
+    });
+    cubeMesh = resourceLoader.CreateCube();
+    cubeMaterial = resourceLoader.CreateMaterial({
+        .albedo = skullTexture, .shininess = 4.0f, .specularStrength = 0.1f
+    });
 
     /* Mario stands in the middle and turns half a radian per second, a full turn in about 12.6 seconds */
     const Entity mario = world.CreateEntity();
@@ -108,7 +118,7 @@ void Scene1::HandleEvents(const SDL_Event& sdlEvent)
     const SDL_Keycode key = sdlEvent.key.key;
     if (key >= SDLK_1 && key < SDLK_1 + kSchemes.size())
     {
-            activeScheme = static_cast<uint32_t>(key - SDLK_1);
+        activeScheme = static_cast<uint32_t>(key - SDLK_1);
         std::cout << "lighting: " << kSchemes[activeScheme].name << "\n";
     }
 }

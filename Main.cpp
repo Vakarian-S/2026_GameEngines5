@@ -1,20 +1,9 @@
 #include <exception>
 #include <iostream>
-#include <cmath>
-#include <SDL3/SDL.h>
 
-#include "MMath.h"
-#include "core/Timer.h"
-#include "core/Window.h"
-#include "core/Scene.h"
-#include "core/Camera.h"
-#include "scenes/Scene0.h"
-#include "scenes/Scene1.h"
-#include "utils/Arena.h"
-#include "utils/ArenaResource.h"
+#include "app/Application.h"
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
-#include "vulkan/VulkanRenderer.h"
 
 /*
  * Where the engine starts.
@@ -33,13 +22,8 @@
  * Both test programs are built and run by scripts\run-tests.bat.
  */
 
-namespace
-{
-    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 72,000. */
-    constexpr std::size_t kFrameArenaBytes = 128 * 1024;
-}
 
-int main()
+int main(const int argc, char* argv[])
 {
     /*
      * The runtime allocates before main, so measure against this point.
@@ -53,118 +37,10 @@ int main()
     const MemoryStats baseline = MemoryMonitor::GetStats();
 
     std::cout << "GameEngines5\n";
-
-
     try
     {
-        Window window("GameEngines5", 1280, 720);
-        VulkanRenderer vulkanRenderer(window.GetSDLWindow());
-        const MeshHandle cube = vulkanRenderer.GetResourceStore().CreateCube();
-        const MeshHandle marioMesh = vulkanRenderer.GetResourceStore().CreateMesh("assets/meshes/Mario.obj");
-        const TextureHandle skull = vulkanRenderer.GetResourceStore().
-                                                   CreateTexture("assets/textures/skull_texture.jpg");
-        const TextureHandle mario = vulkanRenderer.GetResourceStore().CreateTexture("assets/textures/mario_main.png");
-        /*
-         * What a scene costs to start. The World takes one slab and every archetype, column
-         * and slot lives inside it, so the lines printed here are the slab and whatever the
-         * scene itself allocates outside the World.
-         */
-        MemoryMonitor::SetLogging(true);
-
-        /* A shiny Mario next to matte skull cubes, so the two materials show different highlights under the same light */
-        const MaterialHandle shinyMario = vulkanRenderer.GetResourceStore().CreateMaterial(
-            {.albedo = mario, .shininess = 32.0f, .specularStrength = 0.5f});
-        const MaterialHandle matteSkull = vulkanRenderer.GetResourceStore().CreateMaterial(
-            {.albedo = skull, .shininess = 4.0f, .specularStrength = 0.1f});
-
-        /* Scene0 stays for measuring Record: build Scene0 scene(cube, matteSkull, shinyMario) here instead */
-        Scene1 scene(marioMesh, shinyMario, cube, matteSkull);
-        if (!scene.OnCreate())
-        {
-            std::cerr << "Scene1::OnCreate failed" << std::endl;
-            return 1;
-        }
-
-        MemoryMonitor::SetLogging(false);
-        Timer timer;
-        timer.Start();
-
-        /* Scratch memory that lives for one frame. Taken from the OS once, here. */
-        Arena frameArena(kFrameArenaBytes);
-        ArenaResource frameMemory(frameArena);
-
-        SDL_Event event;
-        while (true)
-        {
-            Profiler::BeginFrame();
-
-            /* Everything the last frame put in the frame arena is gone from here on. */
-            frameArena.Reset();
-            DrawList drawList(&frameMemory);
-            {
-                PROFILE_SCOPE("Events");
-                while (window.NextEvent(event))
-                {
-                    scene.HandleEvents(event);
-                }
-            }
-
-            if (window.ShouldClose()) break;
-
-            timer.UpdateFrameTicks();
-
-            {
-                PROFILE_SCOPE("Scene0::Update");
-                scene.Update(timer.GetDeltaTime());
-            }
-
-            {
-                PROFILE_SCOPE("MakeDrawList");
-                scene.MakeDrawList(drawList);
-            }
-
-            {
-                PROFILE_SCOPE("Render");
-                vulkanRenderer.DrawFrame(scene.GetCamera(), scene.GetLighting(), drawList);
-            }
-
-            {
-                PROFILE_SCOPE("Wait");
-                SDL_Delay(timer.GetSleepTime(60));
-            }
-            Profiler::EndFrame();
-
-            /* Over budget, so dump the frame while its numbers are still in the table. */
-            if (Profiler::LastFrameMilliseconds() > 30.0) Profiler::ReportFrame();
-        }
-        scene.OnDestroy();
-
-        const FrameStats& totals = scene.GetWorld().Totals();
-        const WorldStats snapshot = scene.GetWorld().Snapshot();
-
-        std::cout << "-- ECS Report --\n"
-            << "  entities created    " << totals.entitiesCreated << "\n"
-            << "  components added    " << totals.componentsAdded << "\n"
-            << "  components removed  " << totals.componentsRemoved << "\n"
-            << "  migrations          " << totals.migrations << "\n"
-            << "  bytes copied        " << totals.bytesCopied << "\n"
-            << "  archetypes created  " << totals.archetypesCreated << "\n"
-            << "  live entities       " << snapshot.liveEntities << "\n"
-            << "  archetypes now      " << snapshot.archetypeCount
-            << " (" << snapshot.emptyArchetypes << " empty)\n";
-
-        const WorldMemoryStats worldMemory = scene.GetWorld().MemoryStats();
-        const ArenaStats frameStats = frameArena.Stats();
-
-        std::cout << "-- Arena Report --\n"
-            << "  world capacity          " << worldMemory.arena.capacity << " bytes\n"
-            << "  world used          " << worldMemory.arena.used << " bytes\n"
-            << "  world allocations   " << worldMemory.resource.fromArena
-            << " (" << worldMemory.resource.fromHeap << " fell to the heap)\n"
-            << "  frame capacity          " << frameStats.capacity << " bytes\n"
-            << "  frame high water    " << frameStats.highWater << " bytes\n"
-            << "  frame resets        " << frameStats.resets
-            << " (" << frameMemory.Stats().fromHeap << " fell to the heap)\n";
+        Application app(argc, argv);
+        app.Run();
     }
     catch (const std::exception& error)
     {

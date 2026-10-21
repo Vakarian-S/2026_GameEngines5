@@ -38,6 +38,7 @@ ResourceStore::ResourceStore(const GPUContext& gpuContext_, const TemporaryComma
 
 MeshHandle ResourceStore::CreateCube()
 {
+    if (cubeCache.has_value()) return cubeCache.value();
     /*
     * Four corners per face, so each face has its own UVs. UV (0, 0) is the image's top-left
     * pixel and V grows downwards, so on the four side faces V = 0 sits at the top, y = +0.5
@@ -165,16 +166,19 @@ MeshHandle ResourceStore::CreateCube()
     const MeshHandle handle{static_cast<uint32_t>(meshList.size())};
     /* Both arrays are copied into GPU memory once, here. The frame loop only reads them */
     meshList.push_back(std::make_unique<Mesh>(gpuContext, temporaryCommandBuffers, cubeVertices, cubeIndices));
+    cubeCache = handle;
     return handle;
 }
 
 MeshHandle ResourceStore::CreateMesh(const std::string& path)
 {
+    if (const auto it = meshCache.find(path); it != meshCache.end()) return it->second;
     /* The CPU copy lives only until the GPU copy exists */
     const auto [vertices, indices] = LoadObjFile(path);
     const MeshHandle handle{static_cast<uint32_t>(meshList.size())};
     meshList.push_back(std::make_unique<Mesh>(gpuContext, temporaryCommandBuffers, vertices,
                                               indices));
+    meshCache.emplace(path, handle);
     return handle;
 }
 
@@ -186,14 +190,26 @@ const Mesh& ResourceStore::GetMesh(const MeshHandle mesh) const
 
 TextureHandle ResourceStore::CreateTexture(const std::string& path)
 {
+    if (const auto it = textureCache.find(path); it != textureCache.end()) return it->second;
     /* The new texture's handle is its position in the list, so read the size before adding it */
     const TextureHandle handle{static_cast<uint32_t>(textureList.size())};
     textureList.push_back(std::make_unique<Texture>(gpuContext, temporaryCommandBuffers, path));
+    textureCache.emplace(path, handle);
     return handle;
 }
 
 MaterialHandle ResourceStore::CreateMaterial(const MaterialDesc& desc)
 {
+    for (const auto& [materialDescription, materialHandle] : materialCache)
+    {
+        if (materialDescription.shininess == desc.shininess &&
+            materialDescription.specularStrength == desc.specularStrength &&
+            materialDescription.albedo.index == desc.albedo.index)
+        {
+            return materialHandle;
+        }
+    }
+
     /* The pool has room for a fixed number of sets. Saying so here gives the reason, where Vulkan would only fail */
     if (materialList.size() == kMaxMaterials)
     {
@@ -207,6 +223,7 @@ MaterialHandle ResourceStore::CreateMaterial(const MaterialDesc& desc)
     const MaterialHandle handle{static_cast<uint32_t>(materialList.size())};
     materialList.push_back(std::make_unique<Material>(gpuContext, temporaryCommandBuffers, materialDescriptors,
                                                       *textureList[desc.albedo.index], values));
+    materialCache.emplace_back(desc, handle);
     return handle;
 }
 

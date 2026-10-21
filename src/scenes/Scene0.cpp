@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include "MMath.h"
+#include "core/ResourceLoader.h"
 #include "ecs/Archetype.h"
 #include "game/Components.h"
 #include "utils/Profiler.h"
@@ -24,11 +25,9 @@ namespace
     }
 }
 
-Scene0::Scene0(const MeshHandle cubeMesh_, const MaterialHandle firstMaterial_, const MaterialHandle secondMaterial_) :
+Scene0::Scene0() :
     world(WorldConfig{kEntityCount, kWorldArenaBytes}),
-    movers(world, COMPONENTS::MaskOf<Position, Velocity>()),
-    cubeMesh(cubeMesh_),
-    materials{firstMaterial_, secondMaterial_}
+    movers(world, COMPONENTS::MaskOf<Position, Velocity>())
 {
     /* The grid is centred on the origin and spans about 20 metres, so 40 metres back shows all of it */
     camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 0.0f, 40.0f), MATH::Vec3(0.0f, 0.0f, 0.0f),
@@ -70,10 +69,21 @@ void Scene0::MakeDrawList(DrawList& drawList)
     }
 }
 
-bool Scene0::OnCreate()
+bool Scene0::OnCreate(ResourceLoader& resourceLoader)
 {
     {
         PROFILE_SCOPE_ECS(world, "OnCreate");
+        cubeMesh = resourceLoader.CreateCube();
+        const TextureHandle mario = resourceLoader.CreateTexture("assets/textures/mario_main.png");
+        const TextureHandle skull = resourceLoader.
+            CreateTexture("assets/textures/skull_texture.jpg");
+        const auto shinyMario = resourceLoader.CreateMaterial({
+            .albedo = mario, .shininess = 32.0f, .specularStrength = 0.5f
+        });
+        const auto matteSkull = resourceLoader.CreateMaterial({
+            .albedo = skull, .shininess = 4.0f, .specularStrength = 0.1f
+        });
+        materials = {matteSkull, shinyMario};
         entities.reserve(kEntityCount);
         for (uint32_t i = 0; i < kEntityCount; ++i)
         {

@@ -2,7 +2,9 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
+#include <optional>
 
 #include "Buffer.h"
 #include "GPUContext.h"
@@ -10,6 +12,7 @@
 #include "MaterialDescriptors.h"
 #include "Vertex.h"
 #include "core/Material.h"
+#include "core/ResourceLoader.h"
 #include "core/Scene.h"
 
 class TemporaryCommandBuffers;
@@ -56,7 +59,7 @@ struct Material
  * Owns every mesh, texture and material the renderer can draw. A handle is a position in its list,
  * so many draw items can share one mesh or one material.
  */
-class ResourceStore
+class ResourceStore : public ResourceLoader
 {
 public:
     /**
@@ -78,40 +81,40 @@ public:
      * Copies a unit cube into GPU memory.
      * @return the handle that names the cube in draw items
      */
-    MeshHandle CreateCube();
+    MeshHandle CreateCube() override;
 
     /**
     * Reads an OBJ file and copies its mesh into GPU memory.
     * @param path the OBJ file, as a path next to the executable, such as "assets/meshes/Mario.obj"
     * @return the handle that names the mesh in draw items
     */
-    MeshHandle CreateMesh(const std::string& path);
-
-    /**
-     * @param mesh a handle this store returned
-     * @return the mesh it names
-     */
-    const Mesh& GetMesh(MeshHandle mesh) const;
+    MeshHandle CreateMesh(const std::string& path) override;
 
     /**
     * Loads an image file into GPU memory.
     * @param path the image file, as a path next to the executable, such as "assets/textures/skull_texture.jpg"
     * @return the handle that names the texture in a MaterialDesc
     */
-    TextureHandle CreateTexture(const std::string& path);
+    TextureHandle CreateTexture(const std::string& path) override;
 
     /**
      * Copies a material's surface values into GPU memory and allocates the set that points at them and at its texture.
      * @param desc the texture and the surface values. The texture must come from this store
      * @return the handle that names the material in draw items
      */
-    MaterialHandle CreateMaterial(const MaterialDesc& desc);
+    MaterialHandle CreateMaterial(const MaterialDesc& desc) override;
 
     /**
      * @param material a handle this store returned
      * @return the set that points at that material, which FrameLoop binds as set 1
      */
     VkDescriptorSet GetMaterialSet(MaterialHandle material) const;
+
+    /**
+     * @param mesh a handle this store returned
+     * @return the mesh it names
+     */
+    const Mesh& GetMesh(MeshHandle mesh) const;
 
 private:
     /** Where the device comes from. */
@@ -131,4 +134,13 @@ private:
 
     /** Every material, in creation order. Declared after textureList, so C++ destroys the materials before the textures they point at */
     std::vector<std::unique_ptr<Material>> materialList;
+    
+    /** Cache for the cube, we only have one so we store that handle */
+    std::optional<MeshHandle> cubeCache;
+    /** Cache for the mesh, we search by path */
+    std::unordered_map<std::string, MeshHandle> meshCache;
+    /** Cache for the texture, we search by path */
+    std::unordered_map<std::string, TextureHandle> textureCache;
+    /** Cache for the materials, we search by values */
+    std::vector<std::pair<MaterialDesc, MaterialHandle>> materialCache;
 };

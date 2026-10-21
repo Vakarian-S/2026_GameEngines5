@@ -14,16 +14,10 @@
 class Scene1 : public Scene
 {
 public:
-    /**
-     * @param marioMesh_ Mario's mesh. The renderer's store created it
-     * @param marioMaterial_ The material on Mario. The renderer's store created it
-     * @param cubeMesh_ The mesh of the cubes beside him. The renderer's store created it
-     * @param cubeMaterial_ The material on the cubes. The renderer's store created it
-     */
-    Scene1(MeshHandle marioMesh_, MaterialHandle marioMaterial_, MeshHandle cubeMesh_, MaterialHandle cubeMaterial_);
+    Scene1();
     ~Scene1() override = default;
 
-    bool OnCreate() override;
+    bool OnCreate(ResourceLoader& resourceLoader) override;
     void OnDestroy() override;
     void Update(float deltaTime) override;
     void MakeDrawList(DrawList& drawList) override;
@@ -40,7 +34,7 @@ public:
     }
 
     /** @return this scene's world, so Main can read its counters */
-    const World& GetWorld() const { return world; }
+    const World& GetWorld() const override { return world; }
 
 private:
     /** Most entities alive at once: Mario and two cubes, with room to spare */

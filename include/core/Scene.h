@@ -8,8 +8,12 @@
 #include "Light.h"
 #include "Matrix.h"
 
+
 struct Camera;
+
 union SDL_Event;
+class World;
+class ResourceLoader;
 
 /** One thing to draw: which mesh, which material on it, and where it sits in the world. */
 struct DrawItem
@@ -47,7 +51,7 @@ public:
      * Function that runs on scene Creation
      * @return boolean indicating whether the scene creation was successful or not
      */
-    virtual bool OnCreate() = 0;
+    virtual bool OnCreate(ResourceLoader& loader) = 0;
 
     /**
      * Function that runs when the scene is destroyed
@@ -75,4 +79,9 @@ public:
      * @return Struct containing the light on the scene, which is ambient and a collection of lights
      */
     virtual SceneLighting GetLighting() const = 0;
+    
+    /**
+     * @return Instance of the scene's own World
+     */
+    virtual const World& GetWorld() const = 0;
 };

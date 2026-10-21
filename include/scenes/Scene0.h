@@ -10,22 +10,17 @@
 class Scene0 : public Scene
 {
 public:
-    /**
-    * @param cubeMesh_ The mesh every entity is drawn with. The renderer's store created it
-    * @param firstMaterial_ The material on every other cube. The renderer's store created it
-    * @param secondMaterial_ The material on the cubes in between. Pass firstMaterial_ again for one material
-    */
-    Scene0(MeshHandle cubeMesh_, MaterialHandle firstMaterial_, MaterialHandle secondMaterial_);
+    Scene0();
     ~Scene0() override = default;
 
     void HandleEvents(const SDL_Event& sdlEvent) override;
     void MakeDrawList(DrawList& drawList) override;
-    bool OnCreate() override;
+    bool OnCreate(ResourceLoader& resourceLoader) override;
     void OnDestroy() override;
     void Update(float deltaTime) override;
 
     /** @return this scene's world, so Main can read its counters */
-    const World& GetWorld() const { return world; }
+    const World& GetWorld() const override { return world; }
 
     /** @return the camera this scene is seen through */
     const Camera& GetCamera() const override { return camera; }
