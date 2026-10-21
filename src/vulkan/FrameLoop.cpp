@@ -7,6 +7,7 @@
 #include <span>
 #include <stdexcept>
 
+#include "MMath.h"
 #include "utils/Profiler.h"
 #include "vulkan/ImageBarrier.h"
 
@@ -366,7 +367,18 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
                                     &materialSet, 0, nullptr);
             boundMaterial = item.material.index;
         }
-        const ModelMatrixPushConstant pushConstant{.modelMatrix = item.transform};
+        /* Once per object here, instead of once per vertex in the shader */
+        const MATH::Matrix3 normalMatrix =
+            MATH::MMath::transpose(MATH::MMath::inverse(MATH::Matrix3(item.transform)));
+        /* Matrix3 is column-major, so floats 0-2 are column 0, 3-5 column 1 and 6-8 column 2 */
+        const ModelMatrixPushConstant pushConstant{
+            .modelMatrix = item.transform,
+            .normalColumns = {
+                MATH::Vec4(normalMatrix[0], normalMatrix[1], normalMatrix[2], 0.0f),
+                MATH::Vec4(normalMatrix[3], normalMatrix[4], normalMatrix[5], 0.0f),
+                MATH::Vec4(normalMatrix[6], normalMatrix[7], normalMatrix[8], 0.0f),
+            }
+        };
         vkCmdPushConstants(commandBuffer, pipeline.GetLayout(), VK_SHADER_STAGE_VERTEX_BIT, 0,
                            sizeof(ModelMatrixPushConstant), &pushConstant);
         vkCmdDrawIndexed(commandBuffer, mesh.indexCount, 1, 0, 0, 0);

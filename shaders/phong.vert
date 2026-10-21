@@ -17,9 +17,11 @@ layout (location = 1) out vec3 fragNormal;
 
 layout (location = 2) out vec2 fragUV;
 
-/* One object's model matrix, set by vkCmdPushConstants before each draw */
+/* One object's matrices, set by vkCmdPushConstants before each draw. The fields match ModelMatrixPushConstant */
 layout (push_constant) uniform PushConstants {
     mat4 modelMatrix;
+    /* The inverse transpose of the model matrix, built once per object on the CPU */
+    mat3 normalMatrix;
 } pushConstants;
 
 /* The camera, read from the uniform buffer bound at set 0, binding 0. The fields match CameraUniform */
@@ -34,10 +36,7 @@ void main()
     vec4 worldPosition = pushConstants.modelMatrix * vec4(inPosition, 1.0);
     gl_Position = camera.projection * camera.view * worldPosition;
 
-    /* The inverse transpose keeps normals at right angles to the surface when the model matrix scales unevenly */
-    mat3 normalMatrix = transpose(inverse(mat3(pushConstants.modelMatrix)));
-    
     fragWorldPosition = worldPosition.xyz;
-    fragNormal = normalMatrix * inNormal;
+    fragNormal = pushConstants.normalMatrix * inNormal;
     fragUV = inUV;
 }

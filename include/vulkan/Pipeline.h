@@ -14,7 +14,16 @@
 struct ModelMatrixPushConstant
 {
     MATH::Matrix4 modelMatrix;
+    /**
+     * The normal matrix: the inverse transpose of the model matrix's upper 3x3. It keeps normals at
+     * right angles to the surface under uneven scale. Each column is padded to 4 floats, because a
+     * mat3 in the shader starts every column on a 16-byte boundary. w is unused.
+     */
+    MATH::Vec4 normalColumns[3];
 };
+
+/* 64 bytes of model matrix and 48 of padded normal matrix. 16 of the guaranteed 128 bytes stay free */
+static_assert(sizeof(ModelMatrixPushConstant) == 112);
 
 /**
  * The settings for every step that turns vertex data into pixels.
