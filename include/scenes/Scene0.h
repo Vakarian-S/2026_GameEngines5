@@ -2,6 +2,7 @@
 #include <array>
 
 #include "core/Camera.h"
+#include "core/FlyCameraController.h"
 #include "core/Scene.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/Query.h"
@@ -70,4 +71,7 @@ private:
     static constexpr int kDamageCount = 100;
     /** Frames between one damage frame and the next */
     static constexpr uint64_t kDamageEvery = 60;
+    
+    /** Controller to move the camera with user input */
+    FlyCameraController flyCameraController;
 };

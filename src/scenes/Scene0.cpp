@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include "MMath.h"
+#include "core/FlyCameraController.h"
 #include "core/ResourceLoader.h"
 #include "ecs/Archetype.h"
 #include "game/Components.h"
@@ -27,23 +28,15 @@ namespace
 
 Scene0::Scene0() :
     world(WorldConfig{kEntityCount, kWorldArenaBytes}),
-    movers(world, COMPONENTS::MaskOf<Position, Velocity>())
+    movers(world, COMPONENTS::MaskOf<Position, Velocity>()),
+    flyCameraController(MATH::Vec3(0.0f, 0.0f, 40.0f), MATH::Vec3(0.0f, 0.0f, 0.0f))
 {
-    /* The grid is centred on the origin and spans about 20 metres, so 40 metres back shows all of it */
-    camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 0.0f, 40.0f), MATH::Vec3(0.0f, 0.0f, 0.0f),
-                                      MATH::Vec3(0.0f, 1.0f, 0.0f));
 }
 
 
 void Scene0::HandleEvents(const SDL_Event& sdlEvent)
 {
-    if (sdlEvent.type == SDL_EVENT_KEY_DOWN)
-    {
-        if (sdlEvent.key.key == SDLK_W)
-        {
-            std::cout << "W pressed" << std::endl;
-        }
-    }
+    flyCameraController.HandleEvent(sdlEvent);
 }
 
 void Scene0::MakeDrawList(DrawList& drawList)
@@ -154,4 +147,6 @@ void Scene0::Update(float deltaTime)
         PROFILE_SCOPE_ECS(world, "Playback");
         commandBuffer.Playback(world);
     }
+    flyCameraController.Update(deltaTime);
+    camera.view = flyCameraController.View();
 }

@@ -3,6 +3,7 @@
 #include <span>
 
 #include "core/Camera.h"
+#include "core/FlyCameraController.h"
 #include "core/Scene.h"
 #include "ecs/Query.h"
 #include "ecs/World.h"
@@ -141,4 +142,7 @@ private:
     MaterialHandle marioMaterial;
     MeshHandle cubeMesh;
     MaterialHandle cubeMaterial;
+    
+    /** Controller to move the camera with user input */
+    FlyCameraController flyCameraController;
 };

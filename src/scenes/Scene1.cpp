@@ -12,12 +12,10 @@
 Scene1::Scene1() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
     spinners(world, COMPONENTS::MaskOf<Rotation, Spin>()),
-    drawables(world, COMPONENTS::MaskOf<Position, Rotation, Renderable>())
+    drawables(world, COMPONENTS::MaskOf<Position, Rotation, Renderable>()),
+    flyCameraController(MATH::Vec3(0.0f, 1.0f, 6.0f), MATH::Vec3(0.0f, 0.0f, 0.0f))
 
 {
-    /* Mario is about 2.6 metres tall and centred on the origin, so 6 metres back shows all of him */
-    camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 1.0f, 6.0f), MATH::Vec3(0.0f, 0.0f, 0.0f),
-                                      MATH::Vec3(0.0f, 1.0f, 0.0f));
 }
 
 bool Scene1::OnCreate(ResourceLoader& resourceLoader)
@@ -82,6 +80,8 @@ void Scene1::Update(const float deltaTime)
             if (rotations[row].yawRadians > 2.0f * FLOAT_PI) rotations[row].yawRadians -= 2.0f * FLOAT_PI;
         }
     }
+    flyCameraController.Update(deltaTime);
+    camera.view = flyCameraController.View();
 }
 
 void Scene1::MakeDrawList(DrawList& drawList)
@@ -112,13 +112,16 @@ void Scene1::MakeDrawList(DrawList& drawList)
 
 void Scene1::HandleEvents(const SDL_Event& sdlEvent)
 {
-    if (sdlEvent.type != SDL_EVENT_KEY_DOWN) return;
-
-    /* SDLK_1 to SDLK_9 are consecutive, so the key's distance from SDLK_1 is the scheme's position */
-    const SDL_Keycode key = sdlEvent.key.key;
-    if (key >= SDLK_1 && key < SDLK_1 + kSchemes.size())
+    if (sdlEvent.type == SDL_EVENT_KEY_DOWN)
     {
-        activeScheme = static_cast<uint32_t>(key - SDLK_1);
-        std::cout << "lighting: " << kSchemes[activeScheme].name << "\n";
+        /* SDLK_1 to SDLK_9 are consecutive, so the key's distance from SDLK_1 is the scheme's position */
+        const SDL_Keycode key = sdlEvent.key.key;
+        if (key >= SDLK_1 && key < SDLK_1 + kSchemes.size())
+        {
+            activeScheme = static_cast<uint32_t>(key - SDLK_1);
+            std::cout << "lighting: " << kSchemes[activeScheme].name << "\n";
+        }
     }
+
+    flyCameraController.HandleEvent(sdlEvent);
 }
