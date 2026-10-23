@@ -2,15 +2,15 @@
 bin/
 # CMake build trees, one per platform, and anything else generated under build/
 build/
-x64/
-x86/
-Win32/
-Debug/
-Release/
-x64/**/*.obj
-x86/**/*.obj
-Debug/**/*.obj
-Release/**/*.obj
+/x64/
+/x86/
+/Win32/
+/Debug/
+/Release/
+/x64/**/*.obj
+/x86/**/*.obj
+/Debug/**/*.obj
+/Release/**/*.obj
 *.pdb
 *.ilk
 *.exp

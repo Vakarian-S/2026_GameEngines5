@@ -13,7 +13,6 @@
 #include "Vertex.h"
 #include "core/Material.h"
 #include "core/ResourceLoader.h"
-#include "core/Scene.h"
 
 class TemporaryCommandBuffers;
 

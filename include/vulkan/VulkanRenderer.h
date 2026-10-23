@@ -7,6 +7,11 @@
 #include "Swapchain.h"
 #include "TemporaryCommandBuffers.h"
 #include "MaterialDescriptors.h"
+#include "core/DrawList.h"
+#include "core/Light.h"
+#include "vulkan/debug/LineBuffers.h"
+
+struct Camera;
 
 
 class VulkanRenderer
@@ -28,8 +33,10 @@ public:
     * @param camera the scene's camera. The projection is built from it here, for Vulkan
     * @param lighting the scene's lights. More than kMaxLights throws
     * @param drawList what to draw this frame
+    * @param debugLines the line vertices for this fram
     */
-    void DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList);
+    void DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList,
+                   const DebugLines& debugLines);
 
 
     ResourceStore& GetResourceStore() { return resourceStore; }
@@ -54,7 +61,13 @@ private:
     /** Every mesh and texture. Declared before pipeline only for reading order; the pipeline does not use it */
     ResourceStore resourceStore;
 
+    /** Pipeline used to draw the meshes */
     Pipeline meshPipeline;
+    /** Pipeline used to draw the debug lines */
+    Pipeline linePipeline;
+
+    /** Line buffers that will be used for the linePipeline */
+    LineBuffers lineBuffers;
 
     FrameLoop frameLoop;
 };

@@ -4,10 +4,25 @@
 #include "GPUContext.h"
 #include "ResourceStore.h"
 #include "Swapchain.h"
+#include "core/DrawList.h"
+#include "core/debug/DebugLines.h"
+
 
 class Pipeline;
 class Buffer;
 class Descriptors;
+class LineBuffers;
+
+
+/** Struct containing all the pipelines that will be used on the frameLoop,
+ * If a new type of pipeline is needed, it has to be added here */
+struct FramePipelines
+{
+    const Pipeline& meshPipeline;
+    const Pipeline& linePipeline;
+};
+
+
 /**
  * Draws one frame per call.
  *
@@ -32,7 +47,12 @@ public:
      * @param swapchain_ The images to draw into. It must outlive this object
      * @param descriptors_ The camera sets and buffers, one per frame slot. It must outlive this object
      */
-    FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_);
+    FrameLoop(
+        const GPUContext& gpuContext_,
+        Swapchain& swapchain_,
+        const Descriptors& descriptors_,
+        const LineBuffers& lineBuffers_
+    );
 
     /** Waits for the GPU to finish, then destroys the sync objects and the command pool. */
     ~FrameLoop();
@@ -40,14 +60,22 @@ public:
     /**
      * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline, and presents it.
      * @param clearColor the colour of the image is cleared to before anything is drawn
-     * @param pipeline the settings to draw with
+     * @param pipelines the settings to draw with
      * @param resourceStore where the meshes named in drawList live
      * @param drawList what to draw: one mesh and one model matrix per item
+     * @param debugLines the line vertices for this frame, copied into this slot's line buffer
      * @param camera the view and projection for this frame, copied into this slot's camera buffer
      * @param lights the lights for this frame, copied into this slot's light buffer
      */
-    void DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline, const ResourceStore& resourceStore,
-                   const DrawList& drawList, const CameraUniform& camera, const LightUniform& lights);
+    void DrawFrame(
+        const VkClearColorValue& clearColor,
+        const FramePipelines& pipelines,
+        const ResourceStore& resourceStore,
+        const DrawList& drawList,
+        const DebugLines& debugLines,
+        const CameraUniform& camera,
+        const LightUniform& lights
+    );
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
     FrameLoop(const FrameLoop&) = delete;
@@ -64,6 +92,9 @@ private:
 
     /** The camera sets and buffers. DrawFrame writes this slot's camera and binds this slot's set. */
     const Descriptors& descriptors;
+
+    /** Line buffers to be used for the debug pipeline */
+    const LineBuffers& lineBuffers;
 
     /**
      * The memory that command buffers record into. A buffer reuses this memory every frame, so
@@ -140,16 +171,41 @@ private:
      * Records this frame's commands into the current slot's command buffer:
      *   1. Change the image's layout so the GPU can draw into it.
      *   2. Begin rendering, which clears the image to clearColor.
-     *   3. Bind the pipeline and both buffers, set the viewport and scissor, and draw.
-     *   4. End rendering.
-     *   5. Change the image's layout so it can be presented.
+     *   3. Set the viewport and scissor, which both passes share.
+     *   4. Record the mesh pass, then the line pass.
+     *   5. End rendering, and change the image's layout so it can be presented.
      *
      * @param imageIndex which swapchain image to draw into
      * @param clearColor the color the image is cleared to
-     * @param pipeline the settings to draw with
+     * @param pipelines the pipelines to draw with: one per pass
      * @param resourceStore where the meshes named in drawList live
      * @param drawList what to draw: one mesh and one model matrix per item
+     * @param lineVertexCount how many line vertices this slot's line buffer holds
      */
-    void RecordCommandBuffer(uint32_t imageIndex, const VkClearColorValue& clearColor, const Pipeline& pipeline,
-                             const ResourceStore& resourceStore, const DrawList& drawList) const;
+    void RecordCommandBuffer(
+        uint32_t imageIndex,
+        const VkClearColorValue& clearColor,
+        const FramePipelines& pipelines,
+        const ResourceStore& resourceStore,
+        const DrawList& drawList,
+        uint32_t lineVertexCount
+    ) const;
+
+    /**
+    * Records the meshes: binds the mesh pipeline and set 0, then one push and one indexed draw per item.
+    * @param commandBuffer the command buffer being recorded
+    * @param pipeline the mesh pipeline
+    * @param resourceStore where the meshes named in drawList live
+    * @param drawList what to draw: one mesh and one model matrix per item
+    */
+    void RecordMeshPass(VkCommandBuffer commandBuffer, const Pipeline& pipeline, const ResourceStore& resourceStore,
+                        const DrawList& drawList) const;
+
+    /**
+     * Records the debug lines: binds the line pipeline, set 0 and this slot's line buffer, then one draw for every line.
+     * @param commandBuffer the command buffer being recorded
+     * @param pipeline the line pipeline
+     * @param vertexCount how many vertices this slot's line buffer holds. 0 records nothing
+     */
+    void RecordLinePass(VkCommandBuffer commandBuffer, const Pipeline& pipeline, uint32_t vertexCount) const;
 };

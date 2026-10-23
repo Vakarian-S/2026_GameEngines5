@@ -10,3 +10,10 @@
  * @return the filled settings, ready for the Pipeline constructor
  */
 PipelineSettings MeshPipelineSettings(VkDescriptorSetLayout frameSet, VkDescriptorSetLayout materialSet);
+
+/**
+ * The settings for the debug line pipeline: colored lines
+ * @param frameSet the layout of set 0: the camera and the lights
+ * @return the filled settings, ready for the Pipeline constructor
+ */
+PipelineSettings LinePipelineSettings(VkDescriptorSetLayout frameSet);

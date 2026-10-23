@@ -79,6 +79,12 @@ void Application::Run()
         /* Everything the last frame put in the frame arena is gone from here on. */
         frameArena.Reset();
         DrawList drawList(&frameMemory);
+        DebugLines debugLines(&frameMemory);
+        /*
+         * The arena never frees the blocks a vector leaves behind when it grows, so a list grown one push at a time
+         * keeps every old size. Reserving last frame's count makes one block instead
+         */
+        debugLines.reserve(lastDebugLineCount);
         {
             PROFILE_SCOPE("Events");
             SDL_Event event;
@@ -106,9 +112,23 @@ void Application::Run()
         }
 
         {
+            PROFILE_SCOPE("MakeDebugLines");
+            sceneManager.GetCurrentScene().MakeDebugLines(debugLines);
+
+            /* The grid first, then the axes: lines do not write depth, so the line drawn last wins where they overlap */
+            if (showWorldReference)
+            {
+                AddGrid(debugLines, 40.0f, 1.0f, MATH::Vec3(0.3f, 0.3f, 0.3f));
+                AddAxes(debugLines, 25.0f);
+            }
+        }
+
+        /* The next frame reserves this many. Set after the list is full, so it counts the scene's lines and the grid */
+        lastDebugLineCount = debugLines.size();
+        {
             PROFILE_SCOPE("Render");
             renderer.DrawFrame(sceneManager.GetCurrentScene().GetCamera(),
-                               sceneManager.GetCurrentScene().GetLighting(), drawList);
+                               sceneManager.GetCurrentScene().GetLighting(), drawList, debugLines);
         }
 
         {
@@ -132,11 +152,18 @@ void Application::Run()
 
 void Application::HandleEvent(const SDL_Event& event)
 {
-    /* F1 to F4 pick a row in the scene table. The scene never sees these keys */
+    /* The application keeps F1 to F4 and G. The scene never sees these keys */
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
         event.key.scancode >= SDL_SCANCODE_F1 && event.key.scancode <= SDL_SCANCODE_F4)
     {
+        /* F1 to F4 pick a row in the scene table */
         sceneManager.RequestSwitch(event.key.scancode - SDL_SCANCODE_F1);
+        return;
+    }
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_G)
+    {
+        /* G shows and hides the grid and the axes in every scene. A held key repeats, so only the first press counts */
+        showWorldReference = !showWorldReference;
         return;
     }
     sceneManager.GetCurrentScene().HandleEvents(event);

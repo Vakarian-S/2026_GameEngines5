@@ -20,11 +20,16 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_) : gpuContext(sdlWindow_),
                                                                       MeshPipelineSettings(
                                                                           descriptors.GetLayout(),
                                                                           materialDescriptors.GetLayout())),
-                                                         frameLoop(gpuContext, swapchain, descriptors)
+                                                         linePipeline(gpuContext, swapchain.GetImageFormat(),
+                                                                      swapchain.GetDepthFormat(), LinePipelineSettings(
+                                                                          descriptors.GetLayout())),
+                                                         lineBuffers(gpuContext),
+                                                         frameLoop(gpuContext, swapchain, descriptors, lineBuffers)
 {
 }
 
-void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList)
+void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList,
+                               const DebugLines& debugLines)
 {
     /* Width over height, read every frame, so a resize keeps the cubes' proportions */
     const auto [width, height] = swapchain.GetExtent();
@@ -60,5 +65,7 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighti
     lightUniform.ambient = MATH::Vec4(lighting.ambient.x, lighting.ambient.y, lighting.ambient.z, 1.0f);
     lightUniform.count = static_cast<uint32_t>(lighting.lights.size());
 
-    frameLoop.DrawFrame(kClearColor, meshPipeline, resourceStore, drawList, cameraUniform, lightUniform);
+    /* One reference per pipeline. FrameLoop records one pass with each */
+    const FramePipelines pipelines{.meshPipeline = meshPipeline, .linePipeline = linePipeline};
+    frameLoop.DrawFrame(kClearColor, pipelines, resourceStore, drawList, debugLines, cameraUniform, lightUniform);
 }

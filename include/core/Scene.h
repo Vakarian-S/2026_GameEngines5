@@ -4,9 +4,9 @@
 #include <memory_resource>
 #include <vector>
 
-#include "Handles.h"
+#include "DrawList.h"
 #include "Light.h"
-#include "Matrix.h"
+#include "core/debug/DebugLines.h"
 
 
 struct Camera;
@@ -14,21 +14,6 @@ struct Camera;
 union SDL_Event;
 class World;
 class ResourceLoader;
-
-/** One thing to draw: which mesh, which material on it, and where it sits in the world. */
-struct DrawItem
-{
-    MeshHandle mesh;
-    MaterialHandle material;
-    MATH::Matrix4 transform;
-};
-
-/* Two 4-byte handles and 16 floats of matrix. The frame arena in Main.cpp is sized from this */
-static_assert(sizeof(DrawItem) == 72);
-
-/** Everything to draw this frame. The caller picks the memory, so a frame arena can stand behind it. */
-using DrawList = std::pmr::vector<DrawItem>;
-
 
 class Scene
 {
@@ -63,6 +48,12 @@ public:
      * @param drawList reference to the list where the elements to be rendered will be stored
      */
     virtual void MakeDrawList(DrawList& drawList) = 0;
+
+    /**
+     * DEBUG ONLY
+     * The scene adds its own debug lines, such as collider wires, and most scenes add none.
+     */
+    virtual void MakeDebugLines(DebugLines&) {}
 
     /**
      * Handles user inputs using SDL

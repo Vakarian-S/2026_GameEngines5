@@ -1,21 +1,23 @@
 ﻿#include "vulkan/FrameLoop.h"
 #include "vulkan/Buffer.h"
 #include "vulkan/Pipeline.h"
+#include "MMath.h"
+#include "utils/Profiler.h"
+#include "vulkan/ImageBarrier.h"
+#include "vulkan/debug/LineBuffers.h"
 
 #include <cassert>
 #include <cstdint>
 #include <span>
 #include <stdexcept>
 
-#include "MMath.h"
-#include "utils/Profiler.h"
-#include "vulkan/ImageBarrier.h"
 
-
-FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_) :
+FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_,
+                     const LineBuffers& lineBuffers_) :
     gpuContext(gpuContext_),
     swapchain(swapchain_),
-    descriptors(descriptors_)
+    descriptors(descriptors_),
+    lineBuffers(lineBuffers_)
 {
     CreateCommandPool();
     CreateCommandBuffers();
@@ -38,9 +40,9 @@ FrameLoop::~FrameLoop()
 }
 
 
-void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& pipeline,
-                          const ResourceStore& resourceStore, const DrawList& drawList, const CameraUniform& camera,
-                          const LightUniform& lights)
+void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipelines& pipelines,
+                          const ResourceStore& resourceStore, const DrawList& drawList, const DebugLines& debugLines,
+                          const CameraUniform& camera, const LightUniform& lights)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -62,10 +64,11 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
         throw std::runtime_error("Failed to wait for fence!");
     }
 
-    /* ============= 2. Write The Descriptors ============= */
+    /* ============= 2. Write This Slot's Buffers ============= */
     /* The fence above proves the GPU finished this slot's last frame, so its buffers are free to overwrite */
     descriptors.WriteCamera(currentFrame, camera);
     descriptors.WriteLights(currentFrame, lights);
+    lineBuffers.Write(currentFrame, debugLines);
 
     /* ============= 3. Acquire An Image ============= */
     /* Asks the swapchain for an image to draw into, and handles a swapchain that no longer fits the window */
@@ -99,7 +102,8 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const Pipeline& p
     {
         /* Times the CPU side of recording: one push and one draw per item. The GPU's work is not in here */
         PROFILE_SCOPE("Record");
-        RecordCommandBuffer(imageIndex, clearColor, pipeline, resourceStore, drawList);
+        RecordCommandBuffer(imageIndex, clearColor, pipelines, resourceStore, drawList,
+                            static_cast<uint32_t>(debugLines.size()));
     }
 
     /* ============= 5. Submit ============= */
@@ -221,8 +225,8 @@ void FrameLoop::CreateSyncObjects()
 }
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
-                                    const Pipeline& pipeline, const ResourceStore& resourceStore,
-                                    const DrawList& drawList) const
+                                    const FramePipelines& pipelines, const ResourceStore& resourceStore,
+                                    const DrawList& drawList, const uint32_t lineVertexCount) const
 {
     /* ============= 1. Begin Recording ============= */
     /* Opens this slot's command buffer. Every vkCmd call below adds to it */
@@ -318,16 +322,9 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     };
     vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
-    /* ============= 4. Bind State ============= */
-    /* Sets everything the draws share: pipeline, camera set, viewport, scissor, vertices and indices */
+    /* ============= 4. Shared State ============= */
+    /* The viewport and scissor are dynamic in both pipelines, so they are set once and stay valid across a pipeline switch */
 
-    /* From here on, every draw in this command buffer uses the pipeline's settings */
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
-
-    /* Points the shader's set 0 at this slot's camera buffer. The draws that follow read their camera there */
-    const VkDescriptorSet descriptorSet = descriptors.GetSet(currentFrame);
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 0, 1,
-                            &descriptorSet, 0, nullptr);
     /* The viewport stretches the picture over the whole swapchain image */
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -341,7 +338,48 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     const VkRect2D scissor{.offset = {.x = 0, .y = 0}, .extent = swapchain.GetExtent()};
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    /* ============= 5. Draw ============= */
+    /* ============= 5. Mesh Pass ============= */
+    /* Draws first, so its depth is in the image when the lines test against it */
+    RecordMeshPass(commandBuffer, pipelines.meshPipeline, resourceStore, drawList);
+
+    /* ============= 6. Line Pass ============= */
+    RecordLinePass(commandBuffer, pipelines.linePipeline, lineVertexCount);
+
+    /* ============= 7. Finish ============= */
+    /* Ends drawing, readies the colour image for the screen, and closes the command buffer */
+    vkCmdEndRendering(commandBuffer);
+
+    /* The finished colour image becomes something the screen can show. Nothing after this frame waits on it */
+    RecordImageBarrier(
+        commandBuffer,
+        swapchain.GetImages()[imageIndex],
+        VK_IMAGE_ASPECT_COLOR_BIT,
+        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        {
+            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = {},
+            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
+        }
+    );
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
+    {
+        throw std::runtime_error("failed to end the command buffer!");
+    }
+}
+
+void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeline& pipeline,
+                               const ResourceStore& resourceStore, const DrawList& drawList) const
+{
+    /* From here on, every draw in this command buffer uses the mesh pipeline's settings */
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
+
+    /* Points the shader's set 0 at this slot's camera and light buffers */
+    const VkDescriptorSet descriptorSet = descriptors.GetSet(currentFrame);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 0, 1,
+                            &descriptorSet, 0, nullptr);
+
     /* One push and one draw per item. A mesh's buffers and a material's set are bound again only when they change */
     /* No mesh and no material are bound yet. No handle has this index, so the first item always binds both */
     uint32_t boundMesh = UINT32_MAX;
@@ -383,29 +421,31 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
                            sizeof(ModelMatrixPushConstant), &pushConstant);
         vkCmdDrawIndexed(commandBuffer, mesh.indexCount, 1, 0, 0, 0);
     }
+}
 
-    /* ============= 6. Finish ============= */
-    /* Ends drawing, readies the colour image for the screen, and closes the command buffer */
-    vkCmdEndRendering(commandBuffer);
+void FrameLoop::RecordLinePass(const VkCommandBuffer commandBuffer, const Pipeline& pipeline, const uint32_t vertexCount) const
+{
+    /* No lines this frame */
+    if (vertexCount == 0) return;
 
-    /* The finished colour image becomes something the screen can show. Nothing after this frame waits on it */
-    RecordImageBarrier(
-        commandBuffer,
-        swapchain.GetImages()[imageIndex],
-        VK_IMAGE_ASPECT_COLOR_BIT,
-        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        {
-            .srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = {},
-            .srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstStageMask = VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT
-        }
-    );
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
-    {
-        throw std::runtime_error("failed to end the command buffer!");
-    }
+    /* From here on, every draw in this command buffer uses the line pipeline's settings */
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
+
+    /*
+     * Set 0 again, the same set the mesh pass bound. The two layouts have different push constant
+     * ranges, so Vulkan does not count the mesh pass's bind under this layout
+     */
+    const VkDescriptorSet descriptorSet = descriptors.GetSet(currentFrame);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 0, 1,
+                            &descriptorSet, 0, nullptr);
+
+    /* The line vertices come from this slot's line buffer, starting at byte 0 */
+    const VkBuffer vertexBuffers[] = {lineBuffers.GetBuffer(currentFrame)};
+    constexpr VkDeviceSize offsets[] = {0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
+    /* Every line in one draw: two vertices make one line, one instance */
+    vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
 }
 
 void FrameLoop::CreateRenderFinishedSemaphores()
