@@ -14,11 +14,30 @@ FlyCameraController::FlyCameraController(const MATH::Vec3& eye, const MATH::Vec3
     pitchDegrees = std::asin(direction.y) * RADIANS_TO_DEGREES;
 }
 
+FlyCameraController::~FlyCameraController()
+{
+    /* A scene can be destroyed while the right button is held. SDL keeps relative mode per window, so it would stay on */
+    StopLooking();
+}
+
 MATH::Quaternion FlyCameraController::Orientation() const
 {
     /* Yaw on the left turns about the world's up axis. Pitch on the right turns about the camera's own side axis */
     return MATH::QMath::angleAxisRotation(yawDegrees, MATH::Vec3(0.0f, 1.0f, 0.0f)) *
         MATH::QMath::angleAxisRotation(pitchDegrees, MATH::Vec3(1.0f, 0.0f, 0.0f));
+}
+
+void FlyCameraController::StartLooking(SDL_Window* window)
+{
+    lookWindow = window;
+    SDL_SetWindowRelativeMouseMode(lookWindow, true);
+}
+
+void FlyCameraController::StopLooking()
+{
+    if (lookWindow == nullptr) return;
+    SDL_SetWindowRelativeMouseMode(lookWindow, false);
+    lookWindow = nullptr;
 }
 
 void FlyCameraController::Move(const MATH::Vec3& localMove, const MATH::Vec3& worldMove)
@@ -44,24 +63,22 @@ void FlyCameraController::HandleEvent(const SDL_Event& event)
 {
     if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_RIGHT)
     {
-        looking = true;
-        SDL_SetWindowRelativeMouseMode(SDL_GetWindowFromID(event.button.windowID), true);
+        StartLooking(SDL_GetWindowFromID(event.button.windowID));
     }
     if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_RIGHT)
     {
-        looking = false;
-        SDL_SetWindowRelativeMouseMode(SDL_GetWindowFromID(event.button.windowID), false);
+        StopLooking();
     }
-    if (looking && event.type == SDL_EVENT_MOUSE_MOTION)
+    if (lookWindow != nullptr && event.type == SDL_EVENT_MOUSE_MOTION)
     {
         const float yawChangeDegrees = -event.motion.xrel * mouseSensitivity;
         const float pitchChangeDegrees = -event.motion.yrel * mouseSensitivity;
         Turn(yawChangeDegrees, pitchChangeDegrees);
     }
+    /* A button released over another window never reaches this one, so losing focus also stops looking */
     if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST)
     {
-        looking = false;
-        SDL_SetWindowRelativeMouseMode(SDL_GetWindowFromID(event.window.windowID), false);
+        StopLooking();
     }
 }
 

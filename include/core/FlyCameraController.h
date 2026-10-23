@@ -4,6 +4,7 @@
 #include "QMath.h"
 
 union SDL_Event;
+struct SDL_Window;
 
 /**
  * A camera that flies: it moves along its own axes and the world's, and turns with yaw and pitch.
@@ -18,6 +19,8 @@ public:
      * @param at the point it starts looking at. The world's up axis is always (0, 1, 0)
      */
     FlyCameraController(const MATH::Vec3& eye, const MATH::Vec3& at);
+    /** Turns relative mouse mode off, so a scene switch while looking never leaves the cursor hidden. */
+    ~FlyCameraController();
 
     /**
     * @param localMove metres along the camera's own axes: +X right, +Y up, -Z where it looks
@@ -50,6 +53,15 @@ private:
     /** @return the camera's rotation, built fresh from yaw and pitch */
     MATH::Quaternion Orientation() const;
 
+    /**
+    * Captures the mouse: turns relative mouse mode on and remembers the window, so it can be turned off later.
+    * @param window the window the right click landed in
+    */
+    void StartLooking(SDL_Window* window);
+
+    /** Turns relative mouse mode off for the captured window, if there is one. Safe to call when not looking. */
+    void StopLooking();
+
     /** Where the camera is in the world */
     MATH::Vec3 position;
     /** The turn about the world's up axis. Kept between -180 and 180, so its sine and cosine stay precise */
@@ -60,6 +72,6 @@ private:
     float moveSpeed = 5.0f;
     /** Degrees per pixel of mouse motion. Used from 1b.3 on */
     float mouseSensitivity = 0.1f;
-    /** Boolean indicating whether the user is looking, usually by holding right click. **/
-    bool looking = false;
+    /** The window in relative mouse mode while the right button is held, or null when not looking. */
+    SDL_Window* lookWindow = nullptr;
 };
