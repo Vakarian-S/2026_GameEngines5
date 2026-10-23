@@ -54,7 +54,7 @@ private:
     /** Every mesh and texture. Declared before pipeline only for reading order; the pipeline does not use it */
     ResourceStore resourceStore;
 
-    Pipeline pipeline;
+    Pipeline meshPipeline;
 
     FrameLoop frameLoop;
 };

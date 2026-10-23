@@ -1,11 +1,79 @@
 ﻿#pragma once
-#include <span>
 #include <string>
+#include <array>
 #include <vector>
 #include <vulkan/vulkan_core.h>
 
 #include "GPUContext.h"
 #include "Matrix.h"
+
+/**
+ * What differs between two pipelines, grouped by the section of CreateGraphicsPipeline that reads it.
+ * Each field defaults to the mesh pipeline's value, so a filled copy names only what differs.
+ * Fill it with designated initializers, in the order the fields are declared.
+ */
+struct PipelineSettings
+{
+    /** The most vertex fields a pipeline can read. Vertex uses 3. */
+    static constexpr uint32_t kMaxAttributes = 4;
+    /** The most sets a pipeline layout can hold. Vulkan guarantees at least 4 bound sets. */
+    static constexpr uint32_t kMaxSetLayouts = 4;
+
+    /** Step 1 - Vertex Input */
+    struct VertexInput
+    {
+        VkVertexInputBindingDescription bindingDescription{};
+        /** Only the first attributeDescriptionCount entries are used. */
+        std::array<VkVertexInputAttributeDescription, kMaxAttributes> attributeDescriptions{};
+        uint32_t attributeDescriptionCount = 0;
+    } vertexInput;
+
+    /** Step 2 - Input Assembly */
+    struct InputAssembly
+    {
+        VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    } inputAssembly;
+
+    /** Step 3 - Vertex Shader */
+    struct VertexShader
+    {
+        /** The compiled shader, as a path next to the executable. */
+        std::string file;
+    } vertexShader;
+    
+    /* Step 4 - Tesselation and Geometry */
+    /* Step 5 - Viewport and Scissor */
+
+    /** Step 6 - Rasterizer */
+    struct Rasterizer
+    {
+        VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
+    } rasterizer;
+
+    /** Step 8 - Fragment Shader */
+    struct FragmentShader
+    {
+        /** The compiled shader, as a path next to the executable. */
+        std::string file;
+    } fragmentShader;
+
+    /** Step 9 - Depth Test */
+    struct DepthTest
+    {
+        /** Whether a pixel that passes replaces the stored depth. */
+        bool write = true;
+    } depthTest;
+
+    /** Not a stage: the pipeline layout, which CreatePipelineLayout reads. */
+    struct Layout
+    {
+        /** Entry i describes set i. Only the first setLayoutCount entries are used. */
+        std::array<VkDescriptorSetLayout, kMaxSetLayouts> setLayouts{};
+        uint32_t setLayoutCount = 0;
+        /** The size of the vertex shader's push constant block. 0 means no push constant range. */
+        uint32_t pushConstantSize = 0;
+    } layout;
+};
 
 /**
  * The data pushed before each draw. The push constant block in the vertex shader must have the
@@ -37,13 +105,10 @@ public:
      * @param gpuContext_ the device to build on. It must outlive this object
      * @param colorFormat_ the format of the image the pipeline draws into, taken from the swapchain
      * @param depthFormat_ the format of the depth image the pipeline tests against, taken from the swapchain
-     * @param vertFile_ the compiled vertex shader, as a path next to the executable
-     * @param fragFile_ the compiled fragment shader, as a path next to the executable
-     * @param descriptorSetLayouts_ The shape of every set the shaders read. Entry i describes set i
+     * @param settings_ settings for creating the pipeline, includes shaders and descriptorSetLayouts
      */
     explicit Pipeline(const GPUContext& gpuContext_, VkFormat colorFormat_, VkFormat depthFormat_,
-                      const std::string& vertFile_,
-                      const std::string& fragFile_, std::span<const VkDescriptorSetLayout> descriptorSetLayouts_);
+                      const PipelineSettings& settings_);
     /** Destroys the pipeline, then the pipeline layout. */
     ~Pipeline();
 
@@ -88,12 +153,13 @@ private:
     /**
      * Fills one settings struct per pipeline step, then builds the pipeline from all of them.
      * CreatePipelineLayout must run first, because the pipeline stores the layout.
+     * @param settings Pipeline settings that contains the options to be used when creating the pipeline
      */
-    void CreateGraphicsPipeline(const std::string& vertFile, const std::string& fragFile);
+    void CreateGraphicsPipeline(const PipelineSettings& settings);
 
     /**
     * Creates the pipeline layout: the set layouts, and one push constant range for the vertex shader.
-    * @param descriptorSetLayouts The shape of every set the shaders read. Entry i describes set i
+    * @param settings Pipeline settings that contains the descriptorSetLayouts
     */
-    void CreatePipelineLayout(std::span<const VkDescriptorSetLayout> descriptorSetLayouts);
+    void CreatePipelineLayout(const PipelineSettings::Layout& settings);
 };

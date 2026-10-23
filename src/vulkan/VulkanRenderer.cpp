@@ -2,9 +2,10 @@
 #include "core/Camera.h"
 #include "MMath.h"
 
-#include <array>
 #include <stdexcept>
 #include <string>
+
+#include "vulkan/PipelineSettings.h"
 
 
 VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_) : gpuContext(sdlWindow_),
@@ -14,15 +15,11 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_) : gpuContext(sdlWindow_),
                                                          swapchain(gpuContext, sdlWindow_),
                                                          resourceStore(gpuContext, temporaryCommandBuffers,
                                                                        materialDescriptors),
-                                                         /* Entry i describes set i of the shaders: set 0 the camera and the lights, set 1 the material */
-                                                         pipeline(gpuContext, swapchain.GetImageFormat(),
-                                                                  swapchain.GetDepthFormat(),
-                                                                  "shaders/phong.vert.spv",
-                                                                  "shaders/phong.frag.spv",
-                                                                  std::array{
-                                                                      descriptors.GetLayout(),
-                                                                      materialDescriptors.GetLayout()
-                                                                  }),
+                                                         meshPipeline(gpuContext, swapchain.GetImageFormat(),
+                                                                      swapchain.GetDepthFormat(),
+                                                                      MeshPipelineSettings(
+                                                                          descriptors.GetLayout(),
+                                                                          materialDescriptors.GetLayout())),
                                                          frameLoop(gpuContext, swapchain, descriptors)
 {
 }
@@ -52,7 +49,7 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighti
         throw std::runtime_error("the scene has " + std::to_string(lighting.lights.size()) +
             " lights, and the renderer takes at most " + std::to_string(kMaxLights));
     }
-    
+
     LightUniform lightUniform{};
     for (std::size_t i = 0; i < lighting.lights.size(); ++i)
     {
@@ -63,6 +60,5 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighti
     lightUniform.ambient = MATH::Vec4(lighting.ambient.x, lighting.ambient.y, lighting.ambient.z, 1.0f);
     lightUniform.count = static_cast<uint32_t>(lighting.lights.size());
 
-    frameLoop.DrawFrame(kClearColor, pipeline, resourceStore, drawList, cameraUniform, lightUniform);
-    
+    frameLoop.DrawFrame(kClearColor, meshPipeline, resourceStore, drawList, cameraUniform, lightUniform);
 }

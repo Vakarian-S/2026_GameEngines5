@@ -1,5 +1,4 @@
 ﻿#include "vulkan/Pipeline.h"
-#include "vulkan/Vertex.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -8,12 +7,11 @@
 
 
 Pipeline::Pipeline(const GPUContext& gpuContext_, const VkFormat colorFormat_, const VkFormat depthFormat_,
-                   const std::string& vertFile_,
-                   const std::string& fragFile_, const std::span<const VkDescriptorSetLayout> descriptorSetLayouts_) :
+                   const PipelineSettings& settings_) :
     gpuContext(gpuContext_), colorFormat(colorFormat_), depthFormat(depthFormat_)
 {
-    CreatePipelineLayout(descriptorSetLayouts_);
-    CreateGraphicsPipeline(vertFile_, fragFile_);
+    CreatePipelineLayout(settings_.layout);
+    CreateGraphicsPipeline(settings_);
 }
 
 Pipeline::~Pipeline()
@@ -55,7 +53,7 @@ VkShaderModule Pipeline::CreateShaderModule(const std::vector<char>& code) const
     return shaderModule;
 }
 
-void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::string& fragFile)
+void Pipeline::CreateGraphicsPipeline(const PipelineSettings& settings)
 {
     /*
      * The sections below follow the order of the graphics pipeline, from vertex data to the
@@ -64,28 +62,25 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
 
     /* ============= 1. Vertex Input ============= */
     /* How the bytes of a vertex buffer are laid out: the size of one vertex, and where each field sits in it */
-    const VkVertexInputBindingDescription bindingDescription = Vertex::GetVertexInputBindingDescription();
-    const auto attributeDescriptions = Vertex::GetVertexInputAttributeDescription();
-
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
     vertexInputInfo.vertexBindingDescriptionCount = 1;
-    vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+    vertexInputInfo.pVertexBindingDescriptions = &settings.vertexInput.bindingDescription;
+    vertexInputInfo.vertexAttributeDescriptionCount = settings.vertexInput.attributeDescriptionCount;
+    vertexInputInfo.pVertexAttributeDescriptions = settings.vertexInput.attributeDescriptions.data();
 
     /* ============= 2. Input Assembly ============= */
     /* How vertices join into shapes. Triangle list means every three vertices make one triangle */
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo{};
     inputAssemblyStateCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
     /* defines the primitive topology */
-    inputAssemblyStateCreateInfo.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssemblyStateCreateInfo.topology = settings.inputAssembly.topology;
     /* primitiveRestartEnable controls whether a special vertex index value is treated as restarting the assembly of primitives. */
     inputAssemblyStateCreateInfo.primitiveRestartEnable = VK_FALSE;
 
     /* ============= 3. Vertex Shader ============= */
     /* Runs once per vertex and gives each one its position on screen */
-    const std::vector<char> vertShaderCode = ReadFile(vertFile);
+    const std::vector<char> vertShaderCode = ReadFile(settings.vertexShader.file);
     const VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
@@ -121,7 +116,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     /*  is the width of rasterized line segments.*/
     rasterizerCreateInfo.lineWidth = 1.0f;
     /*  is the triangle facing direction used for primitive culling */
-    rasterizerCreateInfo.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizerCreateInfo.cullMode = settings.rasterizer.cullMode;
     /*  is a VkFrontFace value specifying the front-facing triangle orientation to be used for culling. */
     rasterizerCreateInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     /* controls whether to bias fragment depth values. */
@@ -137,7 +132,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
 
     /* ============= 8. Fragment Shader ============= */
     /* Runs once per pixel the triangle covers and gives each one its color */
-    const std::vector<char> fragShaderCode = ReadFile(fragFile);
+    const std::vector<char> fragShaderCode = ReadFile(settings.fragmentShader.file);
     const VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode);
 
     VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
@@ -153,7 +148,7 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     /* depthTestEnable controls whether a new pixel is compared with the stored depth */
     depthStencilCreateInfo.depthTestEnable = VK_TRUE;
     /* depthWriteEnable controls whether a pixel that passes replaces the stored depth */
-    depthStencilCreateInfo.depthWriteEnable = VK_TRUE;
+    depthStencilCreateInfo.depthWriteEnable = settings.depthTest.write ? VK_TRUE : VK_FALSE;
     /* depthCompareOp is the comparison. LESS keeps the pixel with the smaller depth, which is the nearer one */
     depthStencilCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS;
     /* depthBoundsTestEnable would also throw away pixels outside a chosen depth range */
@@ -242,21 +237,20 @@ void Pipeline::CreateGraphicsPipeline(const std::string& vertFile, const std::st
     vkDestroyShaderModule(gpuContext.GetDevice(), fragShaderModule, nullptr);
 }
 
-void Pipeline::CreatePipelineLayout(const std::span<const VkDescriptorSetLayout> descriptorSetLayouts)
+void Pipeline::CreatePipelineLayout(const PipelineSettings::Layout& settings)
 {
-    /* The push constant: one model matrix, read by the vertex shader */
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(ModelMatrixPushConstant);
+    pushConstantRange.size = settings.pushConstantSize;
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = settings.pushConstantSize > 0 ? &pushConstantRange : nullptr;
+    pipelineLayoutInfo.pushConstantRangeCount = settings.pushConstantSize > 0 ? 1 : 0;
     /* The descriptor sets. Entry i describes set i */
-    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
-    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
+    pipelineLayoutInfo.setLayoutCount = settings.setLayoutCount;
+    pipelineLayoutInfo.pSetLayouts = settings.setLayouts.data();
     if (vkCreatePipelineLayout(gpuContext.GetDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout)
         != VK_SUCCESS)
     {
