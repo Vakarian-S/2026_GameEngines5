@@ -106,5 +106,4 @@ with logging off, or you measure the console.
 ## More detail
 
 The long original, with every feature and limit and an example for each:
-dev-notes/tools/memory-monitor.md. Build and test details cut from README.md:
-dev-notes/readme-details.md.
+dev-notes/tools/memory-monitor.md. Build and test details: tools/build-and-test.md.

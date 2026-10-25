@@ -51,7 +51,9 @@ Profiler::EndFrame();
 
 ## Files
 
-- `include/utils/Profiler.h`, `src/utils/Profiler.cpp`: the profiler and its macros.
+- `include/utils/Profiler.h`, `src/utils/Profiler.cpp`: the profiler and its macros. Since
+  2026-10-24 they sit in CMake's `ECS_SOURCES`, because `SystemRegistry` opens a span per system,
+  so every program that compiles `src/ecs` links the profiler.
 - `include/ecs/FrameStats.h`: the counters the `World` keeps about its own changes.
 - `bench/EcsBench.cpp`: a heavy load at 1,000, 10,000 and 100,000 entities, built to give the
   profiler something worth measuring.

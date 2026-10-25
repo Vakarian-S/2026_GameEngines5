@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Tests for the ECS, built as their own program.
  *
  * They moved out of Main.cpp once Main had to become a real program rather than a test
@@ -10,13 +10,19 @@
 #include <bitset>
 #include <cstdint>
 #include <iostream>
+#include <memory>
+#include <string_view>
 #include <vector>
 
 #include "ecs/Archetype.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/Component.h"
 #include "ecs/Entity.h"
+#include "ecs/Phase.h"
 #include "ecs/Query.h"
+#include "ecs/SystemRegistry.h"
+#include "ecs/System.h"
+#include "ecs/SystemContext.h"
 #include "ecs/World.h"
 
 /*
@@ -41,6 +47,80 @@ struct Dead
 struct Health
 {
     float current, max;
+};
+
+/** A test system that writes its name into a log each time it runs, and keeps what its context held */
+class LoggingSystem : public System
+{
+public:
+    /**
+     * @param name_ the name this system logs and prints
+     * @param writes_ the components this system says it writes, for the startup note
+     * @param log_ where this system writes its name on each run
+     */
+    LoggingSystem(const char* name_, const ComponentMask writes_, std::vector<std::string_view>* log_) :
+        System(name_, 0, writes_), log(log_)
+    {
+    }
+
+    void Run(const SystemContext& context) override
+    {
+        log->push_back(GetName());
+        lastDeltaTime = context.deltaTime;
+        lastHadDrawList = context.drawList != nullptr;
+    }
+
+    /** The deltaTime this system's last run was given */
+    float lastDeltaTime = 0.0f;
+    /** Whether this system's last run was given a draw list */
+    bool lastHadDrawList = false;
+
+private:
+    /** The test's log, which this system writes its name into */
+    std::vector<std::string_view>* log;
+};
+
+/** A test system that queues the Dead tag on one entity, so a test can see when playback applies it */
+class TaggingSystem : public System
+{
+public:
+    /** @param target_ the entity this system tags */
+    explicit TaggingSystem(const Entity target_) :
+        System("Tagging", 0, COMPONENTS::MaskOf<Dead>()), target(target_)
+    {
+    }
+
+    void Run(const SystemContext& context) override
+    {
+        context.commands.AddComponent<Dead>(target);
+    }
+
+private:
+    /** The entity this system tags */
+    Entity target;
+};
+
+/** A test system that looks for the Dead tag on one entity, so a test can see what a later system sees */
+class TagWatchingSystem : public System
+{
+public:
+    /** @param target_ the entity this system looks at */
+    explicit TagWatchingSystem(const Entity target_) : System("TagWatching", COMPONENTS::MaskOf<Dead>(), 0),
+                                                       target(target_)
+    {
+    }
+
+    void Run(const SystemContext& context) override
+    {
+        sawTag = context.world.HasComponent<Dead>(target);
+    }
+
+    /** Whether the last run found the Dead tag on the target */
+    bool sawTag = true;
+
+private:
+    /** The entity this system looks at */
+    Entity target;
 };
 
 namespace
@@ -849,6 +929,64 @@ int main()
           heapMemory.resource.fromArena == 0 && heapMemory.resource.fromHeap > 0);
     Check("a heap world grows past its first reserve", heapWorld.Snapshot().liveEntities == 201);
     Check("values survive the growth", heapWorld.GetComponent<Position>(firstOnHeap)->z == 6.0f);
+
+    std::cout << "\n-- systems --\n";
+
+    World systemWorld;
+    SystemRegistry registry(systemWorld);
+    std::vector<std::string_view> log;
+
+    /* The registry owns each system. The test keeps raw pointers to read them back while the registry lives */
+    auto firstLogger = std::make_unique<LoggingSystem>("First", COMPONENTS::MaskOf<Position>(), &log);
+    auto secondLogger = std::make_unique<LoggingSystem>("Second", COMPONENTS::MaskOf<Position>(), &log);
+    auto thirdLogger = std::make_unique<LoggingSystem>("Third", 0, &log);
+    const LoggingSystem* firstSystem = firstLogger.get();
+    const LoggingSystem* thirdSystem = thirdLogger.get();
+    registry.Add(Phase::Fixed, std::move(firstLogger));
+    registry.Add(Phase::Fixed, std::move(secondLogger));
+    registry.Add(Phase::Update, std::move(thirdLogger));
+
+    /* Not checked. First and Second both write Position, so the print ends with one note */
+    registry.Print();
+
+    registry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+    Check("a phase runs only its own systems", log.size() == 2);
+    Check("a phase runs its systems in add order", log.size() == 2 && log[0] == "First" && log[1] == "Second");
+    Check("a system gets the deltaTime the phase was given", firstSystem->lastDeltaTime == 1.0f / 60.0f);
+    Check("a system outside Extract gets no draw list", !firstSystem->lastHadDrawList);
+
+    registry.RunPhase(Phase::Update, 0.5f);
+    Check("the next phase runs its own system", log.size() == 3 && log[2] == "Third");
+    Check("each phase passes its own deltaTime", thirdSystem->lastDeltaTime == 0.5f);
+
+    registry.RunPhase(Phase::Extract, 0.5f);
+    Check("a phase with no systems runs nothing", log.size() == 3);
+
+    std::cout << "\n-- systems, playback --\n";
+
+    World playbackWorld;
+    SystemRegistry playbackRegistry(playbackWorld);
+    const Entity tagged = playbackWorld.CreateEntity();
+    playbackWorld.AddComponent<Position>(tagged, {1.0f, 2.0f, 3.0f});
+
+    auto watcher = std::make_unique<TagWatchingSystem>(tagged);
+    const TagWatchingSystem* watcherSystem = watcher.get();
+    playbackRegistry.Add(Phase::Update, std::make_unique<TaggingSystem>(tagged));
+    playbackRegistry.Add(Phase::Update, std::move(watcher));
+
+    playbackRegistry.RunPhase(Phase::Update, 0.5f);
+    Check("a queued tag is not in the world during its own phase", !watcherSystem->sawTag);
+    Check("the phase plays the buffer back when it ends", playbackWorld.HasComponent<Dead>(tagged));
+
+    std::cout << "\n-- archetype, const columns --\n";
+
+    std::vector<Archetype*> taggedArchetypes;
+    playbackWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), 0, taggedArchetypes);
+    const Archetype* readOnly = taggedArchetypes[0];
+    Check("a const archetype hands out the same column",
+          readOnly->Column<Position>() == taggedArchetypes[0]->Column<Position>());
+    Check("a const column reads the value", readOnly->Column<Position>()[0].y == 2.0f);
+    Check("a const archetype has no column for a missing component", readOnly->Column<Velocity>() == nullptr);
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

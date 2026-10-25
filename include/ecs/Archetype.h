@@ -61,14 +61,26 @@ public:
 
     /**
      * First element of a column, or nullptr if the archetype has no such column
-     * @tparam T 
-     * @return 
+     * @tparam T Component of the column to find
+     * @return Pointer to the first element of the found component column, or nullptr if no column was found
      */
     template <typename T>
     T* Column()
     {
         ComponentColumn* column = FindColumn(COMPONENTS::IdOf<T>());
         return column != nullptr ? reinterpret_cast<T*>(column->data.data()) : nullptr;
+    }
+    
+    /**
+    * Constant First element of a column, or nullptr if the archetype has no such column
+    * @tparam T Component of the column to find
+    * @return Pointer to the first element of the found component column, or nullptr if no column was found
+    */
+    template <typename T>
+    const T* Column() const
+    {
+        const ComponentColumn* column = FindColumn(COMPONENTS::IdOf<T>());
+        return column != nullptr ? reinterpret_cast<const T*>(column->data.data()) : nullptr;
     }
 
     /**
@@ -105,4 +117,11 @@ private:
      * @return The column
      */
     ComponentColumn* FindColumn(ComponentId type);
+    
+    /**
+     * Get the component column of the given component type
+     * @param type Type of component to find
+     * @return Constant version of The column
+     */
+    const ComponentColumn* FindColumn(ComponentId type) const;
 };

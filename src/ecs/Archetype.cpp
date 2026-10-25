@@ -112,3 +112,15 @@ ComponentColumn* Archetype::FindColumn(const ComponentId type)
     }
     return nullptr;
 }
+
+const ComponentColumn* Archetype::FindColumn(const ComponentId type) const
+{
+    for (const ComponentColumn& column : componentColumns)
+    {
+        if (column.type == type)
+        {
+            return &column;
+        }
+    }
+    return nullptr;
+}

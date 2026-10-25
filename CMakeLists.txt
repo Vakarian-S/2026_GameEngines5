@@ -306,6 +306,8 @@ file(GLOB_RECURSE ECS_HEADERS CONFIGURE_DEPENDS "include/ecs/*.h")
 # The World allocates from an arena, so every program that compiles the ECS compiles these too.
 list(APPEND ECS_SOURCES src/utils/Arena.cpp src/utils/ArenaResource.cpp)
 list(APPEND ECS_HEADERS include/utils/Arena.h include/utils/ArenaResource.h)
+list(APPEND ECS_HEADERS include/utils/Profiler.h)
+list(APPEND ECS_SOURCES src/utils/Profiler.cpp)
 
 add_executable(EcsTests
         tests/EcsTests.cpp
@@ -356,7 +358,6 @@ ge5_apply_common_settings(ArenaDemo)
 
 add_executable(EcsBench
         bench/EcsBench.cpp
-        src/utils/Profiler.cpp
         include/utils/Profiler.h
         ${ECS_SOURCES}
         ${ECS_HEADERS}
