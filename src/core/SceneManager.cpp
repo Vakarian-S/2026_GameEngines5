@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "ecs/SystemRegistry.h"
+
 
 namespace
 {
@@ -68,6 +70,7 @@ void SceneManager::Start(const std::size_t sceneIndex)
     {
         throw std::runtime_error(std::string(scenes[sceneIndex].name) + "::OnCreate failed");
     }
+    currentScene->GetSystems().Print();
 }
 
 void SceneManager::RequestSwitch(std::size_t sceneIndex)
@@ -76,14 +79,15 @@ void SceneManager::RequestSwitch(std::size_t sceneIndex)
     pendingScene = sceneIndex;
 }
 
-void SceneManager::ApplyPendingSwitch()
+bool SceneManager::ApplyPendingSwitch()
 {
-    if (!pendingScene.has_value()) return;
+    if (!pendingScene.has_value()) return false;
 
     /* Cleared before Start, so a scene that throws in OnCreate is not retried every frame */
     const std::size_t next = *pendingScene;
     pendingScene.reset();
     Start(next);
+    return true;
 }
 
 void SceneManager::CloseCurrent()

@@ -4,8 +4,10 @@
 
 #include "core/Camera.h"
 #include "core/FlyCameraController.h"
+#include "core/Handles.h"
 #include "core/Scene.h"
 #include "ecs/Query.h"
+#include "ecs/SystemRegistry.h"
 #include "ecs/World.h"
 
 /**
@@ -21,7 +23,6 @@ public:
     bool OnCreate(ResourceLoader& resourceLoader) override;
     void OnDestroy() override;
     void Update(float deltaTime) override;
-    void MakeDrawList(DrawList& drawList) override;
     void HandleEvents(const SDL_Event& sdlEvent) override;
 
     /** @return the camera this scene is seen through */
@@ -36,19 +37,21 @@ public:
 
     /** @return this scene's world, so Main can read its counters */
     const World& GetWorld() const override { return world; }
+    
+    /** @return this scene's systems, so the frame loop can run their phases */
+    SystemRegistry& GetSystems() override { return systems; }
 
 private:
+   
+    
     /** Most entities alive at once: Mario and two cubes, with room to spare */
     static constexpr uint32_t kMaxEntities = 16;
     /** Bytes in the world's slab. Each archetype reserves kMaxEntities rows, so a few hundred bytes each */
     static constexpr std::size_t kWorldArenaBytes = 16 * 1024;
 
     World world;
-    /** Entities that turn: they read Spin and write Rotation */
-    Query spinners;
-    /** Entities that are drawn: they read Position, Rotation and Renderable */
-    Query drawables;
-
+    /** Every system this scene runs */
+    SystemRegistry systems;
     /** In front of Mario and a little above, looking at his middle */
     Camera camera;
 

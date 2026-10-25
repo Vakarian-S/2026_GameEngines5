@@ -6,29 +6,15 @@
 #include "MMath.h"
 #include "core/FlyCameraController.h"
 #include "core/ResourceLoader.h"
-#include "ecs/Archetype.h"
 #include "game/Components.h"
+#include "game/systems/DamageSystem.h"
+#include "game/systems/DrawRenderablesSystem.h"
+#include "game/systems/MovementSystem.h"
 #include "utils/Profiler.h"
-
-namespace
-{
-    /**
-     * Brings a coordinate that left the box back in through the opposite wall.
-     * @param value one coordinate of a position
-     * @param halfWidth half the width of the box
-     * @return the coordinate, inside the box
-     */
-    float WrapIntoBox(const float value, const float halfWidth)
-    {
-        if (value > halfWidth) return value - 2.0f * halfWidth;
-        if (value < -halfWidth) return value + 2.0f * halfWidth;
-        return value;
-    }
-}
 
 Scene0::Scene0() :
     world(WorldConfig{kEntityCount, kWorldArenaBytes}),
-    movers(world, COMPONENTS::MaskOf<Position, Velocity>()),
+    systems(world),
     flyCameraController(MATH::Vec3(0.0f, 0.0f, 40.0f), MATH::Vec3(0.0f, 0.0f, 0.0f))
 {
 }
@@ -37,29 +23,6 @@ Scene0::Scene0() :
 void Scene0::HandleEvents(const SDL_Event& sdlEvent)
 {
     flyCameraController.HandleEvent(sdlEvent);
-}
-
-void Scene0::MakeDrawList(DrawList& drawList)
-{
-    uint32_t total = 0;
-    for (const Archetype* archetype : movers.Matches()) total += archetype->Count();
-
-    /* Reserved once, so the list takes one block from the caller's memory. */
-    drawList.reserve(total);
-
-    for (Archetype* archetype : movers.Matches())
-    {
-        const Position* positions = archetype->Column<Position>();
-        const uint32_t rows = archetype->Count();
-        for (uint32_t row = 0; row < rows; ++row)
-        {
-            /* Even rows take the first material and odd rows the second, so every item binds a new set: the worst case */
-            drawList.push_back({
-                cubeMesh, materials[row % 2],
-                MATH::MMath::translate(positions[row].x, positions[row].y, positions[row].z)
-            });
-        }
-    }
 }
 
 bool Scene0::OnCreate(ResourceLoader& resourceLoader)
@@ -77,7 +40,6 @@ bool Scene0::OnCreate(ResourceLoader& resourceLoader)
             .albedo = skull, .shininess = 4.0f, .specularStrength = 0.1f
         });
         materials = {matteSkull, shinyMario};
-        entities.reserve(kEntityCount);
         for (uint32_t i = 0; i < kEntityCount; ++i)
         {
             /* The cell this entity sits in, counted from one corner of the grid */
@@ -99,8 +61,14 @@ bool Scene0::OnCreate(ResourceLoader& resourceLoader)
                                              0.5f * static_cast<float>(static_cast<int>(i % 5) - 2),
                                              0.5f * static_cast<float>(static_cast<int>(i % 3) - 1)
                                          });
-            entities.push_back(entity);
+            world.AddComponent<Rotation>(entity, {0.0f});
+            world.AddComponent<Renderable>(entity, {cubeMesh, materials[i % 2]});
+            if (i < kDamageCount) world.AddComponent<Damageable>(entity);
         }
+
+        systems.Add(Phase::Fixed, std::make_unique<MovementSystem>(world, kBoxHalfWidth));
+        systems.Add(Phase::Update, std::make_unique<DamageSystem>(world, kDamageEvery));
+        systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
     }
     return true;
 }
@@ -111,42 +79,9 @@ void Scene0::OnDestroy()
     world.ResetFrameStats();
 }
 
-void Scene0::Update(float deltaTime)
+void Scene0::Update(const float deltaTime)
 {
     world.ResetFrameStats();
-    ++frameNumber;
-
-    {
-        PROFILE_SCOPE("Movement");
-        for (Archetype* archetype : movers.Matches())
-        {
-            Position* positions = archetype->Column<Position>();
-            const Velocity* velocities = archetype->Column<Velocity>();
-            const uint32_t rows = archetype->Count();
-            for (uint32_t row = 0; row < rows; ++row)
-            {
-                positions[row].x = WrapIntoBox(positions[row].x + velocities[row].x * deltaTime, kBoxHalfWidth);
-                positions[row].y = WrapIntoBox(positions[row].y + velocities[row].y * deltaTime, kBoxHalfWidth);
-                positions[row].z = WrapIntoBox(positions[row].z + velocities[row].z * deltaTime, kBoxHalfWidth);
-            }
-        }
-    }
-
-    const bool damageFrame = frameNumber % kDamageEvery == 0;
-    if (damageFrame)
-    {
-        PROFILE_SCOPE("Damage");
-        hitOn = !hitOn;
-        for (int i = 0; i < kDamageCount; ++i)
-        {
-            if (hitOn) commandBuffer.AddComponent<Hit>(entities[i]);
-            else commandBuffer.RemoveComponent<Hit>(entities[i]);
-        }
-    }
-    {
-        PROFILE_SCOPE_ECS(world, "Playback");
-        commandBuffer.Playback(world);
-    }
     flyCameraController.Update(deltaTime);
     camera.view = flyCameraController.View();
 }

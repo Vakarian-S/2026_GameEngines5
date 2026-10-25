@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include "core/FixedStep.h"
 #include "core/SceneManager.h"
 #include "core/Timer.h"
 #include "core/Window.h"
@@ -38,6 +39,8 @@ private:
     SceneManager sceneManager;
     /** Measures each frame's time step, and how long to sleep to hold 60 frames per second */
     Timer timer;
+    /** Manages the time steps between frames */
+    FixedStep fixedStep;
     /** Scratch memory for one frame. Run resets it at the top of every frame */
     Arena frameArena;
     /** Whether grid and axes are drawn on the current scene */

@@ -95,26 +95,31 @@ void Application::Run()
         }
 
         /* Between frames, so nothing below still uses the old scene */
-        sceneManager.ApplyPendingSwitch();
+        if (sceneManager.ApplyPendingSwitch())
+        {
+            fixedStep.Reset();
+            timer.Start();
+        }
+
+        SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
 
         if (window.ShouldClose()) break;
 
         timer.UpdateFrameTicks();
-
         {
             PROFILE_SCOPE("Scene::Update");
             sceneManager.GetCurrentScene().Update(timer.GetDeltaTime());
+            fixedStep.Add(timer.GetDeltaTime());
+            while (fixedStep.TakeStep())
+                systems.RunPhase(
+                    Phase::Fixed, FixedStep::kFixedTimeStep);
+            systems.RunPhase(Phase::Update, timer.GetDeltaTime());
         }
 
         {
             PROFILE_SCOPE("MakeDrawList");
-            sceneManager.GetCurrentScene().MakeDrawList(drawList);
-        }
-
-        {
-            PROFILE_SCOPE("MakeDebugLines");
-            sceneManager.GetCurrentScene().MakeDebugLines(debugLines);
-
+            systems.RunPhase(Phase::Extract, timer.GetDeltaTime(), &drawList,
+                             &debugLines);
             /* The grid first, then the axes: lines do not write depth, so the line drawn last wins where they overlap */
             if (showWorldReference)
             {
@@ -122,7 +127,6 @@ void Application::Run()
                 AddAxes(debugLines, 25.0f);
             }
         }
-
         /* The next frame reserves this many. Set after the list is full, so it counts the scene's lines and the grid */
         lastDebugLineCount = debugLines.size();
         {

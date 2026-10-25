@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/FixedStep.h"
 #include "ecs/Archetype.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/Component.h"
@@ -987,6 +988,37 @@ int main()
           readOnly->Column<Position>() == taggedArchetypes[0]->Column<Position>());
     Check("a const column reads the value", readOnly->Column<Position>()[0].y == 2.0f);
     Check("a const archetype has no column for a missing component", readOnly->Column<Velocity>() == nullptr);
+
+    std::cout << "\n-- fixed step --\n";
+
+    /* One clock fed frame after frame, so each feed starts from the time the last one left over */
+    FixedStep fixedStep;
+
+    /* Runs TakeStep until it says no, and counts how many steps it gave */
+    const auto countSteps = [&fixedStep]()
+    {
+        int steps = 0;
+        while (fixedStep.TakeStep()) ++steps;
+        return steps;
+    };
+
+    fixedStep.Add(0.016f);
+    Check("16 ms is less than one step", countSteps() == 0);
+
+    fixedStep.Add(0.017f);
+    Check("the 16 ms left over plus 17 ms make one step", countSteps() == 1);
+
+    fixedStep.Add(0.050f);
+    Check("a 50 ms hitch catches up with three steps", countSteps() == 3);
+
+    fixedStep.Add(1.0f);
+    const int stallSteps = countSteps();
+    std::cout << "  a 1 s stall gave " << stallSteps << " steps\n";
+    Check("a 1 s stall is capped at 15 steps", stallSteps == 15);
+
+    fixedStep.Reset();
+    fixedStep.Add(0.016f);
+    Check("a reset drops the time left over", countSteps() == 0);
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

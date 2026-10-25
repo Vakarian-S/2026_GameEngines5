@@ -3,9 +3,9 @@
 
 #include "core/Camera.h"
 #include "core/FlyCameraController.h"
+#include "core/Handles.h"
 #include "core/Scene.h"
-#include "ecs/CommandBuffer.h"
-#include "ecs/Query.h"
+#include "ecs/SystemRegistry.h"
 #include "ecs/World.h"
 
 class Scene0 : public Scene
@@ -15,7 +15,6 @@ public:
     ~Scene0() override = default;
 
     void HandleEvents(const SDL_Event& sdlEvent) override;
-    void MakeDrawList(DrawList& drawList) override;
     bool OnCreate(ResourceLoader& resourceLoader) override;
     void OnDestroy() override;
     void Update(float deltaTime) override;
@@ -29,10 +28,15 @@ public:
     /** @return the ambient light and this scene's one light */
     SceneLighting GetLighting() const override { return {.ambient = ambient, .lights = lights}; }
 
+    /** @return this scene's systems, so the frame loop can run their phases */
+    SystemRegistry& GetSystems() override { return systems; }
+
 private:
     World world;
-    CommandBuffer commandBuffer;
-    Query movers;
+    
+    /** Every system this scene runs */
+    SystemRegistry systems;
+
     /** Where the scene is seen from. It looks at the centre of the grid from far enough back to see all of it */
     Camera camera;
 
@@ -50,28 +54,20 @@ private:
     /** The two materials the cubes alternate between, so neighbouring draw items differ */
     std::array<MaterialHandle, 2> materials;
 
-    /** Every entity this scene spawned, in spawn order */
-    std::vector<Entity> entities;
-    /** Frames this scene has updated */
-    uint64_t frameNumber = 0;
-    /** True while the first entities carry the Hit tag */
-    bool hitOn = false;
-
     /** Entities along each side of the grid OnCreate spawns */
     static constexpr uint32_t kGridSide = 10;
     /** Entities OnCreate spawns: one per grid cell */
     static constexpr uint32_t kEntityCount = kGridSide * kGridSide * kGridSide;
     /** Metres between neighbouring entities in the grid */
     static constexpr float kGridSpacing = 2.0f;
-    /** Half the width of the box entities move in. Past one wall, an entity comes back in through the other */
-    static constexpr float kBoxHalfWidth = 10.0f;
-    /** Bytes in the world's slab. This scene's four archetypes use about 110,000. */
-    static constexpr std::size_t kWorldArenaBytes = 256 * 1024;
+    /** Bytes in the world's slab. This scene's five archetypes use about TBD. */
+    static constexpr std::size_t kWorldArenaBytes = 512 * 1024;
     /** Entities each damage frame tags or untags */
     static constexpr int kDamageCount = 100;
-    /** Frames between one damage frame and the next */
+    /** Frames between one damage frame and the next. DamageSystem runs in Update, so a run is a frame */
     static constexpr uint64_t kDamageEvery = 60;
-    
+    /** Half the width of the box entities move in. Past one wall, an entity comes back in through the other */
+    static constexpr float kBoxHalfWidth = 10.0f;
     /** Controller to move the camera with user input */
     FlyCameraController flyCameraController;
 };

@@ -5,14 +5,14 @@
 #include "ConstantsConversions.h"
 #include "MMath.h"
 #include "core/ResourceLoader.h"
-#include "ecs/Archetype.h"
 #include "game/Components.h"
+#include "game/systems/DrawRenderablesSystem.h"
+#include "game/systems/SpinSystem.h"
 #include "utils/Profiler.h"
 
 Scene1::Scene1() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
-    spinners(world, COMPONENTS::MaskOf<Rotation, Spin>()),
-    drawables(world, COMPONENTS::MaskOf<Position, Rotation, Renderable>()),
+    systems(world),
     flyCameraController(MATH::Vec3(0.0f, 1.0f, 6.0f), MATH::Vec3(0.0f, 0.0f, 0.0f))
 
 {
@@ -53,6 +53,11 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
         world.AddComponent<Rotation>(cube, {0.25f * FLOAT_PI});
         world.AddComponent<Renderable>(cube, {cubeMesh, cubeMaterial});
     }
+
+    /* In each phase, systems run in the order they are added */
+    systems.Add(Phase::Fixed, std::make_unique<SpinSystem>(world));
+    systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
+
     return true;
 }
 
@@ -65,49 +70,8 @@ void Scene1::OnDestroy()
 void Scene1::Update(const float deltaTime)
 {
     world.ResetFrameStats();
-
-    PROFILE_SCOPE("Spin");
-    /* Reads Spin, writes Rotation */
-    for (Archetype* archetype : spinners.Matches())
-    {
-        Rotation* rotations = archetype->Column<Rotation>();
-        const Spin* spins = archetype->Column<Spin>();
-        const uint32_t rows = archetype->Count();
-        for (uint32_t row = 0; row < rows; ++row)
-        {
-            rotations[row].yawRadians += spins[row].radiansPerSecond * deltaTime;
-            /* Kept inside one turn, so the float does not lose precision as the angle grows */
-            if (rotations[row].yawRadians > 2.0f * FLOAT_PI) rotations[row].yawRadians -= 2.0f * FLOAT_PI;
-        }
-    }
     flyCameraController.Update(deltaTime);
     camera.view = flyCameraController.View();
-}
-
-void Scene1::MakeDrawList(DrawList& drawList)
-{
-    uint32_t total = 0;
-    for (const Archetype* archetype : drawables.Matches()) total += archetype->Count();
-
-    /* Reserved once, so the list takes one block from the caller's memory. */
-    drawList.reserve(total);
-
-    /* Reads Position, Rotation and Renderable, writes nothing in the world */
-    for (Archetype* archetype : drawables.Matches())
-    {
-        const Position* positions = archetype->Column<Position>();
-        const Rotation* rotations = archetype->Column<Rotation>();
-        const Renderable* renderables = archetype->Column<Renderable>();
-        const uint32_t rows = archetype->Count();
-        for (uint32_t row = 0; row < rows; ++row)
-        {
-            /* The matrix turns the mesh about its own centre first, then moves it into place. MMath::rotate takes degrees */
-            const MATH::Matrix4 transform =
-                MATH::MMath::translate(positions[row].x, positions[row].y, positions[row].z) *
-                MATH::MMath::rotate(rotations[row].yawRadians * RADIANS_TO_DEGREES, 0.0f, 1.0f, 0.0f);
-            drawList.push_back({renderables[row].meshHandle, renderables[row].materialHandle, transform});
-        }
-    }
 }
 
 void Scene1::HandleEvents(const SDL_Event& sdlEvent)

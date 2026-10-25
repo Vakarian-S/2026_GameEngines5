@@ -53,7 +53,7 @@ public:
     void RequestSwitch(std::size_t sceneIndex);
 
     /** Runs the remembered switch, if there is one. Call it at the top of a frame. */
-    void ApplyPendingSwitch();
+    bool ApplyPendingSwitch();
 
     /** @return the running scene. Do not keep the reference across a switch */
     Scene& GetCurrentScene() const { return *currentScene; }
