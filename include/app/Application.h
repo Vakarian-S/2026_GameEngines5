@@ -43,6 +43,8 @@ private:
     FixedStep fixedStep;
     /** Scratch memory for one frame. Run resets it at the top of every frame */
     Arena frameArena;
+    /** Whether the frame arena overflow warning has printed. It prints once per run */
+    bool frameArenaWarned = false;
     /** Whether grid and axes are drawn on the current scene */
     bool showWorldReference = true;
     /** How many line vertices the last frame held. The next frame reserves that many. Starts at 512, so the first frame reserves too */

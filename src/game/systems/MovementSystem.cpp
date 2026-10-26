@@ -30,6 +30,7 @@ MovementSystem::MovementSystem(World& world, const float boxHalfWidth_) :
 void MovementSystem::Run(const SystemContext& context)
 {
     const float deltaTime = context.deltaTime;
+    const float halfWidth = boxHalfWidth;
     for (Archetype* archetype : movers.Matches())
     {
         Position* positions = archetype->Column<Position>();
@@ -37,9 +38,9 @@ void MovementSystem::Run(const SystemContext& context)
         const uint32_t rows = archetype->Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            positions[row].x = WrapIntoBox(positions[row].x + velocities[row].x * deltaTime, boxHalfWidth);
-            positions[row].y = WrapIntoBox(positions[row].y + velocities[row].y * deltaTime, boxHalfWidth);
-            positions[row].z = WrapIntoBox(positions[row].z + velocities[row].z * deltaTime, boxHalfWidth);
+            positions[row].x = WrapIntoBox(positions[row].x + velocities[row].x * deltaTime, halfWidth);
+            positions[row].y = WrapIntoBox(positions[row].y + velocities[row].y * deltaTime, halfWidth);
+            positions[row].z = WrapIntoBox(positions[row].z + velocities[row].z * deltaTime, halfWidth);
         }
     }
 }

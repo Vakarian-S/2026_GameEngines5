@@ -5,6 +5,8 @@
 #include <cmath>
 #include <SDL3/SDL.h>
 
+#include "core/VectorMath.h"
+
 FlyCameraController::FlyCameraController(const MATH::Vec3& eye, const MATH::Vec3& at) :
     position(eye)
 {
@@ -98,10 +100,7 @@ void FlyCameraController::Update(const float deltaTime)
     if (keys[SDL_SCANCODE_E]) worldDirection.y += 1.0f;
     if (keys[SDL_SCANCODE_Q]) worldDirection.y -= 1.0f;
 
-    if (MATH::VMath::mag(localDirection) > 0.0f)
-    {
-        localDirection = MATH::VMath::normalize(localDirection);
-    }
+    localDirection = SafeNormalize(localDirection);
 
     const float speed = moveSpeed * (keys[SDL_SCANCODE_LSHIFT] ? 4.0f : 1.0f) * deltaTime;
     Move(localDirection * speed, worldDirection * speed);

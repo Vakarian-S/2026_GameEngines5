@@ -16,8 +16,8 @@
 
 namespace
 {
-    /** Bytes of scratch memory one frame may use. A draw list of 1000 items takes 72,000. */
-    constexpr std::size_t kFrameArenaBytes = 128 * 1024;
+    /** Bytes of scratch memory one frame may use. 1 MB holds about 14,000 draw items at 72 bytes each; Scene0's 1,000 take 72,000 */
+    constexpr std::size_t kFrameArenaBytes = 1024 * 1024;
 
     /** Every scene the program can run. F1 picks row 0, F2 row 1. At file scope, so it outlives the manager's span */
     constexpr SceneEntry kScenes[] = {
@@ -133,6 +133,15 @@ void Application::Run()
             PROFILE_SCOPE("Render");
             renderer.DrawFrame(sceneManager.GetCurrentScene().GetCamera(),
                                sceneManager.GetCurrentScene().GetLighting(), drawList, debugLines);
+        }
+        
+        /* Warns once, the first time a frame's scratch memory does not fit, so an overflow is seen when it happens */
+        if (!frameArenaWarned && frameMemory.Stats().fromHeap > 0)
+        {
+            frameArenaWarned = true;
+            std::cerr << "[WARNING] frame arena full: a request fell to the heap. High water "
+                << frameArena.Stats().highWater << " of " << frameArena.Stats().capacity
+                << " bytes. Raise kFrameArenaBytes\n";
         }
 
         {

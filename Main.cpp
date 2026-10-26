@@ -47,6 +47,16 @@ int main(const int argc, char* argv[])
         std::cerr << error.what() << std::endl;
         return 1;
     }
+    catch (const std::string& error)
+    {
+        std::cerr << "[ERROR] math library: " << error << std::endl;
+        return 1;
+    }
+    catch (...)
+    {
+        std::cerr << "[ERROR] unknown exception" << std::endl;
+        return 1;
+    }
 
     Profiler::Report();
     MemoryMonitor::Report(baseline);
