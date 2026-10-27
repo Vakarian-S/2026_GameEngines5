@@ -4,12 +4,14 @@
 #include <SDL3/SDL.h>
 
 #include "MMath.h"
+#include "core/Components.h"
 #include "core/FlyCameraController.h"
 #include "core/ResourceLoader.h"
+#include "core/systems/DrawRenderablesSystem.h"
 #include "game/Components.h"
 #include "game/systems/DamageSystem.h"
-#include "game/systems/DrawRenderablesSystem.h"
-#include "game/systems/MovementSystem.h"
+#include "physics/Components.h"
+#include "physics/systems/MovementSystem.h"
 #include "utils/Profiler.h"
 
 Scene0::Scene0() :
@@ -57,10 +59,10 @@ bool Scene0::OnCreate(ResourceLoader& resourceLoader)
                                                   (static_cast<float>(layer) - centre) * kGridSpacing)
                                           });
             /* Each entity gets a different speed between -1.5 and 1.5 m/s on each axis, so the grid breaks up as it moves */
-            world.AddComponent<Velocity>(entity, {
-                                             0.5f * static_cast<float>(static_cast<int>(i % 7) - 3),
-                                             0.5f * static_cast<float>(static_cast<int>(i % 5) - 2),
-                                             0.5f * static_cast<float>(static_cast<int>(i % 3) - 1)
+            world.AddComponent<PHYSICS::Velocity>(entity, {
+                                             MATH::Vec3(0.5f * static_cast<float>(static_cast<int>(i % 7) - 3),
+                                                        0.5f * static_cast<float>(static_cast<int>(i % 5) - 2),
+                                                        0.5f * static_cast<float>(static_cast<int>(i % 3) - 1))
                                          });
             world.AddComponent<Renderable>(entity, {cubeMesh, materials[i % 2]});
             if (i < kDamageCount) world.AddComponent<Damageable>(entity);

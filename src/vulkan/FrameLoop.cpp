@@ -405,9 +405,9 @@ void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeli
                                     &materialSet, 0, nullptr);
             boundMaterial = item.material.index;
         }
-        /* Once per object here, instead of once per vertex in the shader */
-        const MATH::Matrix3 normalMatrix =
-            MATH::MMath::transpose(MATH::MMath::inverse(MATH::Matrix3(item.transform)));
+        /* Scale is uniform, so the model's 3x3 part keeps normals pointing out. phong.frag normalizes them,
+         * so no inverse-transpose is needed, and a tiny scale cannot throw */
+        const MATH::Matrix3 normalMatrix = MATH::Matrix3(item.transform);
         /* Matrix3 is column-major, so floats 0-2 are column 0, 3-5 column 1 and 6-8 column 2 */
         const ModelMatrixPushConstant pushConstant{
             .modelMatrix = item.transform,
@@ -423,7 +423,8 @@ void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeli
     }
 }
 
-void FrameLoop::RecordLinePass(const VkCommandBuffer commandBuffer, const Pipeline& pipeline, const uint32_t vertexCount) const
+void FrameLoop::RecordLinePass(const VkCommandBuffer commandBuffer, const Pipeline& pipeline,
+                               const uint32_t vertexCount) const
 {
     /* No lines this frame */
     if (vertexCount == 0) return;

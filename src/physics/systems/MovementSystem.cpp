@@ -1,8 +1,9 @@
-﻿#include "game/systems/MovementSystem.h"
+﻿#include "physics/systems/MovementSystem.h"
 
+#include "core/Components.h"
 #include "ecs/Archetype.h"
 #include "ecs/SystemContext.h"
-#include "game/Components.h"
+#include "physics/Components.h"
 
 namespace
 {
@@ -21,8 +22,8 @@ namespace
 }
 
 MovementSystem::MovementSystem(World& world, const float boxHalfWidth_) :
-    System("Movement", COMPONENTS::MaskOf<Velocity>(), COMPONENTS::MaskOf<Transform>()),
-    movers(world, COMPONENTS::MaskOf<Transform, Velocity>()),
+    System("Movement", COMPONENTS::MaskOf<PHYSICS::Velocity>(), COMPONENTS::MaskOf<Transform>()),
+    movers(world, COMPONENTS::MaskOf<Transform, PHYSICS::Velocity>()),
     boxHalfWidth(boxHalfWidth_)
 {
 }
@@ -34,13 +35,13 @@ void MovementSystem::Run(const SystemContext& context)
     for (Archetype* archetype : movers.Matches())
     {
         Transform* transform = archetype->Column<Transform>();
-        const Velocity* velocities = archetype->Column<Velocity>();
+        const PHYSICS::Velocity* velocities = archetype->Column<PHYSICS::Velocity>();
         const uint32_t rows = archetype->Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            transform[row].position.x = WrapIntoBox(transform[row].position.x + velocities[row].x * deltaTime, halfWidth);
-            transform[row].position.y = WrapIntoBox(transform[row].position.y + velocities[row].y * deltaTime, halfWidth);
-            transform[row].position.z = WrapIntoBox(transform[row].position.z + velocities[row].z * deltaTime, halfWidth);
+            transform[row].position.x = WrapIntoBox(transform[row].position.x + velocities[row].metresPerSecond.x * deltaTime, halfWidth);
+            transform[row].position.y = WrapIntoBox(transform[row].position.y + velocities[row].metresPerSecond.y * deltaTime, halfWidth);
+            transform[row].position.z = WrapIntoBox(transform[row].position.z + velocities[row].metresPerSecond.z * deltaTime, halfWidth);
         }
     }
 }

@@ -1,12 +1,12 @@
-﻿#include "game/systems/DrawRenderablesSystem.h"
+﻿#include "core/systems/DrawRenderablesSystem.h"
 
 #include <cassert>
 
 #include "MMath.h"
+#include "core/Components.h"
 #include "core/DrawList.h"
 #include "ecs/Archetype.h"
 #include "ecs/SystemContext.h"
-#include "game/Components.h"
 
 DrawRenderablesSystem::DrawRenderablesSystem(World& world) :
     System("DrawRenderables", COMPONENTS::MaskOf<Transform, Renderable>(), 0),

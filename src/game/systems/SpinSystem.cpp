@@ -2,6 +2,7 @@
 
 #include "ConstantsConversions.h"
 #include "QMath.h"
+#include "core/Components.h"
 #include "ecs/Archetype.h"
 #include "ecs/SystemContext.h"
 #include "game/Components.h"
