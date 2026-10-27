@@ -14,7 +14,6 @@ Scene1::Scene1() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
     systems(world),
     flyCameraController(MATH::Vec3(0.0f, 1.0f, 6.0f), MATH::Vec3(0.0f, 0.0f, 0.0f))
-
 {
 }
 
@@ -38,19 +37,26 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
 
     /* Mario stands in the middle and turns half a radian per second, a full turn in about 12.6 seconds */
     const Entity mario = world.CreateEntity();
-    world.AddComponent<Position>(mario, {0.0f, 0.0f, 0.0f});
-    world.AddComponent<Rotation>(mario, {0.0f});
+    world.AddComponent<Transform>(mario, {
+                                      .position = MATH::Vec3(),
+                                  });
     world.AddComponent<Renderable>(mario, {marioMesh, marioMaterial});
     world.AddComponent<Spin>(mario, {0.5f});
 
     /* Two cubes, one on each side. They have no Spin, so the spinners query never sees them */
     constexpr float cubeX[] = {-2.5f, 2.5f};
+    constexpr auto up = MATH::Vec3(0.0f, 1.0f, 0.0f);
     for (const float x : cubeX)
     {
         const Entity cube = world.CreateEntity();
-        world.AddComponent<Position>(cube, {x, 0.0f, 0.0f});
-        /* Turned 45 degrees so two faces show and the light falls on them unevenly */
-        world.AddComponent<Rotation>(cube, {0.25f * FLOAT_PI});
+        world.AddComponent<Transform>(cube, {
+                                          .position = MATH::Vec3(x, 0.0f, 0.0f),
+                                          .scale = 1.0f,
+                                          .orientation = x > 0.0f ? MATH::QMath::angleAxisRotation(45.0f, up) : MATH::QMath::angleAxisRotation(
+                                                                 30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f)) *
+                                                             MATH::QMath::angleAxisRotation(45.0f, up)
+                                      });
+
         world.AddComponent<Renderable>(cube, {cubeMesh, cubeMaterial});
     }
 

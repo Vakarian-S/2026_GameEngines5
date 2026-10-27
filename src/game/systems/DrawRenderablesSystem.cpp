@@ -2,7 +2,6 @@
 
 #include <cassert>
 
-#include "ConstantsConversions.h"
 #include "MMath.h"
 #include "core/DrawList.h"
 #include "ecs/Archetype.h"
@@ -10,8 +9,8 @@
 #include "game/Components.h"
 
 DrawRenderablesSystem::DrawRenderablesSystem(World& world) :
-    System("DrawRenderables", COMPONENTS::MaskOf<Position, Rotation, Renderable>(), 0),
-    drawables(world, COMPONENTS::MaskOf<Position, Rotation, Renderable>())
+    System("DrawRenderables", COMPONENTS::MaskOf<Transform, Renderable>(), 0),
+    drawables(world, COMPONENTS::MaskOf<Transform, Renderable>())
 {
 }
 
@@ -28,17 +27,18 @@ void DrawRenderablesSystem::Run(const SystemContext& context)
 
     for (const Archetype* archetype : drawables.Matches())
     {
-        const Position* positions = archetype->Column<Position>();
-        const Rotation* rotations = archetype->Column<Rotation>();
+        const Transform* transforms = archetype->Column<Transform>();
         const Renderable* renderables = archetype->Column<Renderable>();
         const uint32_t rows = archetype->Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            /* Turns the mesh about its own centre first, then moves it into place. MMath::rotate takes degrees */
-            const MATH::Matrix4 transform =
-                MATH::MMath::translate(positions[row].x, positions[row].y, positions[row].z) *
-                MATH::MMath::rotate(rotations[row].yawRadians * RADIANS_TO_DEGREES, 0.0f, 1.0f, 0.0f);
-            drawList.push_back({renderables[row].meshHandle, renderables[row].materialHandle, transform});
+            /* Turns the mesh about its own centre first, then moves it into place. */
+            const MATH::Matrix4 modelMatrixTransform =
+                MATH::MMath::translate(transforms[row].position.x, transforms[row].position.y,
+                                       transforms[row].position.z) *
+                MMath::toMatrix4(transforms[row].orientation) * MMath::scale(
+                    transforms[row].scale, transforms[row].scale, transforms[row].scale);
+            drawList.push_back({renderables[row].meshHandle, renderables[row].materialHandle, modelMatrixTransform});
         }
     }
 }

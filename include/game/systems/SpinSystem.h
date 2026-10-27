@@ -14,6 +14,6 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity with a Rotation and a Spin */
+    /** Every entity with a Transform and a Spin */
     Query spinners;
 };

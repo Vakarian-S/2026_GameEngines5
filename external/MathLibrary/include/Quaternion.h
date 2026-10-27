@@ -44,16 +44,9 @@ public:
 		set(w_, ijk_.x, ijk_.y, ijk_.z);
 	}
 
-	/// A copy constructor
-	Quaternion(const Quaternion& q) {
-		set(q.w, q.i, q.j, q.k);
-	}
-
-	/// An assignment operator   
-	Quaternion& operator = (const Quaternion& q) {
-		set(q.w, q.i, q.j, q.k);
-		return *this;
-	}
+	/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+	Quaternion(const Quaternion& q) = default;
+	Quaternion& operator = (const Quaternion& q) = default;
 
 	/// Take the negative of a Quaternion
 	Quaternion operator - () const {

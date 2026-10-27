@@ -168,6 +168,9 @@ void World::AddComponentById(const Entity entity, const ComponentId id, const st
     GE5_ECS_COUNT(frameStats, componentsAdded, 1);
 
     const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
+    /* Zero bytes are not a valid value for every component, so a component with data must come with its bytes */
+    assert((COMPONENTS::InfoOf(id).size == 0 || (value != nullptr && size != 0)) &&
+           "a component with data needs a value and a size; only a tag may pass nullptr");
     MoveEntity(entity, currentArchetypeMask | (ComponentMask{1} << id));
 
     if (value == nullptr || size == 0) return;

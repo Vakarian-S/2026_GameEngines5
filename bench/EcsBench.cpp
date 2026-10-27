@@ -19,11 +19,27 @@
 #include "ecs/CommandBuffer.h"
 #include "ecs/Query.h"
 #include "ecs/World.h"
-#include "game/Components.h"
 #include "utils/Profiler.h"
 
 namespace
 {
+    /** Where a bench entity sits, in metres. Its own type, so the bench load stays 12 bytes when the engine's components change */
+    struct Position
+    {
+        float x, y, z;
+    };
+
+    /** How far a bench entity moves each second, in metres */
+    struct Velocity
+    {
+        float x, y, z;
+    };
+
+    /** Marks a bench entity that was hit. Carries nothing, so it is a tag */
+    struct Hit
+    {
+    };
+
     /** Frames each scale runs for */
     constexpr int kFrames = 1000;
     /** Seconds per frame handed to the movement system, so the numbers do not depend on speed */

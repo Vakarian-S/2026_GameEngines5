@@ -27,10 +27,8 @@ namespace  MATHEX {
 			set(x, y, z, r_);
 		}
 
-		Sphere(const Sphere& s) {
-			center = s.center;
-			r = s.r;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Sphere(const Sphere& s) = default;
 
 		/// print the values of the sphere and add a comment if you wish
 		void print(const char* comment = nullptr) const {

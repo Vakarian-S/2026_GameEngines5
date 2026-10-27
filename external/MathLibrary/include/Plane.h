@@ -50,10 +50,8 @@ namespace  MATHEX {
 			set(n.x, n.y, n.z, -signedDistance);
 		}
 
-		/// A copy constructor
-		Plane(const Plane& p) {
-			set(p.x, p.y, p.z, p.d);
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Plane(const Plane& p) = default;
 
 
 		/// These just set numbers - be careful.  
@@ -70,11 +68,8 @@ namespace  MATHEX {
 		}
 
 		///////////////////////// Operator overloads ////////////////////////////
-
-		Plane& operator = (const Plane& p) {
-			set(p.x, p.y, p.z, p.d);
-			return *this;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Plane& operator = (const Plane& p) = default;
 
 		Plane operator * (float s) const {
 			return Plane(e1 * s, e2 * s, e3 * s, e0 * s);

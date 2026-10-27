@@ -50,18 +50,18 @@ bool Scene0::OnCreate(ResourceLoader& resourceLoader)
             constexpr float centre = 0.5f * static_cast<float>(kGridSide - 1);
 
             const Entity entity = world.CreateEntity();
-            world.AddComponent<Position>(entity, {
-                                             (static_cast<float>(column) - centre) * kGridSpacing,
-                                             (static_cast<float>(row) - centre) * kGridSpacing,
-                                             (static_cast<float>(layer) - centre) * kGridSpacing
-                                         });
+            world.AddComponent<Transform>(entity, {
+                                              .position = MATH::Vec3(
+                                                  (static_cast<float>(column) - centre) * kGridSpacing,
+                                                  (static_cast<float>(row) - centre) * kGridSpacing,
+                                                  (static_cast<float>(layer) - centre) * kGridSpacing)
+                                          });
             /* Each entity gets a different speed between -1.5 and 1.5 m/s on each axis, so the grid breaks up as it moves */
             world.AddComponent<Velocity>(entity, {
                                              0.5f * static_cast<float>(static_cast<int>(i % 7) - 3),
                                              0.5f * static_cast<float>(static_cast<int>(i % 5) - 2),
                                              0.5f * static_cast<float>(static_cast<int>(i % 3) - 1)
                                          });
-            world.AddComponent<Rotation>(entity, {0.0f});
             world.AddComponent<Renderable>(entity, {cubeMesh, materials[i % 2]});
             if (i < kDamageCount) world.AddComponent<Damageable>(entity);
         }

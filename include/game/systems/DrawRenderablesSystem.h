@@ -4,7 +4,7 @@
 
 class World;
 
-/** Adds one draw item per entity that has a Position, a Rotation, and a Renderable. Runs in Extract */
+/** Adds one draw item per entity that has a Transform and a Renderable. Runs in Extract */
 class DrawRenderablesSystem : public System
 {
 public:
@@ -14,6 +14,6 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity with a Position, a Rotation, and a Renderable */
+    /** Every entity with a Transform and a Renderable Component */
     Query drawables;
 };

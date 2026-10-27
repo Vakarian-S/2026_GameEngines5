@@ -1,10 +1,17 @@
 ﻿#pragma once
+#include "Vector.h"
+#include "Quaternion.h"
 #include "core/Handles.h"
 
-/** Where an entity sits in the world, in metres. */
-struct Position
+/** Transform of an entity, required to build a Model Matrix */
+struct Transform
 {
-    float x, y, z;
+    /** Position of the unit in metres */
+    MATH::Vec3 position;
+    /** Uniform scale to apply on every axis */
+    float scale = 1.0f;
+    /** Where the entity is currently facing */
+    MATH::Quaternion orientation;
 };
 
 /** How far an entity moves each second, in metres. */
@@ -23,12 +30,6 @@ struct Renderable
 {
     MeshHandle meshHandle;
     MaterialHandle materialHandle;
-};
-
-/** The rotation of said entity */
-struct Rotation
-{
-    float yawRadians;
 };
 
 /** Makes the entity spin */

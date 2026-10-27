@@ -15,13 +15,24 @@
 #include <vector>
 
 #include "ecs/World.h"
-#include "game/Components.h"
 #include "utils/Arena.h"
 #include "utils/ArenaResource.h"
 #include "utils/MemoryMonitor.h"
 
 namespace
 {
+    /** Where a demo entity sits, in metres. Its own type, so the demo stays free of the math library */
+    struct Position
+    {
+        float x, y, z;
+    };
+
+    /** How far a demo entity moves each second, in metres */
+    struct Velocity
+    {
+        float x, y, z;
+    };
+
     /** Entities each world spawns */
     constexpr int kEntities = 1000;
     /** Bytes in the arena world's slab */

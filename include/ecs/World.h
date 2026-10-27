@@ -31,6 +31,7 @@ struct WorldMemoryStats
     ArenaStats arena;
     ArenaResourceStats resource;
 };
+
 /**
  * Owns every entity in the game.
  *
@@ -100,6 +101,31 @@ public:
 
         const EntitySlot& slot = entitySlots[entity.index];
         T* column = archetypes[slot.archetype]->Column<T>();
+        return column != nullptr ? column + slot.row : nullptr;
+    }
+
+    /**
+     * The entity's component of type T, or nullptr if it is gone or has no T.
+     *
+     * Not for tags. A tag stores nothing, so there is no data to point at.
+     * @tparam T Type of the component to find
+     * @param entity Entity that owns said component
+     * @return A constant reference to the component itself.
+     */
+    template <typename T>
+    const T* GetComponent(const Entity entity) const
+    {
+        static_assert(!std::is_empty_v<T>,
+                      "A tag holds no data. Use HasComponent<T>() to test whether an entity has one.");
+
+        if (!DoesEntityExist(entity))
+        {
+            return nullptr;
+        }
+
+        const EntitySlot& slot = entitySlots[entity.index];
+        const Archetype* archetype = archetypes[slot.archetype];
+        const T* column = archetype->Column<T>();
         return column != nullptr ? column + slot.row : nullptr;
     }
 
@@ -226,7 +252,7 @@ private:
 
     /** Structural changes in this frame */
     FrameStats frameStats;
-    
+
     /** Structural changes across every frame so far */
     FrameStats runTotals;
 

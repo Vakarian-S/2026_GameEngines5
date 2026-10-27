@@ -32,14 +32,8 @@ namespace  MATH {
 	public:
 		constexpr Matrix4(const Matrix4&) = default;
 
-		Matrix4& operator = (const Matrix4& m_) {
-			this->m[0] = m_[0]; this->m[1] = m_[1]; this->m[2] = m_[2]; this->m[3] = m_[3];
-			this->m[4] = m_[4]; this->m[5] = m_[5]; this->m[6] = m_[6]; this->m[7] = m_[7];
-			this->m[8] = m_[8]; this->m[9] = m_[9]; this->m[10] = m_[10]; this->m[11] = m_[11];
-			this->m[12] = m_[12]; this->m[13] = m_[13]; this->m[14] = m_[14]; this->m[15] = m_[15];
-			return *this;
-		}
-
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Matrix4& operator = (const Matrix4& m_) = default;
 
 		Matrix4(float x0, float x1, float x2, float x3,
 			float y0, float y1, float y2, float y3,
@@ -220,12 +214,8 @@ namespace  MATH {
 			return *(m + index);
 		}
 
-		Matrix3& operator = (const Matrix3& m_) {
-			this->m[0] = m_[0]; this->m[1] = m_[1]; this->m[2] = m_[2];
-			this->m[3] = m_[3]; this->m[4] = m_[4]; this->m[5] = m_[5];
-			this->m[6] = m_[6]; this->m[7] = m_[7]; this->m[8] = m_[8];
-			return *this;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Matrix3& operator = (const Matrix3& m_) = default;
 
 
 		/// Creates the identity matrix
@@ -348,13 +338,8 @@ namespace  MATH {
 			return *(m + index);
 		}
 
-		Matrix2& operator = (const Matrix2& m_) {
-			this->m[0] = m_[0]; 
-			this->m[1] = m_[1]; 
-			this->m[2] = m_[2];
-			this->m[3] = m_[3]; 
-			return *this;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Matrix2& operator = (const Matrix2& m_) = default;
 
 		/// Creates the identity matrix
 		void loadIdentity() {

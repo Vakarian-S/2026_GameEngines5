@@ -32,7 +32,8 @@ union Vec4;
 		/// Here's a set of constructors
 		constexpr Vec3() : x(0.0f), y(0.0f), z(0.0f) {}
 		constexpr Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
-		constexpr Vec3(const Vec3& v) : x(v.x), y(v.y), z(v.z) {}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		constexpr Vec3(const Vec3& v) = default;
 		/// Create a Vec3 from a Vec4 - This is a bit of a bother. 
 		/// The Vec4 definition has not been read yet so the compiler has no idea
 		/// about Vec4. Just above the Vec3 definition, I do a forward declaration of 
@@ -43,12 +44,8 @@ union Vec4;
 		constexpr Vec3(const Vec4& v);
 		Vec3& operator = (const Vec4& v); /// An assignment operator from a Vec4 
 
-		/// Operator overloads (see note 1 at the end of this file)
-		Vec3& operator = (const Vec3& v) {
-			///if (this != &v) ///protection against self-assignment - should I bother?
-			set(v.x, v.y, v.z);
-			return *this;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Vec3& operator = (const Vec3& v) = default;
 
 		/// Now we can use the Vec3 like an array but we'll need two overloads
 		float operator [] (int index) const {  /// This one is for reading the Vec3 as if where an array
@@ -166,18 +163,11 @@ union Vec4;
 		/// Here's a set of constructors
 		constexpr Vec4() : x(0.0f), y(0.0f), z(0.0f), w(0.0f) {}
 		constexpr Vec4(float x_, float y_, float z_, float w_) : x(x_), y(y_), z(z_), w(w_) {}
-		constexpr Vec4(const Vec4& v) : x(v.x), y(v.y), z(v.z), w(v.w) {}
 		constexpr Vec4(const Vec3& v, const float w_) : x(v.x), y(v.y), z(v.z), w(w_) {}
 		constexpr Vec4(const Vec3& v) : x(v.x), y(v.y), z(v.z), w(1.0f) {}
-
-		/// An assignment operator
-		Vec4& operator = (const Vec4& v) {
-			x = v.x;
-			y = v.y;
-			z = v.z;
-			w = v.w;
-			return *this;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		constexpr Vec4(const Vec4& v) = default;
+		Vec4& operator = (const Vec4& v) = default;
 
 		/// See how I did it in the Vec3 definition 
 		float& operator [] (int index) {
@@ -293,16 +283,11 @@ union Vec4;
 		constexpr Vec2(float x_, float y_): x(x_),y(y_) {}
 		
 
-		/// A copy constructor
-		Vec2(const Vec2& v) {
-			set(v.x, v.y);
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Vec2(const Vec2& v) = default;
 		
-		/// An assignment operator   
-		Vec2& operator = (const Vec2& v) {
-			set(v.x, v.y);
-			return *this;
-		}
+		/** Sebastian: Defaulting these operators to be considered trivially copyable, so it can be used in the ECS */
+		Vec2& operator = (const Vec2&) = default;
 
 		/// Now we can use the Vec2 like an array but we'll need two overloads
 		float operator [] (int index) const {  /// This one is for reading the Vec2 as if where an array
