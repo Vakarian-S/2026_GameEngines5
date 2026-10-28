@@ -11,6 +11,8 @@ namespace MATH
 	inline constexpr float kDegreesToRadians = kPi / 180.0f;
 	/** Multiply an angle in radians by this to get degrees */
 	inline constexpr float kRadiansToDegrees = 180.0f / kPi;
+	/** 1.0x10-7 is very small in "float" precision (IEEE 754). */
+	inline constexpr float kVerySmall = 1.0e-7f;
 }
 
 

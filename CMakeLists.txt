@@ -334,6 +334,22 @@ add_executable(ArenaTests
 target_include_directories(ArenaTests PRIVATE include)
 ge5_apply_common_settings(ArenaTests)
 
+# ============================== PhysicsTests ==============================
+#
+# Physics math and functions check.
+
+add_executable(PhysicsTests
+        tests/PhysicsTests.cpp
+        src/physics/Quadratic.cpp
+        src/physics/RayIntersect.cpp
+        include/physics/Quadratic.h
+        include/physics/RayIntersect.h
+        include/physics/Ray.h
+)
+target_include_directories(PhysicsTests PRIVATE include)
+target_link_libraries(PhysicsTests PRIVATE MathLibrary)
+ge5_apply_common_settings(PhysicsTests)
+
 
 # ============================== ArenaDemo ==============================
 #
@@ -378,3 +394,4 @@ enable_testing()
 add_test(NAME MemoryMonitorTests COMMAND MemoryMonitorTests)
 add_test(NAME EcsTests COMMAND EcsTests)
 add_test(NAME ArenaTests COMMAND ArenaTests)
+add_test(NAME PhysicsTests COMMAND PhysicsTests)

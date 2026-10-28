@@ -61,7 +61,7 @@ if not "%RC%"=="0" (
 
 :configured
 
-cmake --build --preset %PLAT%-%CFG% --target MemoryMonitorTests EcsTests ArenaTests
+cmake --build --preset %PLAT%-%CFG% --target MemoryMonitorTests EcsTests ArenaTests PhysicsTests
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo   BUILD FAILED
