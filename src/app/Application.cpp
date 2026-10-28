@@ -9,6 +9,7 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
 
+#include "scenes/PhysicsScene.h"
 #include "scenes/Scene0.h"
 #include "scenes/Scene1.h"
 #include "utils/MemoryMonitor.h"
@@ -19,10 +20,11 @@ namespace
     /** Bytes of scratch memory one frame may use. 1 MB holds about 14,000 draw items at 72 bytes each; Scene0's 1,000 take 72,000 */
     constexpr std::size_t kFrameArenaBytes = 1024 * 1024;
 
-    /** Every scene the program can run. F1 picks row 0, F2 row 1. At file scope, so it outlives the manager's span */
+    /** Every scene the program can run. F1 picks row 0, F2 row 1 and so on. At file scope, so it outlives the manager's span */
     constexpr SceneEntry kScenes[] = {
         {.name = "Scene0", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene0>(); }},
         {.name = "Scene1", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene1>(); }},
+        {.name = "Physics Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PhysicsScene>(); }},
     };
 
     /**
