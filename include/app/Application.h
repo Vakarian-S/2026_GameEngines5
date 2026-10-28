@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "core/FixedStep.h"
+#include "core/InputState.h"
 #include "core/SceneManager.h"
 #include "core/Timer.h"
 #include "core/Window.h"
@@ -51,6 +52,8 @@ private:
     std::size_t lastDebugLineCount = 512;
     /** Hands frameArena to the draw list as a std::pmr memory resource */
     ArenaResource frameMemory;
+    /** Struct that holds the state of user input */
+    InputState inputState;
 
     /**
     * Sends one event where it belongs. F1 to F4 request a scene switch, and every other event goes to the scene.

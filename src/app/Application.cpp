@@ -90,10 +90,22 @@ void Application::Run()
         {
             PROFILE_SCOPE("Events");
             SDL_Event event;
+            inputState.pressed.fill(false);
+            inputState.mousePressed.fill(false);
+
             while (window.NextEvent(event))
             {
                 HandleEvent(event);
             }
+
+            /* Held keys and the mouse are read once, after every event of this frame is in */
+            int keyCount = 0;
+            const bool* keyboard = SDL_GetKeyboardState(&keyCount);
+            std::copy_n(keyboard, std::min(keyCount, static_cast<int>(SDL_SCANCODE_COUNT)), inputState.held.begin());
+            float mouseX = 0.0f;
+            float mouseY = 0.0f;
+            SDL_GetMouseState(&mouseX, &mouseY);
+            inputState.mousePosition = MATH::Vec2(mouseX, mouseY);
         }
 
         /* Between frames, so nothing below still uses the old scene */
@@ -114,13 +126,13 @@ void Application::Run()
             fixedStep.Add(timer.GetDeltaTime());
             while (fixedStep.TakeStep())
                 systems.RunPhase(
-                    Phase::Fixed, FixedStep::kFixedTimeStep);
-            systems.RunPhase(Phase::Update, timer.GetDeltaTime());
+                    Phase::Fixed, FixedStep::kFixedTimeStep, &inputState);
+            systems.RunPhase(Phase::Update, timer.GetDeltaTime(), &inputState);
         }
 
         {
             PROFILE_SCOPE("MakeDrawList");
-            systems.RunPhase(Phase::Extract, timer.GetDeltaTime(), &drawList,
+            systems.RunPhase(Phase::Extract, timer.GetDeltaTime(), &inputState, &drawList,
                              &debugLines);
             /* The grid first, then the axes: lines do not write depth, so the line drawn last wins where they overlap */
             if (showWorldReference)
@@ -167,6 +179,16 @@ void Application::Run()
 
 void Application::HandleEvent(const SDL_Event& event)
 {
+    /* Recording Keys on Input State */
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat)
+    {
+        inputState.pressed[event.key.scancode] = true;
+    }
+    if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button < inputState.mousePressed.size())
+    {
+        inputState.mousePressed[event.button.button] = true;
+    }
+
     /* The application keeps F1 to F4 and G. The scene never sees these keys */
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
         event.key.scancode >= SDL_SCANCODE_F1 && event.key.scancode <= SDL_SCANCODE_F4)

@@ -5,6 +5,7 @@ class World;
 class CommandBuffer;
 struct DrawItem;
 struct LineVertex;
+struct InputState;
 
 /**
  * Struct that contains the info that is passed to all system on run, It is meant to give them context of the scene
@@ -23,4 +24,7 @@ struct SystemContext
     std::pmr::vector<DrawItem>* drawList;
     /** Filled in Extract. Null in Fixed and Update */
     std::pmr::vector<LineVertex>* debugLines;
+    /** Current state of user input, Set by Application every   frame. Null only in tests that run phases without the app */
+    const InputState* inputState;
+    
 };

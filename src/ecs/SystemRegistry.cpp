@@ -56,7 +56,7 @@ void SystemRegistry::Add(Phase phase, std::unique_ptr<System> system)
     systemsByPhase[static_cast<size_t>(phase)].push_back(std::move(system));
 }
 
-void SystemRegistry::RunPhase(Phase phase, const float deltaTime, std::pmr::vector<DrawItem>* drawItems,
+void SystemRegistry::RunPhase(Phase phase, const float deltaTime, const InputState* inputState, std::pmr::vector<DrawItem>* drawItems,
                               std::pmr::vector<LineVertex>* debugLines)
 {
     const SystemContext systemContext{
@@ -64,7 +64,8 @@ void SystemRegistry::RunPhase(Phase phase, const float deltaTime, std::pmr::vect
         .commands = commands,
         .deltaTime = deltaTime,
         .drawList = drawItems,
-        .debugLines = debugLines
+        .debugLines = debugLines,
+        .inputState = inputState
     };
     for (const std::unique_ptr<System>& system : systemsByPhase[static_cast<size_t>(phase)])
     {

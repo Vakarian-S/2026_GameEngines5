@@ -950,17 +950,17 @@ int main()
     /* Not checked. First and Second both write Position, so the print ends with one note */
     registry.Print();
 
-    registry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+    registry.RunPhase(Phase::Fixed, 1.0f / 60.0f, nullptr);
     Check("a phase runs only its own systems", log.size() == 2);
     Check("a phase runs its systems in add order", log.size() == 2 && log[0] == "First" && log[1] == "Second");
     Check("a system gets the deltaTime the phase was given", firstSystem->lastDeltaTime == 1.0f / 60.0f);
     Check("a system outside Extract gets no draw list", !firstSystem->lastHadDrawList);
 
-    registry.RunPhase(Phase::Update, 0.5f);
+    registry.RunPhase(Phase::Update, 0.5f, nullptr);
     Check("the next phase runs its own system", log.size() == 3 && log[2] == "Third");
     Check("each phase passes its own deltaTime", thirdSystem->lastDeltaTime == 0.5f);
 
-    registry.RunPhase(Phase::Extract, 0.5f);
+    registry.RunPhase(Phase::Extract, 0.5f, nullptr);
     Check("a phase with no systems runs nothing", log.size() == 3);
 
     std::cout << "\n-- systems, playback --\n";
@@ -975,7 +975,7 @@ int main()
     playbackRegistry.Add(Phase::Update, std::make_unique<TaggingSystem>(tagged));
     playbackRegistry.Add(Phase::Update, std::move(watcher));
 
-    playbackRegistry.RunPhase(Phase::Update, 0.5f);
+    playbackRegistry.RunPhase(Phase::Update, 0.5f, nullptr);
     Check("a queued tag is not in the world during its own phase", !watcherSystem->sawTag);
     Check("the phase plays the buffer back when it ends", playbackWorld.HasComponent<Dead>(tagged));
 

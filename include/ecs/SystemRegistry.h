@@ -9,6 +9,7 @@
 
 struct LineVertex;
 struct DrawItem;
+struct InputState;
 class World;
 
 /**
@@ -36,12 +37,14 @@ public:
      * Runs the logic for a whole phase, with all the systems it includes
      * @param phase Phase to run
      * @param deltaTime time since the last frame, for Fixed Phases, its the fixed step time (i.e. 1/60)
+     * @param inputState Current state of the users' input
      * @param drawItems Draw items if applicable (Only for extract phase)
      * @param debugLines Debug lines to draw if applicable (Only for Extract phase)
      */
     void RunPhase(
         Phase phase,
         float deltaTime,
+        const InputState* inputState,
         std::pmr::vector<DrawItem>* drawItems = nullptr,
         std::pmr::vector<LineVertex>* debugLines = nullptr
     );
