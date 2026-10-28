@@ -122,7 +122,7 @@ void Application::Run()
         timer.UpdateFrameTicks();
         {
             PROFILE_SCOPE("Scene::Update");
-            sceneManager.GetCurrentScene().Update(timer.GetDeltaTime());
+            sceneManager.GetCurrentScene().Update(timer.GetDeltaTime(), inputState);
             fixedStep.Add(timer.GetDeltaTime());
             while (fixedStep.TakeStep())
                 systems.RunPhase(

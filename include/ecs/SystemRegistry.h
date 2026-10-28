@@ -30,8 +30,9 @@ public:
     * Adds a system to the end of a phase. Systems in a phase run in the order they were added, so moving an Add line can change the result.
     * @param phase when the system runs
     * @param system the system to own
+    * @returns A pointer to the instance of the recently created system
     */
-    void Add(Phase phase, std::unique_ptr<System> system);
+    System* Add(Phase phase, std::unique_ptr<System> system);
 
     /**
      * Runs the logic for a whole phase, with all the systems it includes
@@ -54,6 +55,20 @@ public:
      * wary of as they write onto the same components.
      */
     void Print() const;
+
+    /**
+     * Sets the enabled state for a particular system, enabling or preventing its execution
+     * @param system Instance of the system to switch
+     * @param enabled desired state of the system
+     */
+    void SetEnabled(System* system, const bool enabled) { system->enabled = enabled; }
+
+    /**
+     * Checks whether a given system is enabled
+     * @param system instance of the system to check
+     * @return boolean indicating whether the system is enabled or not
+     */
+    bool IsEnabled(const System* system) const { return system->enabled; }
 
 private:
     /** Reference to the world on which the systems will live */

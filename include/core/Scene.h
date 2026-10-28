@@ -5,6 +5,7 @@
 #include "Light.h"
 
 struct Camera;
+struct InputState;
 
 union SDL_Event;
 class World;
@@ -24,9 +25,10 @@ public:
 
     /**
      * Work per frame that lives outside the ECS System: Camera, world counters
-     * @param deltaTime 
+     * @param deltaTime time since the last frame
+     * @param input current state of the user input
      */
-    virtual void Update(float deltaTime) = 0;
+    virtual void Update(float deltaTime, const InputState& input) = 0;
 
     /**
      * Function that runs on scene Creation
@@ -54,7 +56,7 @@ public:
      * @return Struct containing the light on the scene, which is ambient and a collection of lights
      */
     virtual SceneLighting GetLighting() const = 0;
-    
+
     /**
      * @return Instance of the scene's own World
      */

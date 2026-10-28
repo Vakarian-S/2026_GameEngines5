@@ -52,4 +52,9 @@ private:
     /** Component mask of the components this system will write */
     ComponentMask writes;
     
+    /** Sets whether a system should run or not */
+    bool enabled = true;
+    /** The registry is set as a friend class so it can manage its enabled state */
+    friend class SystemRegistry;
+    
 };

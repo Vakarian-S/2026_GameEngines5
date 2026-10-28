@@ -81,7 +81,7 @@ void Scene0::OnDestroy()
     world.ResetFrameStats();
 }
 
-void Scene0::Update(const float deltaTime)
+void Scene0::Update(const float deltaTime, const InputState& input)
 {
     world.ResetFrameStats();
     flyCameraController.Update(deltaTime);

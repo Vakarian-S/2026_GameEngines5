@@ -16,7 +16,7 @@ public:
 
     bool OnCreate(ResourceLoader& resourceLoader) override;
     void OnDestroy() override;
-    void Update(float deltaTime) override;
+    void Update(float deltaTime, const InputState& input) override;
     void HandleEvents(const SDL_Event& sdlEvent) override;
 
     /** @return the camera this scene is seen through */
@@ -60,6 +60,11 @@ private:
 
     /** Controller to move the camera with user input */
     FlyCameraController flyCameraController;
+    
+    /** Pointer to the drawCollider System, used to turn it on and off, */
+    System* drawColliders = nullptr;
+    /** Pointer to the drawRenderables System, used to turn it on and off, */
+    System* drawRenderables = nullptr;
 
     MeshHandle marioMesh;
     MaterialHandle marioMaterial;

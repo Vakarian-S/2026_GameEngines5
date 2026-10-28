@@ -8,46 +8,7 @@
 #include "physics/Components.h"
 #include "physics/systems/DrawCollidersSystem.h"
 #include "utils/Profiler.h"
-
-
-#include <iostream>
-
 #include "core/InputState.h"
-#include "ecs/SystemContext.h"
-
-namespace
-{
-    /** TEMPORARY. Prints once per press of P and how many frames P was held, to prove a press reads once */
-    class PressTestSystem : public System
-    {
-    public:
-        PressTestSystem() : System("PressTest", 0, 0)
-        {
-        }
-
-        void Run(const SystemContext& context) override
-        {
-            const InputState& input = *context.inputState;
-            if (input.Pressed(SDL_SCANCODE_P))
-            {
-                std::cout << "P pressed\n";
-            }
-            if (input.Held(SDL_SCANCODE_P))
-            {
-                ++heldFrames;
-            }
-            else if (heldFrames > 0)
-            {
-                std::cout << "P released after " << heldFrames << " frames\n";
-                heldFrames = 0;
-            }
-        }
-
-    private:
-        /** Frames in a row that P has been held down */
-        int heldFrames = 0;
-    };
-}
 
 PhysicsScene::PhysicsScene() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
@@ -134,9 +95,8 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
     world.AddComponent<Renderable>(mario4, {marioMesh, marioMaterial});
 
     systems.Add(Phase::Fixed, std::make_unique<SpinSystem>(world));
-    systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
-    systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
-    systems.Add(Phase::Update, std::make_unique<PressTestSystem>());
+    drawRenderables = systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
+    drawColliders = systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
 
     return true;
 }
@@ -147,11 +107,13 @@ void PhysicsScene::OnDestroy()
     world.ResetFrameStats();
 }
 
-void PhysicsScene::Update(float deltaTime)
+void PhysicsScene::Update(float deltaTime, const InputState& input)
 {
     world.ResetFrameStats();
     flyCameraController.Update(deltaTime);
     camera.view = flyCameraController.View();
+    if (input.Pressed(SDL_SCANCODE_C)) systems.SetEnabled(drawColliders, !systems.IsEnabled(drawColliders));
+    if (input.Pressed(SDL_SCANCODE_M)) systems.SetEnabled(drawRenderables, !systems.IsEnabled(drawRenderables));
 }
 
 void PhysicsScene::HandleEvents(const SDL_Event& sdlEvent)

@@ -18,7 +18,7 @@ namespace
         "Playback Update",
         "Playback Extract",
     };
-    
+
     /** Phase names for Print, in the same order as Phase */
     constexpr const char* kPhaseNames[] = {"Fixed", "Update", "Extract"};
     static_assert(std::size(kPhaseNames) == kPhaseCount, "every phase needs a name");
@@ -50,13 +50,15 @@ SystemRegistry::SystemRegistry(World& world_) : world(world_)
 {
 }
 
-void SystemRegistry::Add(Phase phase, std::unique_ptr<System> system)
+System* SystemRegistry::Add(Phase phase, std::unique_ptr<System> system)
 {
     assert(phase != Phase::Count);
     systemsByPhase[static_cast<size_t>(phase)].push_back(std::move(system));
+    return systemsByPhase[static_cast<size_t>(phase)].back().get();
 }
 
-void SystemRegistry::RunPhase(Phase phase, const float deltaTime, const InputState* inputState, std::pmr::vector<DrawItem>* drawItems,
+void SystemRegistry::RunPhase(Phase phase, const float deltaTime, const InputState* inputState,
+                              std::pmr::vector<DrawItem>* drawItems,
                               std::pmr::vector<LineVertex>* debugLines)
 {
     const SystemContext systemContext{
@@ -69,6 +71,7 @@ void SystemRegistry::RunPhase(Phase phase, const float deltaTime, const InputSta
     };
     for (const std::unique_ptr<System>& system : systemsByPhase[static_cast<size_t>(phase)])
     {
+        if (!system->enabled) continue;
         PROFILE_SCOPE(system->GetName());
         system->Run(systemContext);
     }
@@ -87,7 +90,7 @@ void SystemRegistry::Print() const
         std::cout << "  " << kPhaseNames[phase] << "\n";
         for (const std::unique_ptr<System>& system : systemsByPhase[phase])
         {
-            std::cout << "    " << system->GetName() << "  reads ";
+            std::cout << "    " << system->GetName() << (system->enabled ? "" : " (OFF)") << "  reads ";
             PrintMask(system->GetReads());
             std::cout << "  writes ";
             PrintMask(system->GetWrites());

@@ -17,7 +17,7 @@ public:
     void HandleEvents(const SDL_Event& sdlEvent) override;
     bool OnCreate(ResourceLoader& resourceLoader) override;
     void OnDestroy() override;
-    void Update(float deltaTime) override;
+    void Update(float deltaTime, const InputState& input) override;
 
     /** @return this scene's world, so Main can read its counters */
     const World& GetWorld() const override { return world; }
