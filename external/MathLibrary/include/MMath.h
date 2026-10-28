@@ -16,8 +16,8 @@ namespace  MATH {
 			Vec3 rotAxis(x_, y_, z_);
 			rotAxis = VMath::normalize(rotAxis);
 
-			cosang = cos(degrees_ * DEGREES_TO_RADIANS);
-			sinang = sin(degrees_ * DEGREES_TO_RADIANS);
+			cosang = cos(degrees_ * MATH::kDegreesToRadians);
+			sinang = sin(degrees_ * MATH::kDegreesToRadians);
 			cosm = (1.0f - cosang);
 
 			Matrix4 m;
@@ -50,7 +50,7 @@ namespace  MATH {
 		/// MMath::perspective builds the OpenGL projection, which maps depth into
 		/// NDC z of -1..1. 
 		static Matrix4 perspective(const float fovy_, const float aspect_, const float zNear_, const float zFar_) {
-			float cot = 1.0f / tan(fovy_ * 0.5f * DEGREES_TO_RADIANS);
+			float cot = 1.0f / tan(fovy_ * 0.5f * MATH::kDegreesToRadians);
 			/// Don't forget, this looks row centric but it really is a column matrix - the right-hand rule, rules
 			Matrix4 result(cot / aspect_, 0.0f, 0.0f, 0.0f,
 				0.0f, cot, 0.0f, 0.0f,
@@ -65,7 +65,7 @@ namespace  MATH {
 		/// half of the frustum is thrown away and half the depth buffer's
 		/// precision is wasted.
 		static Matrix4 PerspectiveVulkan(float fovy_, float aspect_, float zNear_, float zFar_) {
-			float cot = 1.0f / tan(fovy_ * 0.5f * DEGREES_TO_RADIANS);
+			float cot = 1.0f / tan(fovy_ * 0.5f * MATH::kDegreesToRadians);
 			return Matrix4(
 				cot / aspect_, 0.0f, 0.0f, 0.0f,
 				0.0f, cot, 0.0f, 0.0f,

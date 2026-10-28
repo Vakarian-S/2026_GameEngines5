@@ -12,8 +12,8 @@ FlyCameraController::FlyCameraController(const MATH::Vec3& eye, const MATH::Vec3
 {
     /* Yaw 0 looks down -Z, as lookAt does, and yaw +90 looks down -X */
     const MATH::Vec3 direction = MATH::VMath::normalize(at - eye);
-    yawDegrees = std::atan2(-direction.x, -direction.z) * RADIANS_TO_DEGREES;
-    pitchDegrees = std::asin(direction.y) * RADIANS_TO_DEGREES;
+    yawDegrees = std::atan2(-direction.x, -direction.z) * MATH::kRadiansToDegrees;
+    pitchDegrees = std::asin(direction.y) * MATH::kRadiansToDegrees;
 }
 
 FlyCameraController::~FlyCameraController()

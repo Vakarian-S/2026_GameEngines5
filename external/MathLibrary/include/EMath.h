@@ -15,7 +15,7 @@ namespace MATH {
 			result.roll = atan2(2.0f * (q.i * q.j + q.w * q.k), q.w * q.w + q.i * q.i - q.j * q.j - q.k * q.k);
 			result.pitch = atan2(2.0f * (q.j * q.k + q.w * q.i), q.w * q.w - q.i * q.i - q.j * q.j + q.k * q.k);
 			result.yaw = asin(std::clamp(-2.0f * (q.i * q.k - q.w * q.j), -1.0f, 1.0f));
-			return result * RADIANS_TO_DEGREES;
+			return result * MATH::kRadiansToDegrees;
 		}
 
 
@@ -30,9 +30,9 @@ namespace MATH {
 			e.yAxis = atan2(-m[2], cos2);
 			e.zAxis = atan2(sin1*m[6] - cos1*m[3], cos1*m[4] - sin1*m[7]);
 
-			e.xAxis *= RADIANS_TO_DEGREES;
-			e.yAxis *= RADIANS_TO_DEGREES;
-			e.zAxis *= RADIANS_TO_DEGREES;
+			e.xAxis *= MATH::kRadiansToDegrees;
+			e.yAxis *= MATH::kRadiansToDegrees;
+			e.zAxis *= MATH::kRadiansToDegrees;
 			return e;
 		}
 	};

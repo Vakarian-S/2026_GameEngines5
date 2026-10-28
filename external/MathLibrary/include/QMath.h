@@ -84,12 +84,12 @@ namespace MATH{
 
 
 		static Quaternion toQuaternion(const Euler& e) {
-			float cosX = cos(0.5f * e.xAxis * DEGREES_TO_RADIANS);
-			float cosY = cos(0.5f * e.yAxis * DEGREES_TO_RADIANS);
-			float cosZ = cos(0.5f * e.zAxis * DEGREES_TO_RADIANS);
-			float sinX = sin(0.5f * e.xAxis * DEGREES_TO_RADIANS);
-			float sinY = sin(0.5f * e.yAxis * DEGREES_TO_RADIANS);
-			float sinZ = sin(0.5f * e.zAxis * DEGREES_TO_RADIANS);
+			float cosX = cos(0.5f * e.xAxis * MATH::kDegreesToRadians);
+			float cosY = cos(0.5f * e.yAxis * MATH::kDegreesToRadians);
+			float cosZ = cos(0.5f * e.zAxis * MATH::kDegreesToRadians);
+			float sinX = sin(0.5f * e.xAxis * MATH::kDegreesToRadians);
+			float sinY = sin(0.5f * e.yAxis * MATH::kDegreesToRadians);
+			float sinZ = sin(0.5f * e.zAxis * MATH::kDegreesToRadians);
 
 			/// For XYZ order
 			return Quaternion((cosX * cosY * cosZ) + (sinX * sinY * sinZ),
@@ -101,7 +101,7 @@ namespace MATH{
 
 		static Quaternion angleAxisRotation(const float angleDeg, const Vec3& axis) {
 			Vec3 rotationAxis = VMath::normalize(axis);
-			float theta = angleDeg * DEGREES_TO_RADIANS;
+			float theta = angleDeg * MATH::kDegreesToRadians;
 			float cosVal = cos(theta / 2.0f);
 			float sinVal = sin(theta / 2.0f);
 			Quaternion result = Quaternion(cosVal, rotationAxis * sinVal);

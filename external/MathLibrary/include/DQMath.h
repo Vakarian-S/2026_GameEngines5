@@ -187,7 +187,7 @@ namespace MATHEX {
 			angle *= t;
 
 			// The exp means turn it all back into a dual quaternion
-			DualQuat transformedDqRot = rotate(MATH::QMath::angleAxisRotation(angle * RADIANS_TO_DEGREES, rotAxis));
+			DualQuat transformedDqRot = rotate(MATH::QMath::angleAxisRotation(angle * MATH::kRadiansToDegrees, rotAxis));
 			DualQuat transformedDqTra = translate(translation);
 			DualQuat transformedDq = transformedDqTra * transformedDqRot;
 

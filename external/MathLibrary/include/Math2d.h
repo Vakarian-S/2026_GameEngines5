@@ -64,7 +64,7 @@ namespace MATHEX {
 		// Return a pure rotation Motor2d, built from an angle in degrees
 		// Isn't it cool how similar this is to the 3D version QMath::angleAxisRotation
 		static const Motor2d rotate(float angleDeg) {
-			float theta = angleDeg * DEGREES_TO_RADIANS;
+			float theta = angleDeg * MATH::kDegreesToRadians;
 			float cosVal = cos(theta / 2.0f);
 			float sinVal = sin(theta / 2.0f);
 			// A rotation is cos(theta/2) - sin(theta/2) * e12
@@ -167,7 +167,7 @@ namespace MATHEX {
 			// and returns an angle between -180 and 180
 			float thetaOver2 = atan2(sinThetaOver2, cosThetaOver2);
 			float angleRad = thetaOver2 * 2.0f;
-			float result = angleRad * RADIANS_TO_DEGREES;
+			float result = angleRad * MATH::kRadiansToDegrees;
 			return result;
 		}
 

@@ -26,7 +26,7 @@ void SpinSystem::Run(const SystemContext& context)
         {
             /* angleAxisRotation takes degrees */
             const MATH::Quaternion step = MATH::QMath::angleAxisRotation(
-                spins[row].radiansPerSecond * deltaTime * RADIANS_TO_DEGREES, up);
+                spins[row].radiansPerSecond * deltaTime * MATH::kRadiansToDegrees, up);
             /* Step on the left turns about the world's up axis. Normalized so the length never drifts */
             transforms[row].orientation = MATH::QMath::normalize(step * transforms[row].orientation);
         }
