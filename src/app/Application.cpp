@@ -125,35 +125,6 @@ void Application::Run()
             {
                 AddGrid(debugLines, 40.0f, 1.0f, MATH::Vec3(0.3f, 0.3f, 0.3f));
                 AddAxes(debugLines, 25.0f);
-                /* TEMPORARY wire demo. Row 1 unturned, row 2 turned 45 degrees about Z, row 3 turned 30 degrees about X at
-                 * scale 2. The grey box uses the same matrix and is known good, so each shape must stay inside it */
-                {
-                    const MATH::Matrix4 turns[] = {
-                        MATH::Matrix4(),
-                        MMath::rotate(45.0f, 0.0f, 0.0f, 1.0f),
-                        MMath::rotate(30.0f, 1.0f, 0.0f, 0.0f) * MMath::scale(2.0f, 2.0f, 2.0f)
-                    };
-                    const MATH::Vec3 grey(0.6f, 0.6f, 0.6f);
-                    for (int row = 0; row < 3; ++row)
-                    {
-                        const float z = -8.0f * static_cast<float>(row);
-
-                        const MATH::Matrix4 sphere = MMath::translate(-9.0f, 3.0f, z) * turns[row];
-                        AddWireSphere(debugLines, sphere, 1.0f, MATH::Vec3(1.f, 1.f, 0.f));
-                        AddWireBox(debugLines, sphere, MATH::Vec3(1.0f, 1.0f, 1.0f), grey);
-
-                        const MATH::Matrix4 cylinder = MMath::translate(-3.0f, 3.0f, z) * turns[row];
-                        AddWireCylinder(debugLines, cylinder, 1.0f, 0.5f, MATH::Vec3(0.f, 1.f, 0.f));
-                        AddWireBox(debugLines, cylinder, MATH::Vec3(1.0f, 0.5f, 1.0f), grey);
-
-                        const MATH::Matrix4 capsule = MMath::translate(3.0f, 3.0f, z) * turns[row];
-                        AddWireCapsule(debugLines, capsule, 0.5f, 0.75f, MATH::Vec3(1.f, 0.f, 1.f));
-                        AddWireBox(debugLines, capsule, MATH::Vec3(0.5f, 1.25f, 0.5f), grey);
-
-                        const MATH::Matrix4 box = MMath::translate(9.0f, 3.0f, z) * turns[row];
-                        AddWireBox(debugLines, box, MATH::Vec3(1.0f, 1.0f, 1.0f), MATH::Vec3(1.f, 0.f, 0.f));
-                    }
-                }
             }
         }
         /* The next frame reserves this many. Set after the list is full, so it counts the scene's lines and the grid */

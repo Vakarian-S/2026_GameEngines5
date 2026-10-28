@@ -2,7 +2,6 @@
 
 #include <cassert>
 
-#include "MMath.h"
 #include "core/Components.h"
 #include "core/DrawList.h"
 #include "ecs/Archetype.h"
@@ -32,12 +31,7 @@ void DrawRenderablesSystem::Run(const SystemContext& context)
         const uint32_t rows = archetype->Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            /* Turns the mesh about its own centre first, then moves it into place. */
-            const MATH::Matrix4 modelMatrixTransform =
-                MATH::MMath::translate(transforms[row].position.x, transforms[row].position.y,
-                                       transforms[row].position.z) *
-                MMath::toMatrix4(transforms[row].orientation) * MMath::scale(
-                    transforms[row].scale, transforms[row].scale, transforms[row].scale);
+            const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
             drawList.push_back({renderables[row].meshHandle, renderables[row].materialHandle, modelMatrixTransform});
         }
     }

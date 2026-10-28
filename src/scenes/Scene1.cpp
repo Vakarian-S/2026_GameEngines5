@@ -8,6 +8,8 @@
 #include "game/Components.h"
 #include "core/systems/DrawRenderablesSystem.h"
 #include "game/systems/SpinSystem.h"
+#include "physics/Components.h"
+#include "physics/systems/DrawCollidersSystem.h"
 #include "utils/Profiler.h"
 
 Scene1::Scene1() :
@@ -52,18 +54,23 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
         world.AddComponent<Transform>(cube, {
                                           .position = MATH::Vec3(x, 0.0f, 0.0f),
                                           .scale = 1.0f,
-                                          .orientation = x > 0.0f ? MATH::QMath::angleAxisRotation(45.0f, up) : MATH::QMath::angleAxisRotation(
+                                          .orientation = x > 0.0f
+                                                             ? MATH::QMath::angleAxisRotation(45.0f, up)
+                                                             : MATH::QMath::angleAxisRotation(
                                                                  30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f)) *
                                                              MATH::QMath::angleAxisRotation(45.0f, up)
                                       });
-
+        world.AddComponent<PHYSICS::BoxCollider>(cube,
+                                                 {
+                                                     MATH::Vec3(0.5f, 0.5f, 0.5f),
+                                                 });
         world.AddComponent<Renderable>(cube, {cubeMesh, cubeMaterial});
     }
 
     /* In each phase, systems run in the order they are added */
     systems.Add(Phase::Fixed, std::make_unique<SpinSystem>(world));
     systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
-
+    systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
     return true;
 }
 
