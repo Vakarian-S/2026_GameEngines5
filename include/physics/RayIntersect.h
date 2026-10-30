@@ -24,7 +24,7 @@ namespace PHYSICS
      * @param localRay The ray in local space for which the intersection is to be checked.
      * @param boxCollider The box collider to test for intersection with the ray.
      * @return An optional containing a RayHit struct if the intersection occurs,
-     *         or std::nullopt if the ray and sphere do not intersect.
+     *         or std::nullopt if the ray and box do not intersect.
      */
     std::optional<RayHit> Intersect(const Ray& localRay, const BoxCollider& boxCollider);
 
@@ -36,6 +36,13 @@ namespace PHYSICS
      *         or std::nullopt if no intersection occurs.
      */
     std::optional<RayHit> Intersect(const Ray& localRay, const CylinderCollider& cylinderCollider);
-    
+
+    /**
+     * Computes the intersection of a ray with a capsule collider in local space.
+     * @param localRay The ray in local space for which the intersection is to be checked.
+     * @param capsuleCollider The capsule collider to test for intersection with the ray.
+     * @return An optional containing a RayHit struct if the intersection occurs,
+     *         or std::nullopt if the ray and capsule do not intersect.
+     */
     std::optional<RayHit> Intersect(const Ray& localRay, const CapsuleCollider& capsuleCollider);
 }

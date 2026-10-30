@@ -498,6 +498,209 @@ int main()
         Check("on the cap, heading in, it misses", !PHYSICS::Intersect(onCap, can).has_value());
     }
 
+    /* ===== Ray against capsule ===== */
+
+    /* Radius 1, sphere caps centred at y = -2 and y = 2, so it runs from y = -3 to y = 3 */
+    const PHYSICS::CapsuleCollider capsule{1.0f, 2.0f};
+
+    std::cout << "\nTEST CASE: a ray from the side hits the wall of a capsule\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("it hits", hit.has_value());
+        Check("t is 4, the distance to the wall", hit && Near(hit->t, 4.0f));
+        Check("the point is on the wall, (1, 0, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a direction twice as long halves t but hits the same point of the capsule\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-2.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is 2", hit && Near(hit->t, 2.0f));
+        Check("the point is still (1, 0, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: the default capsule has radius 0.5\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::CapsuleCollider{});
+
+        Check("t is 4.5", hit && Near(hit->t, 4.5f));
+    }
+
+    std::cout << "\nTEST CASE: a ray down the axis hits the top of the top sphere cap\n";
+    {
+        /* The point must come back in the capsule's space, not the moved ray's: y = 3, not y = 1 */
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 5.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("it hits", hit.has_value());
+        Check("t is 2", hit && Near(hit->t, 2.0f));
+        Check("the point is (0, 3, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 3.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray up the axis hits the bottom of the bottom sphere cap\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, -5.0f, 0.0f), MATH::Vec3(0.0f, 1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is 2", hit && Near(hit->t, 2.0f));
+        Check("the point is (0, -3, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, -3.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray parallel to the axis, off centre, lands on the curve of the sphere cap\n";
+    {
+        /* Moved to the sphere cap, the start is (0.6, 3, 0): t = 3 - sqrt(1 - 0.36) = 2.2 */
+        const PHYSICS::Ray ray{MATH::Vec3(0.6f, 5.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is 2.2", hit && Near(hit->t, 2.2f));
+        Check("the point is (0.6, 2.8, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.6f, 2.8f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray parallel to the axis, outside the radius, misses the capsule\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(3.0f, 5.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray above the capsule, heading up the axis, misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 5.0f, 0.0f), MATH::Vec3(0.0f, 1.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray from beside the capsule enters the tube below it, the bottom sphere cap counts\n";
+    {
+        /* It starts between the sphere caps, so only where it enters the tube can pick the right one */
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, -1.05f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("it hits", hit.has_value());
+        Check("t is about 2.0056", hit && Near(hit->t, 2.005624f));
+        Check("the point is on the bottom sphere cap",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(-0.994376f, -2.105905f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray from beside the capsule enters the tube above it, the top sphere cap counts\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 1.05f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is about 2.0056", hit && Near(hit->t, 2.005624f));
+        Check("the point is on the top sphere cap",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(-0.994376f, 2.105905f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a slanted ray from above enters the tube above the capsule and lands on the top\n";
+    {
+        /* The tube is entered at t = 2. The sphere cap's roots are 3 and 4 */
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 6.0f, 0.0f), MATH::Vec3(1.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is 3", hit && Near(hit->t, 3.0f));
+        Check("the point is (0, 3, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 3.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a flat ray across the curve of the top sphere cap hits it\n";
+    {
+        /* Moved to the sphere cap, a = 1, b = -6, c = 8.81 */
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 2.9f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is about 2.5641", hit && Near(hit->t, 2.564110f));
+        Check("the point is (-0.4359, 2.9, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(-0.435890f, 2.9f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a flat ray above the capsule crosses the tube and misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 3.5f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting above the capsule, within the radius, can reach the sphere cap\n";
+    {
+        /* Outside the sphere cap but inside the tube, aimed at the centre (0, 2, 0) from the corner */
+        const PHYSICS::Ray ray{MATH::Vec3(0.9f, 2.9f, 0.0f), MATH::Vec3(-1.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is about 0.1929", hit && Near(hit->t, 0.192893f));
+        Check("the point is on the sphere cap, (0.7071, 2.7071, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.707107f, 2.707107f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray starting above the capsule, within the radius, leaves the tube first\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.9f, 4.0f, 0.0f), MATH::Vec3(1.0f, -0.1f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray passing beside the capsule misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(3.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray just touching the capsule's wall hits once\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(1.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is 5", hit && Near(hit->t, 5.0f));
+        Check("the point is (1, 0, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray just touching the top of the sphere cap hits once\n";
+    {
+        /* It enters the tube above the sphere cap's centre, then the sphere cap's discriminant is exactly 0 */
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 3.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, capsule);
+
+        Check("t is 5", hit && Near(hit->t, 5.0f));
+        Check("the point is (0, 3, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 3.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a capsule behind the ray is a miss\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting inside ignores the capsule\n";
+    {
+        const PHYSICS::Ray fromCentre{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray alongAxis{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(0.0f, 1.0f, 0.0f)};
+        const PHYSICS::Ray inTopCap{MATH::Vec3(0.0f, 2.5f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray inBottomCap{MATH::Vec3(0.0f, -2.5f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+
+        Check("from the centre, it misses", !PHYSICS::Intersect(fromCentre, capsule).has_value());
+        Check("along the axis, it misses", !PHYSICS::Intersect(alongAxis, capsule).has_value());
+        Check("inside the top sphere cap, it misses", !PHYSICS::Intersect(inTopCap, capsule).has_value());
+        Check("inside the bottom sphere cap, it misses", !PHYSICS::Intersect(inBottomCap, capsule).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting on the capsule's surface and heading in\n";
+    {
+        /* On the wall, c = 0 counts as inside, like the can. On a sphere cap, the sphere's rule gives t = 0 */
+        const PHYSICS::Ray onWall{MATH::Vec3(1.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray onSphereCap{MATH::Vec3(0.0f, 3.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> capHit = PHYSICS::Intersect(onSphereCap, capsule);
+
+        Check("on the wall, it misses", !PHYSICS::Intersect(onWall, capsule).has_value());
+        Check("on the sphere cap, it hits at t = 0", capHit && Near(capHit->t, 0.0f));
+    }
+
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";
 

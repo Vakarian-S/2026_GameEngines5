@@ -33,10 +33,35 @@ namespace
         if (MATH::VMath::dot(centreToPoint, centreToPoint) > radius * radius) return std::nullopt;
 
         return {
-                    {
-                        .intersectionPosition = point,
-                        .t = t
-                    }
+            {
+                .intersectionPosition = point,
+                .t = t
+            }
+        };
+    }
+
+    /**
+     * Computes the intersection of a ray with a spherical end cap of a capsule collider in local space.
+     * @param localRay The ray in local space to test for intersection with the spherical end cap.
+     * @param sphereCentre The centre of the sphere representing the cap, in local space coordinates.
+     * @param radius The radius of the spherical end cap.
+     * @return An optional containing a RayHit struct if the ray intersects the spherical cap,
+     *         or std::nullopt if no intersection occurs.
+     */
+    std::optional<PHYSICS::RayHit> IntersectCapsuleCap(const PHYSICS::Ray& localRay,
+                                                       const MATH::Vec3& sphereCentre, const float radius)
+    {
+        /* Our sphere test assumes the sphere sits at the origin, so we move our ray */
+        const PHYSICS::Ray capRay{.origin = localRay.origin - sphereCentre, .direction = localRay.direction};
+        const PHYSICS::SphereCollider sphereCollider{.radius = radius};
+        const std::optional<PHYSICS::RayHit> rayHit = Intersect(capRay, sphereCollider);
+        if (!rayHit.has_value()) return std::nullopt;
+        /* Move back to our original space */
+        return {
+            {
+                .intersectionPosition = rayHit->intersectionPosition + sphereCentre,
+                .t = rayHit->t
+            }
         };
     }
 }
@@ -116,11 +141,11 @@ std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const Box
 
 std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const CylinderCollider& cylinderCollider)
 {
-     /* A is the bottom cap centre, B the top one, and AB the unit axis from A to B */
+    /* A is the bottom cap centre, B the top one, and AB the unit axis from A to B */
     const MATH::Vec3 v = localRay.direction;
     constexpr MATH::Vec3 AB = MATH::Vec3(0.f, 1.f, 0.f);
     const MATH::Vec3 A = MATH::Vec3(0.f, -cylinderCollider.halfHeight, 0.f);
-    const MATH::Vec3 B = MATH::Vec3(,.f, cylinderCollider.halfHeight, 0.f);
+    const MATH::Vec3 B = MATH::Vec3(0.f, cylinderCollider.halfHeight, 0.f);
     const MATH::Vec3 AS = localRay.origin - A;
     const float height = 2.0f * cylinderCollider.halfHeight;
     const float r2 = cylinderCollider.radius * cylinderCollider.radius;
@@ -175,4 +200,69 @@ std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const Cyl
 
     /* Outside the caps: the ray can only get in through the cap on that side */
     return IntersectCap(localRay, hitHeight < 0.0f ? A : B, AB, cylinderCollider.radius);
+}
+
+std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const CapsuleCollider& capsuleCollider)
+{
+    /* Infinite Cylinder Check */
+    const MATH::Vec3 v = localRay.direction;
+    constexpr MATH::Vec3 AB = MATH::Vec3(0.f, 1.f, 0.f);
+
+    /* A and B now are the centres of the cap spheres */
+    const MATH::Vec3 A = MATH::Vec3(0.f, -capsuleCollider.halfHeight, 0.f);
+    const MATH::Vec3 B = MATH::Vec3(0.f, capsuleCollider.halfHeight, 0.f);
+    const MATH::Vec3 AS = localRay.origin - A;
+    const float height = 2.0f * capsuleCollider.halfHeight;
+    const float r2 = capsuleCollider.radius * capsuleCollider.radius;
+
+    /*
+    * a = V.V - (V.AB)^2
+    * b = 2 (AS . V - (V.AB)(AS.AB))
+    * c = AS.AS - (AS.AB)^2 - r^2
+    */
+    const float a = MATH::VMath::dot(v, v) - MATH::VMath::dot(v, AB) * MATH::VMath::dot(v, AB);
+    const float b = 2 * (MATH::VMath::dot(AS, v) - MATH::VMath::dot(v, AB) * MATH::VMath::dot(AS, AB));
+    const float c = MATH::VMath::dot(AS, AS) - MATH::VMath::dot(AS, AB) * MATH::VMath::dot(AS, AB) - r2;
+
+    /* How far above A the start sits, measured along the axis */
+    const float startHeight = MATH::VMath::dot(AS, AB);
+
+    /* c <= 0 means the start is within the radius of the infinite cylinder */
+    if (c <= MATH::kVerySmall)
+    {
+        /* Between the sphere caps too, so the ray starts inside the capsule, which we dont take into account */
+        if (startHeight >= 0.0f && startHeight <= height) return std::nullopt;
+
+        /* Above or below the capsule: only the nearer sphere cap can be hit */
+        return IntersectCapsuleCap(localRay, startHeight < 0.0f ? A : B, capsuleCollider.radius);
+    }
+
+    /* The ray runs along the axis outside the radius, so it never reaches the tube.*/
+    if (a < MATH::kVerySmall) return std::nullopt;
+
+    const QuadraticRoots solution = SolveQuadratic(a, b, c);
+
+    /* Miss the infinite tube */
+    if (solution.numSolutions == 0) return std::nullopt;
+
+    /* The start is outside the tube, so both roots are on the same side: behind the ray */
+    if (solution.smallerSolution < 0.0f) return std::nullopt;
+
+    /* Where the ray meets the infinite tube, and how far above A that is */
+    const MATH::Vec3 Q = localRay.PointAt(solution.smallerSolution);
+    const float hitHeight = MATH::VMath::dot(Q - A, AB);
+
+    /* Between the sphere caps: the ray hit the side */
+    if (hitHeight >= 0.0f && hitHeight <= height)
+    {
+        return {
+            {
+                .intersectionPosition = Q,
+                .t = solution.smallerSolution
+            }
+        };
+    }
+
+    /* Outside the sphere caps: the ray can only get in through the sphere on that side */
+    return IntersectCapsuleCap(localRay, hitHeight < 0.0f ? A : B, capsuleCollider.radius);
 }
