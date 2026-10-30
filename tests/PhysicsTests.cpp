@@ -208,6 +208,296 @@ int main()
         Check("heading out, it misses", !PHYSICS::Intersect(headingOut, unitSphere).has_value());
     }
 
+    /* ===== Ray against box ===== */
+
+    /* A different half size per axis, so a mixed up axis shows */
+    const PHYSICS::BoxCollider box{MATH::Vec3(1.0f, 0.5f, 2.0f)};
+
+    std::cout << "\nTEST CASE: a ray along -z hits the front face of a box\n";
+    {
+        /* A negative direction: the z slab gives t1 = 7 and t2 = 3 before the swap */
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, box);
+
+        Check("it hits", hit.has_value());
+        Check("t is 3, the distance to the z = 2 face", hit && Near(hit->t, 3.0f));
+        Check("the point is on that face, (0, 0, 2)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 0.0f, 2.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray along +x hits the left face\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(-4.0f, 0.2f, 0.5f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, box);
+
+        Check("t is 3", hit && Near(hit->t, 3.0f));
+        Check("the point is (-1, 0.2, 0.5)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(-1.0f, 0.2f, 0.5f)));
+    }
+
+    std::cout << "\nTEST CASE: a slanted ray enters through the bottom face, the later slab entry wins\n";
+    {
+        /* The x slab is entered at t = -10, the y slab at t = 2.5, so tmin = 2.5 */
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, -3.0f, 0.0f), MATH::Vec3(0.1f, 1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, box);
+
+        Check("t is 2.5", hit && Near(hit->t, 2.5f));
+        Check("the point is on the y = -0.5 face, (0.25, -0.5, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.25f, -0.5f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a direction twice as long halves t\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -2.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, box);
+
+        Check("t is 1.5", hit && Near(hit->t, 1.5f));
+        Check("the point is still (0, 0, 2)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 0.0f, 2.0f)));
+    }
+
+    std::cout << "\nTEST CASE: the default box has half size 0.5\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::BoxCollider{});
+
+        Check("t is 4.5", hit && Near(hit->t, 4.5f));
+    }
+
+    std::cout << "\nTEST CASE: a ray that leaves one slab before entering another misses\n";
+    {
+        /* The y slab runs from t = 0.5 to 1.5, the x slab from t = 3 to 5: they never overlap */
+        const PHYSICS::Ray ray{MATH::Vec3(-4.0f, -1.0f, 0.0f), MATH::Vec3(1.0f, 1.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, box).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray parallel to a slab and outside it misses\n";
+    {
+        /* The y part of the direction is 0 and y = 2 is outside -0.5..0.5 */
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 2.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, box).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray sliding along a face, parallel to it, still hits\n";
+    {
+        /* x = 1 sits exactly on the slab plane. Without the parallel branch this is 0 / 0, a NaN */
+        const PHYSICS::Ray ray{MATH::Vec3(1.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, box);
+
+        Check("it hits", hit.has_value());
+        Check("t is 3, at the edge (1, 0, 2)",
+              hit && Near(hit->t, 3.0f) && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 2.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a box behind the ray is a miss\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, 1.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, box).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting inside ignores the box\n";
+    {
+        const PHYSICS::Ray fromCentre{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray slanted{MATH::Vec3(0.5f, 0.2f, -1.0f), MATH::Vec3(-1.0f, 0.5f, 2.0f)};
+
+        Check("from the centre, it misses", !PHYSICS::Intersect(fromCentre, box).has_value());
+        Check("from off the centre, slanted, it misses", !PHYSICS::Intersect(slanted, box).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting on a face\n";
+    {
+        /* Heading in: the z slab gives 0 and 4, so the entry is t = 0. Heading out: -4 and 0 */
+        const PHYSICS::Ray headingIn{MATH::Vec3(0.0f, 0.0f, 2.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const PHYSICS::Ray headingOut{MATH::Vec3(0.0f, 0.0f, 2.0f), MATH::Vec3(0.0f, 0.0f, 1.0f)};
+        const std::optional<PHYSICS::RayHit> inHit = PHYSICS::Intersect(headingIn, box);
+
+        Check("heading in, it hits at t = 0", inHit && Near(inHit->t, 0.0f));
+        Check("heading out, it misses", !PHYSICS::Intersect(headingOut, box).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray aimed at a corner enters all three slabs at once\n";
+    {
+        /* Every slab is entered at t = 1, at the corner (-1, -0.5, -2) */
+        const PHYSICS::Ray ray{MATH::Vec3(-2.0f, -1.5f, -4.0f), MATH::Vec3(1.0f, 1.0f, 2.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, box);
+
+        Check("it hits", hit.has_value());
+        Check("t is 1", hit && Near(hit->t, 1.0f));
+        Check("the point is the corner (-1, -0.5, -2)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(-1.0f, -0.5f, -2.0f)));
+    }
+
+    /* ===== Ray against can ===== */
+
+    /* Radius 1, caps at y = -2 and y = 2 */
+    const PHYSICS::CylinderCollider can{1.0f, 2.0f};
+
+    std::cout << "\nTEST CASE: a ray from the side hits the wall of a can\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("it hits", hit.has_value());
+        Check("t is 4, the distance to the wall", hit && Near(hit->t, 4.0f));
+        Check("the point is on the wall, (1, 0, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a direction twice as long halves t but hits the same point of the can\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-2.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("t is 2", hit && Near(hit->t, 2.0f));
+        Check("the point is still (1, 0, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: the default can has radius 0.5\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::CylinderCollider{});
+
+        Check("t is 4.5", hit && Near(hit->t, 4.5f));
+    }
+
+    std::cout << "\nTEST CASE: a ray down the axis hits the top cap, the case the notes lose\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 5.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("it hits", hit.has_value());
+        Check("t is 3", hit && Near(hit->t, 3.0f));
+        Check("the point is the top cap's centre, (0, 2, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 2.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray up along the axis, off centre, hits the bottom cap\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.5f, -5.0f, 0.0f), MATH::Vec3(0.0f, 1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("t is 3", hit && Near(hit->t, 3.0f));
+        Check("the point is on the bottom cap, (0.5, -2, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.5f, -2.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray parallel to the axis, outside the radius, misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(3.0f, 5.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray above the can, heading up the axis, misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 5.0f, 0.0f), MATH::Vec3(0.0f, 1.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a slanted ray enters the tube above the can and lands on the top cap\n";
+    {
+        /* The tube is entered at t = 2, at height 3. The top cap is crossed at t = 3 */
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 5.0f, 0.0f), MATH::Vec3(1.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("t is 3", hit && Near(hit->t, 3.0f));
+        Check("the point is (0, 2, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 2.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a slanted ray enters the tube below the can and lands on the bottom cap\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, -5.0f, 0.0f), MATH::Vec3(1.0f, 1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("t is 3", hit && Near(hit->t, 3.0f));
+        Check("the point is (0, -2, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, -2.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a flat ray above the can crosses the tube and misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(-3.0f, 4.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray crossing the tube above the can leaves it before the cap's height\n";
+    {
+        /* It reaches height 2 at t = 20, at x = 18, outside the disc */
+        const PHYSICS::Ray ray{MATH::Vec3(-2.0f, 4.0f, 0.0f), MATH::Vec3(1.0f, -0.1f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting above the can, within the radius, leaves the tube first\n";
+    {
+        /* It reaches height 2 at t = 10, at x = 10, outside the disc */
+        const PHYSICS::Ray ray{MATH::Vec3(0.0f, 3.0f, 0.0f), MATH::Vec3(1.0f, -0.1f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray passing beside the can misses\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(3.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray just touching the wall hits once\n";
+    {
+        /* a = 1, b = -10, c = 25: the discriminant is exactly 0 */
+        const PHYSICS::Ray ray{MATH::Vec3(1.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("it hits", hit.has_value());
+        Check("t is 5", hit && Near(hit->t, 5.0f));
+        Check("the point is (1, 0, 0)", hit && Near(hit->intersectionPosition, MATH::Vec3(1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a can behind the ray is a miss\n";
+    {
+        const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+
+        Check("it misses", !PHYSICS::Intersect(ray, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray starting inside ignores the can\n";
+    {
+        const PHYSICS::Ray fromCentre{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray slanted{MATH::Vec3(0.2f, 1.0f, 0.2f), MATH::Vec3(0.0f, 1.0f, 1.0f)};
+        const PHYSICS::Ray alongAxis{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(0.0f, 1.0f, 0.0f)};
+
+        Check("from the centre, it misses", !PHYSICS::Intersect(fromCentre, can).has_value());
+        Check("from off the centre, slanted, it misses", !PHYSICS::Intersect(slanted, can).has_value());
+        Check("along the axis, it misses", !PHYSICS::Intersect(alongAxis, can).has_value());
+    }
+
+    std::cout << "\nTEST CASE: a ray hitting the rim, where the wall meets the top cap\n";
+    {
+        /* The tube is entered at t = 1, at height 4 above the bottom cap, exactly the can's height */
+        const PHYSICS::Ray ray{MATH::Vec3(-2.0f, 3.0f, 0.0f), MATH::Vec3(1.0f, -1.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, can);
+
+        Check("t is 1", hit && Near(hit->t, 1.0f));
+        Check("the point is the rim, (-1, 2, 0)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(-1.0f, 2.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a ray starting on the can's surface counts as starting inside\n";
+    {
+        /* c = 0 and a height within the caps. The sphere and the box report t = 0 here when heading in */
+        const PHYSICS::Ray onWall{MATH::Vec3(1.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray onCap{MATH::Vec3(0.0f, 2.0f, 0.0f), MATH::Vec3(0.0f, -1.0f, 0.0f)};
+
+        Check("on the wall, heading in, it misses", !PHYSICS::Intersect(onWall, can).has_value());
+        Check("on the cap, heading in, it misses", !PHYSICS::Intersect(onCap, can).has_value());
+    }
+
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";
 
