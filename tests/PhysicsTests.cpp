@@ -10,6 +10,11 @@
 #include <iostream>
 #include <optional>
 
+#include "MMath.h"
+#include "QMath.h"
+#include "VMath.h"
+#include "core/Camera.h"
+#include "core/Components.h"
 #include "physics/Components.h"
 #include "physics/Quadratic.h"
 #include "physics/Ray.h"
@@ -699,6 +704,191 @@ int main()
 
         Check("on the wall, it misses", !PHYSICS::Intersect(onWall, capsule).has_value());
         Check("on the sphere cap, it hits at t = 0", capHit && Near(capHit->t, 0.0f));
+    }
+
+    /* ===== World ray to local ray ===== */
+
+    const MATH::Vec3 yAxis(0.0f, 1.0f, 0.0f);
+    const MATH::Vec3 zAxis(0.0f, 0.0f, 1.0f);
+
+    std::cout << "\nTEST CASE: a default transform leaves the ray as it is\n";
+    {
+        const PHYSICS::Ray world{MATH::Vec3(1.0f, 2.0f, 3.0f), MATH::Vec3(0.0f, 0.0f, -2.0f)};
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, Transform{});
+
+        Check("the origin is unchanged", Near(local.origin, world.origin));
+        Check("the direction is unchanged", Near(local.direction, world.direction));
+    }
+
+    std::cout << "\nTEST CASE: a moved shape changes the origin, never the direction\n";
+    {
+        const PHYSICS::Ray world{MATH::Vec3(4.0f, 2.0f, 3.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const Transform transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
+
+        Check("the origin is measured from the shape, (3, 0, 0)", Near(local.origin, MATH::Vec3(3.0f, 0.0f, 0.0f)));
+        Check("the direction is unchanged", Near(local.direction, world.direction));
+    }
+
+    std::cout << "\nTEST CASE: a scaled shape divides both the origin and the direction\n";
+    {
+        const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, 10.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const Transform transform{.scale = 2.0f};
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
+
+        Check("the origin is (0, 0, 5)", Near(local.origin, MATH::Vec3(0.0f, 0.0f, 5.0f)));
+        Check("the direction is (0, 0, -0.5)", Near(local.direction, MATH::Vec3(0.0f, 0.0f, -0.5f)));
+    }
+
+    std::cout << "\nTEST CASE: a shape turned 90 degrees about y turns the ray back\n";
+    {
+        /* The turn takes the shape's +x to the world's -z, so the world's -z is the shape's +x */
+        const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, -5.0f), MATH::Vec3(0.0f, 0.0f, 1.0f)};
+        const Transform transform{.orientation = MATH::QMath::angleAxisRotation(90.0f, yAxis)};
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
+
+        Check("the origin is (5, 0, 0)", Near(local.origin, MATH::Vec3(5.0f, 0.0f, 0.0f)));
+        Check("the direction is (-1, 0, 0)", Near(local.direction, MATH::Vec3(-1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: ModelMatrix takes a local ray's points back to the world ray's points\n";
+    {
+        /* Moved, scaled and turned about a slanted axis, so no term can cancel by luck */
+        const Transform transform{
+            .position = MATH::Vec3(1.0f, -2.0f, 3.0f), .scale = 2.0f,
+            .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(1.0f, 2.0f, 3.0f))
+        };
+        const PHYSICS::Ray world{MATH::Vec3(-4.0f, 5.0f, 6.0f), MATH::Vec3(1.0f, -0.5f, 2.0f)};
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
+        const MATH::Matrix4 model = ModelMatrix(transform);
+
+        for (const float t : {0.0f, 1.0f, 2.5f})
+        {
+            const MATH::Vec3 back(model * MATH::Vec4(local.PointAt(t), 1.0f));
+            Check("the same t gives the same point in both spaces", Near(back, world.PointAt(t)));
+        }
+    }
+
+    std::cout << "\nTEST CASE: a moved, scaled sphere gives the same t as the world's numbers\n";
+    {
+        /* World radius 2 at z = -10, so the near surface is at z = -8 */
+        const Transform transform{.position = MATH::Vec3(0.0f, 0.0f, -10.0f), .scale = 2.0f};
+        const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(PHYSICS::ToLocalRay(world, transform), unitSphere);
+
+        Check("t is 8", hit && Near(hit->t, 8.0f));
+        Check("the local point is the sphere's near side, (0, 0, 1)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 0.0f, 1.0f)));
+        Check("ModelMatrix takes it to the world's (0, 0, -8)",
+              hit && Near(MATH::Vec3(ModelMatrix(transform) * MATH::Vec4(hit->intersectionPosition, 1.0f)),
+                          MATH::Vec3(0.0f, 0.0f, -8.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a moved, turned, scaled box shows its long side to the ray\n";
+    {
+        /* The turn puts the box's z half size of 2 along the world's x. At scale 2 that is 4, so the near face is at
+         * x = 6. Without the turn it would be the x half size, and t would be 8 */
+        const Transform transform{
+            .position = MATH::Vec3(10.0f, 0.0f, 0.0f), .scale = 2.0f,
+            .orientation = MATH::QMath::angleAxisRotation(90.0f, yAxis)
+        };
+        const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(1.0f, 0.0f, 0.0f)};
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(PHYSICS::ToLocalRay(world, transform), box);
+
+        Check("t is 6", hit && Near(hit->t, 6.0f));
+        Check("the local point is on the z = -2 face, (0, 0, -2)",
+              hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 0.0f, -2.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a can and a capsule lying on their side, a ray along the world's x\n";
+    {
+        /* Turned 90 degrees about z, their y axis lies along the world's x. The can's cap faces the ray at x = 2,
+         * the capsule's sphere cap reaches x = 3 */
+        const Transform transform{.orientation = MATH::QMath::angleAxisRotation(90.0f, zAxis)};
+        const PHYSICS::Ray world{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
+        const std::optional<PHYSICS::RayHit> canHit = PHYSICS::Intersect(local, can);
+        const std::optional<PHYSICS::RayHit> capsuleHit = PHYSICS::Intersect(local, capsule);
+
+        Check("the can's t is 3", canHit && Near(canHit->t, 3.0f));
+        Check("the capsule's t is 2", capsuleHit && Near(capsuleHit->t, 2.0f));
+    }
+
+    /* ===== Mouse to world ray ===== */
+
+    /* At 90 degrees, tan(fov / 2) is 1, so the window's edges sit one unit out per unit forward */
+    const MATH::Vec2 window(800.0f, 600.0f);
+    Camera wideCamera;
+    wideCamera.fovYDegrees = 90.0f;
+
+    std::cout << "\nTEST CASE: a click at the centre, with a camera at the origin, looks down -z\n";
+    {
+        const PHYSICS::Ray ray = PHYSICS::MakePickRay(MATH::Vec2(400.0f, 300.0f), window, wideCamera);
+
+        Check("the ray starts at the camera", Near(ray.origin, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+        Check("the direction is (0, 0, -1)", Near(ray.direction, MATH::Vec3(0.0f, 0.0f, -1.0f)));
+    }
+
+    std::cout << "\nTEST CASE: clicks on the window's edges, so y is the right way up and the aspect counts\n";
+    {
+        const PHYSICS::Ray top = PHYSICS::MakePickRay(MATH::Vec2(400.0f, 0.0f), window, wideCamera);
+        const PHYSICS::Ray bottom = PHYSICS::MakePickRay(MATH::Vec2(400.0f, 600.0f), window, wideCamera);
+        const PHYSICS::Ray right = PHYSICS::MakePickRay(MATH::Vec2(800.0f, 300.0f), window, wideCamera);
+
+        Check("the top edge looks up, pixel y 0 is the top",
+              Near(top.direction, MATH::VMath::normalize(MATH::Vec3(0.0f, 1.0f, -1.0f))));
+        Check("the bottom edge looks down",
+              Near(bottom.direction, MATH::VMath::normalize(MATH::Vec3(0.0f, -1.0f, -1.0f))));
+        Check("the right edge is wider by the aspect, 4 / 3",
+              Near(right.direction, MATH::Vec3(0.8f, 0.0f, -0.6f)));
+        Check("the direction has length 1", Near(MATH::VMath::mag(right.direction), 1.0f));
+    }
+
+    std::cout << "\nTEST CASE: a click at the centre follows a moved and turned camera\n";
+    {
+        Camera camera;
+        camera.view = MATH::MMath::lookAt(MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(0.0f, 0.0f, 0.0f), yAxis);
+        const PHYSICS::Ray ray = PHYSICS::MakePickRay(MATH::Vec2(400.0f, 300.0f), window, camera);
+
+        Check("the ray starts at the camera, (5, 0, 0)", Near(ray.origin, MATH::Vec3(5.0f, 0.0f, 0.0f)));
+        Check("the direction faces where it looks, (-1, 0, 0)", Near(ray.direction, MATH::Vec3(-1.0f, 0.0f, 0.0f)));
+    }
+
+    std::cout << "\nTEST CASE: a click on a point projected the way the GPU does it aims back at that point\n";
+    {
+        const MATH::Vec2 size(1280.0f, 720.0f);
+        Camera camera;
+        camera.fovYDegrees = 60.0f;
+        camera.view = MATH::MMath::lookAt(MATH::Vec3(3.0f, 4.0f, 5.0f), MATH::Vec3(0.0f, 1.0f, 0.0f), yAxis);
+
+        /* The projection VulkanRenderer hands the GPU, element 5 negated */
+        MATH::Matrix4 projection = MATH::MMath::PerspectiveVulkan(camera.fovYDegrees, size.x / size.y,
+                                                                  camera.nearPlane, camera.farPlane);
+        projection[5] *= -1.0f;
+
+        for (const MATH::Vec3& point : {MATH::Vec3(0.5f, 1.5f, -0.5f), MATH::Vec3(-1.0f, 0.5f, 1.0f),
+                                        MATH::Vec3(2.0f, 2.0f, 0.0f)})
+        {
+            const MATH::Vec4 clip = projection * (camera.view * MATH::Vec4(point, 1.0f));
+            const MATH::Vec2 pixel((clip.x / clip.w + 1.0f) * 0.5f * size.x, (clip.y / clip.w + 1.0f) * 0.5f * size.y);
+            const PHYSICS::Ray ray = PHYSICS::MakePickRay(pixel, size, camera);
+
+            Check("the ray points at the projected point",
+                  Near(ray.direction, MATH::VMath::normalize(point - ray.origin)));
+        }
+    }
+
+    std::cout << "\nTEST CASE: a whole click, mouse to world ray to local ray to a hit, gives t in metres\n";
+    {
+        /* World radius 2 at the origin and a camera at z = 10, so the near surface is 8 metres away */
+        Camera camera;
+        camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 0.0f, 10.0f), MATH::Vec3(0.0f, 0.0f, 0.0f), yAxis);
+        const Transform transform{.scale = 2.0f};
+        const PHYSICS::Ray world = PHYSICS::MakePickRay(MATH::Vec2(400.0f, 300.0f), window, camera);
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(PHYSICS::ToLocalRay(world, transform), unitSphere);
+
+        Check("t is 8", hit && Near(hit->t, 8.0f));
+        Check("the local point is (0, 0, 1)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 0.0f, 1.0f)));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

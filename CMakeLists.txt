@@ -342,6 +342,7 @@ add_executable(PhysicsTests
         tests/PhysicsTests.cpp
         src/physics/Quadratic.cpp
         src/physics/RayIntersect.cpp
+        src/physics/Ray.cpp
         include/physics/Quadratic.h
         include/physics/RayIntersect.h
         include/physics/Ray.h
