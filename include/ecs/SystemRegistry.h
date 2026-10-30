@@ -7,6 +7,7 @@
 #include "Phase.h"
 #include "System.h"
 
+struct Camera;
 struct LineVertex;
 struct DrawItem;
 struct InputState;
@@ -39,6 +40,7 @@ public:
      * @param phase Phase to run
      * @param deltaTime time since the last frame, for Fixed Phases, its the fixed step time (i.e. 1/60)
      * @param inputState Current state of the users' input
+     * @param camera Gameplay camera used for systems that require the view. Null only in tests
      * @param drawItems Draw items if applicable (Only for extract phase)
      * @param debugLines Debug lines to draw if applicable (Only for Extract phase)
      */
@@ -46,6 +48,7 @@ public:
         Phase phase,
         float deltaTime,
         const InputState* inputState,
+        const Camera* camera = nullptr,
         std::pmr::vector<DrawItem>* drawItems = nullptr,
         std::pmr::vector<LineVertex>* debugLines = nullptr
     );

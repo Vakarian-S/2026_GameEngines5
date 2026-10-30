@@ -9,6 +9,8 @@
 #include "physics/systems/DrawCollidersSystem.h"
 #include "utils/Profiler.h"
 #include "core/InputState.h"
+#include "physics/systems/PickSystem.h"
+#include "physics/systems/DrawPickRaySystem.h"
 
 PhysicsScene::PhysicsScene() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
@@ -94,9 +96,14 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
     world.AddComponent<PHYSICS::SphereCollider>(mario4, {1.3f});
     world.AddComponent<Renderable>(mario4, {marioMesh, marioMaterial});
 
+    const Entity pickRay = world.CreateEntity();
+    world.AddComponent<PHYSICS::PickRay>(pickRay, {});
+
+    systems.Add(Phase::Update, std::make_unique<PickSystem>(world));
     systems.Add(Phase::Fixed, std::make_unique<SpinSystem>(world));
     drawRenderables = systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
     drawColliders = systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
+    drawPickRay = systems.Add(Phase::Extract, std::make_unique<DrawPickRaySystem>(world));
 
     return true;
 }
@@ -112,7 +119,11 @@ void PhysicsScene::Update(float deltaTime, const InputState& input)
     world.ResetFrameStats();
     flyCameraController.Update(deltaTime);
     camera.view = flyCameraController.View();
-    if (input.Pressed(SDL_SCANCODE_C)) systems.SetEnabled(drawColliders, !systems.IsEnabled(drawColliders));
+    if (input.Pressed(SDL_SCANCODE_C))
+    {
+        systems.SetEnabled(drawColliders, !systems.IsEnabled(drawColliders));
+        systems.SetEnabled(drawPickRay, !systems.IsEnabled(drawPickRay));
+    }
     if (input.Pressed(SDL_SCANCODE_M)) systems.SetEnabled(drawRenderables, !systems.IsEnabled(drawRenderables));
 }
 

@@ -1,8 +1,6 @@
 #pragma once
 /// MathEx includes
 #include "PMath.h"
-#include "Quadratic.h"
-#include "RMath.h"
 #include "DualQuat.h"
 #include "Flector.h"
 #include "GeometricProduct.h"

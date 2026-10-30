@@ -60,12 +60,14 @@ private:
 
     /** Controller to move the camera with user input */
     FlyCameraController flyCameraController;
-    
+
     /** Pointer to the drawCollider System, used to turn it on and off, */
     System* drawColliders = nullptr;
+    /** Pointer to the drawPickRay System, turned on and off together with drawColliders */
+    System* drawPickRay = nullptr;
     /** Pointer to the drawRenderables System, used to turn it on and off, */
     System* drawRenderables = nullptr;
-
+    
     MeshHandle marioMesh;
     MaterialHandle marioMaterial;
     MeshHandle cubeMesh;

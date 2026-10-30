@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include <vector>
 
+struct Camera;
 class World;
 class CommandBuffer;
 struct DrawItem;
@@ -26,5 +27,7 @@ struct SystemContext
     std::pmr::vector<LineVertex>* debugLines;
     /** Current state of user input, Set by Application every   frame. Null only in tests that run phases without the app */
     const InputState* inputState;
+    /** Gameplay camera of the current scene. Null only in tests that run phases without the app */
+    const Camera* camera = nullptr;
     
 };

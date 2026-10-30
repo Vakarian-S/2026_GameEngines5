@@ -106,6 +106,10 @@ void Application::Run()
             float mouseY = 0.0f;
             SDL_GetMouseState(&mouseX, &mouseY);
             inputState.mousePosition = MATH::Vec2(mouseX, mouseY);
+            int windowWidth = 0;
+            int windowHeight = 0;
+            SDL_GetWindowSize(window.GetSDLWindow(), &windowWidth, &windowHeight);
+            inputState.windowSize = MATH::Vec2(static_cast<float>(windowWidth), static_cast<float>(windowHeight));
         }
 
         /* Between frames, so nothing below still uses the old scene */
@@ -114,8 +118,9 @@ void Application::Run()
             fixedStep.Reset();
             timer.Start();
         }
-
+        
         SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
+        const Camera* camera = &sceneManager.GetCurrentScene().GetCamera();
 
         if (window.ShouldClose()) break;
 
@@ -126,14 +131,28 @@ void Application::Run()
             fixedStep.Add(timer.GetDeltaTime());
             while (fixedStep.TakeStep())
                 systems.RunPhase(
-                    Phase::Fixed, FixedStep::kFixedTimeStep, &inputState);
-            systems.RunPhase(Phase::Update, timer.GetDeltaTime(), &inputState);
+                    Phase::Fixed,
+                    FixedStep::kFixedTimeStep,
+                    &inputState,
+                    camera
+                );
+            systems.RunPhase(
+                Phase::Update,
+                timer.GetDeltaTime(),
+                &inputState,
+                camera
+            );
         }
 
         {
             PROFILE_SCOPE("MakeDrawList");
-            systems.RunPhase(Phase::Extract, timer.GetDeltaTime(), &inputState, &drawList,
-                             &debugLines);
+            systems.RunPhase(
+                Phase::Extract,
+                timer.GetDeltaTime(),
+                &inputState,
+                camera,
+                &drawList,
+                &debugLines);
             /* The grid first, then the axes: lines do not write depth, so the line drawn last wins where they overlap */
             if (showWorldReference)
             {
