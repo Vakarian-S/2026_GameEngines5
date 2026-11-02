@@ -19,6 +19,7 @@
 #include "physics/Quadratic.h"
 #include "physics/Ray.h"
 #include "physics/RayIntersect.h"
+#include "physics/RigidBody.h"
 
 namespace
 {
@@ -889,6 +890,76 @@ int main()
 
         Check("t is 8", hit && Near(hit->t, 8.0f));
         Check("the local point is (0, 0, 1)", hit && Near(hit->intersectionPosition, MATH::Vec3(0.0f, 0.0f, 1.0f)));
+    }
+
+    std::cout << "TEST CASE: gravity and drag change the velocity\n";
+    {
+        const MATH::Vec3 rest(0.0f, 0.0f, 0.0f);
+        const MATH::Vec3 moving(10.0f, 0.0f, 0.0f);
+
+        Check("gravity gives v.y = -9.8 * dt", Near(PHYSICS::ApplyForces(rest, 1.0f, 0.1f), MATH::Vec3(0.0f, -0.98f, 0.0f)));
+        Check("gravity does not depend on mass", Near(PHYSICS::ApplyForces(rest, 5.0f, 0.1f), MATH::Vec3(0.0f, -0.98f, 0.0f)));
+        Check("drag slows a 1 kg body by 0.25 * v / m * dt", Near(PHYSICS::ApplyForces(moving, 1.0f, 0.1f).x, 9.75f));
+        Check("the same drag slows a 5 kg body less", Near(PHYSICS::ApplyForces(moving, 5.0f, 0.1f).x, 9.95f));
+    }
+
+    std::cout << "TEST CASE: the velocity moves the position\n";
+    {
+        const MATH::Vec3 moved = PHYSICS::UpdatePosition(MATH::Vec3(1.0f, 2.0f, 3.0f), MATH::Vec3(2.0f, 0.0f, -4.0f), 0.5f);
+
+        Check("position + v * dt", Near(moved, MATH::Vec3(2.0f, 2.0f, 1.0f)));
+    }
+
+    std::cout << "TEST CASE: the angular velocity turns the orientation\n";
+    {
+        const MATH::Vec3 quarterTurnAboutY(0.0f, MATH::kPi * 0.5f, 0.0f);
+        const MATH::Quaternion start;
+
+        const MATH::Quaternion turned = PHYSICS::UpdateOrientation(start, quarterTurnAboutY, 1.0f);
+        Check("a quarter turn about Y takes +X to -Z",
+              Near(MATH::QMath::rotate(MATH::Vec3(1.0f, 0.0f, 0.0f), turned), MATH::Vec3(0.0f, 0.0f, -1.0f)));
+        Check("the result has unit length", Near(MATH::QMath::magnitude(turned), 1.0f));
+
+        /* Rolled first: the step must turn about the world's Y, so the rotation goes on the left */
+        const MATH::Quaternion rolled = MATH::QMath::angleAxisRotation(90.0f, MATH::Vec3(0.0f, 0.0f, 1.0f));
+        const MATH::Quaternion rolledThenTurned = PHYSICS::UpdateOrientation(rolled, quarterTurnAboutY, 1.0f);
+        Check("the step multiplies on the left of the orientation",
+              Near(MATH::QMath::rotate(MATH::Vec3(1.0f, 0.0f, 0.0f), rolledThenTurned), MATH::Vec3(0.0f, 1.0f, 0.0f)));
+
+        const MATH::Quaternion still = PHYSICS::UpdateOrientation(rolled, MATH::Vec3(0.0f, 0.0f, 0.0f), 1.0f);
+        Check("zero angular velocity changes nothing and does not throw",
+              Near(still.w, rolled.w) && Near(still.i, rolled.i) && Near(still.j, rolled.j) && Near(still.k, rolled.k));
+    }
+
+    std::cout << "TEST CASE: the handout's mouse constraint\n";
+    {
+        const Transform transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        const PHYSICS::MassProperties massProperties{};
+        constexpr float deltaTime = 1.0f / 60.0f;
+        const MATH::Vec3 localPoint(0.5f, 0.0f, 0.0f);
+
+        /* r = (1, 0, 0), so Meff is diag(1, 2, 2) and lambda is -JV divided by it. Worked by hand */
+        const PHYSICS::VelocityChange known = PHYSICS::MouseConstraint(
+            transform, localPoint, transform.position + MATH::Vec3(1.0f, 0.0f, 0.0f), massProperties,
+            MATH::Vec3(0.0f, -1.0f, 0.0f), MATH::Vec3(0.0f, 0.0f, 0.0f), deltaTime);
+        Check("known case: the linear change is (0, 0.5, 0)", Near(known.changeInLinearVel, MATH::Vec3(0.0f, 0.5f, 0.0f)));
+        Check("known case: the angular change is (0, 0, 0.5)", Near(known.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.5f)));
+
+        /* The handout's goal: the point of the body at the target stops moving */
+        const MATH::Vec3 r(1.0f, 0.5f, -0.5f);
+        const MATH::Vec3 velocity(1.0f, -2.0f, 0.5f);
+        const MATH::Vec3 angularVelocity(0.3f, 1.0f, -0.7f);
+        const PHYSICS::VelocityChange change = PHYSICS::MouseConstraint(
+            transform, localPoint, transform.position + r, massProperties, velocity, angularVelocity, deltaTime);
+        const MATH::Vec3 pointVelocity = velocity + change.changeInLinearVel +
+            MATH::VMath::cross(angularVelocity + change.changeInAngularVel, r);
+        Check("after the change, v + w x r is 0", Near(pointVelocity, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+
+        /* The target sits on the centre, so r is 0 and only the velocity can change */
+        const PHYSICS::VelocityChange centre = PHYSICS::MouseConstraint(
+            transform, localPoint, transform.position, massProperties, velocity, angularVelocity, deltaTime);
+        Check("r = 0: the linear change cancels the velocity", Near(centre.changeInLinearVel, velocity * -1.0f));
+        Check("r = 0: the angular change is 0", Near(centre.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.0f)));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

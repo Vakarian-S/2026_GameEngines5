@@ -10,8 +10,9 @@
 #include "core/systems/DrawRenderablesSystem.h"
 #include "game/Components.h"
 #include "game/systems/DamageSystem.h"
+#include "game/systems/WrapIntoBoxSystem.h"
 #include "physics/Components.h"
-#include "physics/systems/MovementSystem.h"
+#include "physics/systems/UpdatePositionSystem.h"
 #include "utils/Profiler.h"
 
 Scene0::Scene0() :
@@ -68,7 +69,8 @@ bool Scene0::OnCreate(ResourceLoader& resourceLoader)
             if (i < kDamageCount) world.AddComponent<Damageable>(entity);
         }
 
-        systems.Add(Phase::Fixed, std::make_unique<MovementSystem>(world, kBoxHalfWidth));
+        systems.Add(Phase::Fixed, std::make_unique<UpdatePositionSystem>(world));
+        systems.Add(Phase::Fixed, std::make_unique<WrapIntoBoxSystem>(world, kBoxHalfWidth));
         systems.Add(Phase::Update, std::make_unique<DamageSystem>(world, kDamageEvery));
         systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
     }

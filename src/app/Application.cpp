@@ -5,7 +5,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <iostream>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
 
@@ -104,7 +103,13 @@ void Application::Run()
             std::copy_n(keyboard, std::min(keyCount, static_cast<int>(SDL_SCANCODE_COUNT)), inputState.held.begin());
             float mouseX = 0.0f;
             float mouseY = 0.0f;
-            SDL_GetMouseState(&mouseX, &mouseY);
+            const SDL_MouseButtonFlags mouseButtons  = SDL_GetMouseState(&mouseX, &mouseY);
+            /* SDL numbers its buttons from 1, so index 0 stays unused */
+            for (std::size_t button = 1; button < inputState.mouseHeld.size(); ++button)
+            {
+                inputState.mouseHeld[button] = (mouseButtons & SDL_BUTTON_MASK(button)) != 0;
+            }
+
             inputState.mousePosition = MATH::Vec2(mouseX, mouseY);
             int windowWidth = 0;
             int windowHeight = 0;

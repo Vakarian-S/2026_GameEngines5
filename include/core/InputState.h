@@ -19,6 +19,8 @@ struct InputState
     MATH::Vec2 mousePosition;
     /** Mouse buttons currently pressed this frame indexed by SDL_BUTTON_LEFT */
     std::array<bool, 6> mousePressed{};
+    /** Mouse buttons currently held, indexed by SDL_BUTTON_LEFT */
+    std::array<bool, 6> mouseHeld{};
     /** Size of the window this frame, in window units */
     MATH::Vec2 windowSize;
 

@@ -342,11 +342,12 @@ add_executable(PhysicsTests
         tests/PhysicsTests.cpp
         src/physics/Quadratic.cpp
         src/physics/RayIntersect.cpp
+        src/physics/RigidBody.cpp
         src/physics/Ray.cpp
         include/physics/Quadratic.h
         include/physics/RayIntersect.h
         include/physics/Ray.h
-)
+        include/physics/RigidBody.h)
 target_include_directories(PhysicsTests PRIVATE include)
 target_link_libraries(PhysicsTests PRIVATE MathLibrary)
 ge5_apply_common_settings(PhysicsTests)

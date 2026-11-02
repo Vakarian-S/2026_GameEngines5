@@ -4,15 +4,15 @@
 
 class World;
 
-/** TEST SYSTEM - Moves every entity by its velocity. One that leaves the box comes back in through the opposite wall */
-class MovementSystem : public System
+/** TEST SYSTEM - Brings every moving entity that left the box back in through the opposite wall */
+class WrapIntoBoxSystem : public System
 {
 public:
     /**
      * @param world the world whose moving entities this system moves
      * @param boxHalfWidth_ half the width of the box the entities stay inside, in metres
      */
-    MovementSystem(World& world, float boxHalfWidth_);
+    WrapIntoBoxSystem(World& world, float boxHalfWidth_);
 
     void Run(const SystemContext& context) override;
 
