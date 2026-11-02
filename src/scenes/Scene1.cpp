@@ -5,11 +5,10 @@
 #include "MMath.h"
 #include "core/Components.h"
 #include "core/ResourceLoader.h"
-#include "game/Components.h"
 #include "core/systems/DrawRenderablesSystem.h"
-#include "game/systems/SpinSystem.h"
 #include "physics/Components.h"
 #include "physics/systems/DrawCollidersSystem.h"
+#include "physics/systems/UpdateOrientationSystem.h"
 #include "utils/Profiler.h"
 
 Scene1::Scene1() :
@@ -43,9 +42,10 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
                                       .position = MATH::Vec3(),
                                   });
     world.AddComponent<Renderable>(mario, {marioMesh, marioMaterial});
-    world.AddComponent<Spin>(mario, {0.5f});
+    world.AddComponent<PHYSICS::AngularVelocity>(mario, {MATH::Vec3(0.f, 0.5f, 0.f)});
 
-    /* Two cubes, one on each side. They have no Spin, so the spinners query never sees them */
+
+    /* Two cubes, one on each side */
     constexpr float cubeX[] = {-2.5f, 2.5f};
     constexpr auto up = MATH::Vec3(0.0f, 1.0f, 0.0f);
     for (const float x : cubeX)
@@ -68,7 +68,7 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     }
 
     /* In each phase, systems run in the order they are added */
-    systems.Add(Phase::Fixed, std::make_unique<SpinSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<UpdateOrientationSystem>(world));
     systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
     systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
     return true;

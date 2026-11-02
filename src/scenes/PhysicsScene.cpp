@@ -3,14 +3,17 @@
 #include "core/Components.h"
 #include "core/ResourceLoader.h"
 #include "core/systems/DrawRenderablesSystem.h"
-#include "game/Components.h"
-#include "game/systems/SpinSystem.h"
 #include "physics/Components.h"
 #include "physics/systems/DrawCollidersSystem.h"
 #include "utils/Profiler.h"
 #include "core/InputState.h"
+#include "physics/systems/ApplyForcesSystem.h"
+#include "physics/systems/DrawGrabLineSystem.h"
 #include "physics/systems/PickSystem.h"
 #include "physics/systems/DrawPickRaySystem.h"
+#include "physics/systems/MouseConstraintSystem.h"
+#include "physics/systems/UpdateOrientationSystem.h"
+#include "physics/systems/UpdatePositionSystem.h"
 
 PhysicsScene::PhysicsScene() :
     world(WorldConfig{kMaxEntities, kWorldArenaBytes}),
@@ -44,6 +47,9 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
                                   });
     world.AddComponent<PHYSICS::BoxCollider>(cube, {});
     world.AddComponent<Renderable>(cube, {cubeMesh, cubeMaterial});
+    world.AddComponent<PHYSICS::Velocity>(cube, {});
+    world.AddComponent<PHYSICS::AngularVelocity>(cube, {});
+    world.AddComponent<PHYSICS::MassProperties>(cube, {});
 
     const Entity cube2 = world.CreateEntity();
     world.AddComponent<Transform>(cube2, {
@@ -53,8 +59,10 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
                                           30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
                                   });
     world.AddComponent<PHYSICS::BoxCollider>(cube2, {});
-    world.AddComponent<Spin>(cube2, {0.5f});
     world.AddComponent<Renderable>(cube2, {cubeMesh, cubeMaterial});
+    world.AddComponent<PHYSICS::Velocity>(cube2, {});
+    world.AddComponent<PHYSICS::AngularVelocity>(cube2, {MATH::Vec3(0.f, 0.5f, 0.f)});
+    world.AddComponent<PHYSICS::MassProperties>(cube2, {});
 
     const Entity mario1 = world.CreateEntity();
     world.AddComponent<Transform>(mario1, {
@@ -64,6 +72,9 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
                                   });
     world.AddComponent<PHYSICS::SphereCollider>(mario1, {1.3f});
     world.AddComponent<Renderable>(mario1, {marioMesh, marioMaterial});
+    world.AddComponent<PHYSICS::Velocity>(mario1, {});
+    world.AddComponent<PHYSICS::AngularVelocity>(mario1, {});
+    world.AddComponent<PHYSICS::MassProperties>(mario1, {});
 
 
     const Entity mario2 = world.CreateEntity();
@@ -74,6 +85,9 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
                                   });
     world.AddComponent<PHYSICS::CapsuleCollider>(mario2, {0.6f, 0.7f});
     world.AddComponent<Renderable>(mario2, {marioMesh, marioMaterial});
+    world.AddComponent<PHYSICS::Velocity>(mario2, {});
+    world.AddComponent<PHYSICS::AngularVelocity>(mario2, {});
+    world.AddComponent<PHYSICS::MassProperties>(mario2, {});
 
 
     const Entity mario3 = world.CreateEntity();
@@ -84,6 +98,9 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
                                   });
     world.AddComponent<PHYSICS::CylinderCollider>(mario3, {0.7f, 1.3f});
     world.AddComponent<Renderable>(mario3, {marioMesh, marioMaterial});
+    world.AddComponent<PHYSICS::Velocity>(mario3, {});
+    world.AddComponent<PHYSICS::AngularVelocity>(mario3, {});
+    world.AddComponent<PHYSICS::MassProperties>(mario3, {});
 
 
     const Entity mario4 = world.CreateEntity();
@@ -95,15 +112,22 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
                                   });
     world.AddComponent<PHYSICS::SphereCollider>(mario4, {1.3f});
     world.AddComponent<Renderable>(mario4, {marioMesh, marioMaterial});
-
+    world.AddComponent<PHYSICS::Velocity>(mario4, {});
+    world.AddComponent<PHYSICS::AngularVelocity>(mario4, {});
+    world.AddComponent<PHYSICS::MassProperties>(mario4, {});
+    
     const Entity pickRay = world.CreateEntity();
     world.AddComponent<PHYSICS::PickRay>(pickRay, {});
 
     systems.Add(Phase::Update, std::make_unique<PickSystem>(world));
-    systems.Add(Phase::Fixed, std::make_unique<SpinSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<ApplyForcesSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<MouseConstraintSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<UpdatePositionSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<UpdateOrientationSystem>(world));
     drawRenderables = systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
     drawColliders = systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
     drawPickRay = systems.Add(Phase::Extract, std::make_unique<DrawPickRaySystem>(world));
+    drawGrabLines = systems.Add(Phase::Extract, std::make_unique<DrawGrabLineSystem>(world));
 
     return true;
 }
@@ -114,7 +138,7 @@ void PhysicsScene::OnDestroy()
     world.ResetFrameStats();
 }
 
-void PhysicsScene::Update(float deltaTime, const InputState& input)
+void PhysicsScene::Update(const float deltaTime, const InputState& input)
 {
     world.ResetFrameStats();
     flyCameraController.Update(deltaTime);
@@ -123,6 +147,7 @@ void PhysicsScene::Update(float deltaTime, const InputState& input)
     {
         systems.SetEnabled(drawColliders, !systems.IsEnabled(drawColliders));
         systems.SetEnabled(drawPickRay, !systems.IsEnabled(drawPickRay));
+        systems.SetEnabled(drawGrabLines, !systems.IsEnabled(drawGrabLines));
     }
     if (input.Pressed(SDL_SCANCODE_M)) systems.SetEnabled(drawRenderables, !systems.IsEnabled(drawRenderables));
 }

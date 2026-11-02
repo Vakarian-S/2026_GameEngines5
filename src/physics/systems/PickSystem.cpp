@@ -26,7 +26,11 @@ PickSystem::PickSystem(World& world) :
             PHYSICS::CylinderCollider,
             PHYSICS::CapsuleCollider
         >(),
-        COMPONENTS::MaskOf<PHYSICS::Picked, PHYSICS::PickRay>()),
+        COMPONENTS::MaskOf<
+            PHYSICS::Picked,
+            PHYSICS::PickRay,
+            PHYSICS::Falling>()
+    ),
     boxColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::BoxCollider>()),
     sphereColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::SphereCollider>()),
     cylinderColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::CylinderCollider>()),
@@ -38,12 +42,45 @@ PickSystem::PickSystem(World& world) :
 
 void PickSystem::Run(const SystemContext& context)
 {
-    if (!context.inputState->mousePressed[SDL_BUTTON_LEFT]) return;
-
     const PHYSICS::Ray mouseRay = PHYSICS::MakePickRay(
         context.inputState->mousePosition,
         context.inputState->windowSize,
         *context.camera);
+
+    auto input = context.inputState;
+    const bool drop = !input->mouseHeld[SDL_BUTTON_LEFT]
+    || input->mousePressed[SDL_BUTTON_LEFT]
+    || input->mousePressed[SDL_BUTTON_RIGHT];
+    
+    if (drop)
+    {
+        /* Remove picked from every holder since we are no longer holding the mouse */
+        for (const Archetype* archetype : pickedEntities.Matches())
+        {
+            const Entity* owners = archetype->EntityColumn();
+            const uint32_t rows = archetype->Count();
+            for (uint32_t row = 0; row < rows; ++row)
+            {
+                context.commands.RemoveComponent<PHYSICS::Picked>(owners[row]);
+            }
+        }
+    }
+    else
+    {
+        /* Update the Picked entity to have an updated position based on the mouse */
+        for (Archetype* archetype : pickedEntities.Matches())
+        {
+            PHYSICS::Picked* pickedComponents = archetype->Column<PHYSICS::Picked>();
+            const uint32_t rows = archetype->Count();
+            for (uint32_t row = 0; row < rows; ++row)
+            {
+                pickedComponents[row].mouseTarget = mouseRay.PointAt(pickedComponents[row].grabT);
+            }
+        }
+    }
+    
+    if (!context.inputState->mousePressed[SDL_BUTTON_LEFT]) return;
+    
     float t = std::numeric_limits<float>::infinity();
     Entity pickedEntity{};
     PHYSICS::RayHit finalRayHit{};
@@ -120,28 +157,24 @@ void PickSystem::Run(const SystemContext& context)
             }
         }
     }
-
-    /* Remove Picked from every other holder. A second click on the same shape only overwrites its point */
-    for (const Archetype* archetype : pickedEntities.Matches())
-    {
-        const Entity* owners = archetype->EntityColumn();
-        const uint32_t rows = archetype->Count();
-        for (uint32_t row = 0; row < rows; ++row)
-        {
-            if (owners[row].index == pickedEntity.index && owners[row].version == pickedEntity.version) continue;
-            context.commands.RemoveComponent<PHYSICS::Picked>(owners[row]);
-        }
-    }
-
+    
     const bool hasHit = pickedEntity.version != 0;
     if (hasHit)
     {
-        const char* colliderName = "CapsuleCollider";
+        auto colliderName = "CapsuleCollider";
         if (context.world.HasComponent<PHYSICS::BoxCollider>(pickedEntity)) colliderName = "BoxCollider";
         else if (context.world.HasComponent<PHYSICS::SphereCollider>(pickedEntity)) colliderName = "SphereCollider";
         else if (context.world.HasComponent<PHYSICS::CylinderCollider>(pickedEntity)) colliderName = "CylinderCollider";
+
         context.commands.AddComponent<PHYSICS::Picked>(
-            pickedEntity, {.localPoint = finalRayHit.intersectionPosition});
+            pickedEntity,
+            {
+                .localPoint = finalRayHit.intersectionPosition,
+                .grabT = finalRayHit.t,
+                .mouseTarget = mouseRay.PointAt(finalRayHit.t)
+            });
+        context.commands.AddComponent<PHYSICS::Falling>(pickedEntity);
+        
         /* Expected Format Picked entity 4 (BoxCollider): t = 7.31, world point (1.20, 0.50, -0.38) */
         const MATH::Vec3 worldPoint = mouseRay.PointAt(finalRayHit.t);
         std::cout << "Picked entity " << pickedEntity.index << " (" << colliderName << "): t = " << finalRayHit.t

@@ -49,8 +49,8 @@ private:
 
     /** Most entities alive at once */
     static constexpr uint32_t kMaxEntities = 16;
-    /** Bytes in the world's slab. Each archetype reserves kMaxEntities rows, so a few hundred bytes each */
-    static constexpr std::size_t kWorldArenaBytes = 16 * 1024;
+    /** Bytes in the world's slab. Each archetype reserves kMaxEntities rows*/
+    static constexpr std::size_t kWorldArenaBytes = 256 * 1024;
 
     World world;
     /** Every system this scene runs */
@@ -65,6 +65,8 @@ private:
     System* drawColliders = nullptr;
     /** Pointer to the drawPickRay System, turned on and off together with drawColliders */
     System* drawPickRay = nullptr;
+    /** Pointer to the Draw Grab Line System, turned on and off together with drawColliders */
+    System* drawGrabLines = nullptr;
     /** Pointer to the drawRenderables System, used to turn it on and off, */
     System* drawRenderables = nullptr;
     
