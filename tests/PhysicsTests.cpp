@@ -6,6 +6,7 @@
  * One program, one test: it counts its own checks and returns non zero if any of them fail.
  */
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <optional>
@@ -931,35 +932,210 @@ int main()
               Near(still.w, rolled.w) && Near(still.i, rolled.i) && Near(still.j, rolled.j) && Near(still.k, rolled.k));
     }
 
-    std::cout << "TEST CASE: the handout's mouse constraint\n";
+    std::cout << "TEST CASE: the slides' mouse constraint\n";
     {
-        const Transform transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
-        const PHYSICS::MassProperties massProperties{};
         constexpr float deltaTime = 1.0f / 60.0f;
-        const MATH::Vec3 localPoint(0.5f, 0.0f, 0.0f);
+        /* kBeta in RigidBody.cpp */
+        constexpr float beta = 0.15f;
+        const Transform transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        const auto length = [](const MATH::Vec3& v) { return std::sqrt(MATH::VMath::dot(v, v)); };
 
-        /* r = (1, 0, 0), so Meff is diag(1, 2, 2) and lambda is -JV divided by it. Worked by hand */
+        /* Mass 1, identity inertia and no gap: the slides' form must give the handout's answer.
+         * r = (1, 0, 0), so Meff is diag(1, 2, 2). Worked by hand */
+        const PHYSICS::MassProperties unit{};
+        const MATH::Vec3 arm(1.0f, 0.0f, 0.0f);
         const PHYSICS::VelocityChange known = PHYSICS::MouseConstraint(
-            transform, localPoint, transform.position + MATH::Vec3(1.0f, 0.0f, 0.0f), massProperties,
+            transform, arm, transform.position + arm, unit,
             MATH::Vec3(0.0f, -1.0f, 0.0f), MATH::Vec3(0.0f, 0.0f, 0.0f), deltaTime);
-        Check("known case: the linear change is (0, 0.5, 0)", Near(known.changeInLinearVel, MATH::Vec3(0.0f, 0.5f, 0.0f)));
-        Check("known case: the angular change is (0, 0, 0.5)", Near(known.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.5f)));
+        Check("mass 1, identity, no gap: the linear change is the handout's (0, 0.5, 0)",
+              Near(known.changeInLinearVel, MATH::Vec3(0.0f, 0.5f, 0.0f)));
+        Check("mass 1, identity, no gap: the angular change is the handout's (0, 0, 0.5)",
+              Near(known.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.5f)));
 
-        /* The handout's goal: the point of the body at the target stops moving */
-        const MATH::Vec3 r(1.0f, 0.5f, -0.5f);
+        /* A real body with a gap: after the change, JV + b = 0 */
+        const PHYSICS::BoxCollider box{MATH::Vec3(0.5f, 1.0f, 0.25f)};
+        const PHYSICS::MassProperties heavyBox{2.0f, PHYSICS::InertiaTensor(box, 2.0f, 1.0f)};
+        const MATH::Vec3 localPoint(0.5f, 1.0f, 0.25f);
+        const MATH::Vec3 target = transform.position + localPoint + MATH::Vec3(0.2f, -0.1f, 0.3f);
         const MATH::Vec3 velocity(1.0f, -2.0f, 0.5f);
         const MATH::Vec3 angularVelocity(0.3f, 1.0f, -0.7f);
         const PHYSICS::VelocityChange change = PHYSICS::MouseConstraint(
-            transform, localPoint, transform.position + r, massProperties, velocity, angularVelocity, deltaTime);
+            transform, localPoint, target, heavyBox, velocity, angularVelocity, deltaTime);
+        const MATH::Vec3 gap = transform.position + localPoint - target;
         const MATH::Vec3 pointVelocity = velocity + change.changeInLinearVel +
-            MATH::VMath::cross(angularVelocity + change.changeInAngularVel, r);
-        Check("after the change, v + w x r is 0", Near(pointVelocity, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+            MATH::VMath::cross(angularVelocity + change.changeInAngularVel, localPoint);
+        Check("after the change, v + w x r = -b", length(pointVelocity + gap * (beta / deltaTime)) < 1.0e-3f);
 
-        /* The target sits on the centre, so r is 0 and only the velocity can change */
+        /* The target sits on the clicked point at the centre, so r is 0 and only the velocity can change */
         const PHYSICS::VelocityChange centre = PHYSICS::MouseConstraint(
-            transform, localPoint, transform.position, massProperties, velocity, angularVelocity, deltaTime);
-        Check("r = 0: the linear change cancels the velocity", Near(centre.changeInLinearVel, velocity * -1.0f));
-        Check("r = 0: the angular change is 0", Near(centre.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+            transform, MATH::Vec3(0.0f, 0.0f, 0.0f), transform.position, heavyBox, velocity, angularVelocity,
+            deltaTime);
+        Check("r = 0, no gap: the linear change cancels the velocity", Near(centre.changeInLinearVel, velocity * -1.0f));
+        Check("r = 0, no gap: the angular change is 0", Near(centre.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+
+        /* More mass with the same inertia: sliding gets harder, so less of the fix is a slide */
+        const PHYSICS::MassProperties light{1.0f, MATH::Matrix3()};
+        const PHYSICS::MassProperties dense{10.0f, MATH::Matrix3()};
+        const PHYSICS::VelocityChange lightChange = PHYSICS::MouseConstraint(
+            transform, localPoint, target, light, velocity, angularVelocity, deltaTime);
+        const PHYSICS::VelocityChange denseChange = PHYSICS::MouseConstraint(
+            transform, localPoint, target, dense, velocity, angularVelocity, deltaTime);
+        Check("more mass, same inertia: the linear change is smaller",
+              length(denseChange.changeInLinearVel) < length(lightChange.changeInLinearVel));
+
+        /* A box rolled 30 degrees about Z must act like an unrolled body whose tensor and point
+         * are turned by hand. The turned tensor is written out here, not built with toMatrix3 */
+        const float c = std::cos(30.0f * MATH::kDegreesToRadians);
+        const float s = std::sin(30.0f * MATH::kDegreesToRadians);
+        const MATH::Matrix3 local = PHYSICS::InertiaTensor(box, 2.0f, 1.0f);
+        const float a = local[0], b = local[4], z = local[8];
+        MATH::Matrix3 turnedTensor;
+        turnedTensor[0] = a * c * c + b * s * s;
+        turnedTensor[4] = a * s * s + b * c * c;
+        turnedTensor[8] = z;
+        turnedTensor[1] = (a - b) * c * s;
+        turnedTensor[3] = (a - b) * c * s;
+        const Transform rolled{
+            .position = transform.position,
+            .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
+        };
+        const MATH::Vec3 turnedPoint = MATH::QMath::rotate(localPoint, rolled.orientation);
+        const PHYSICS::VelocityChange rolledChange = PHYSICS::MouseConstraint(
+            rolled, localPoint, target, heavyBox, velocity, angularVelocity, deltaTime);
+        const PHYSICS::VelocityChange byHand = PHYSICS::MouseConstraint(
+            transform, turnedPoint, target, {2.0f, turnedTensor}, velocity, angularVelocity, deltaTime);
+        Check("rolled box: the linear change matches the box turned by hand",
+              length(rolledChange.changeInLinearVel - byHand.changeInLinearVel) < 1.0e-3f);
+        Check("rolled box: the angular change matches the box turned by hand",
+              length(rolledChange.changeInAngularVel - byHand.changeInAngularVel) < 1.0e-3f);
+
+        /* The whole step, 10 s at 60 Hz: a 2 kg box held by a corner, mouse still and then moving 5 m in 1 s.
+         * No grip, no cap and no angular drag yet */
+        for (const bool moving : {false, true})
+        {
+            Transform body{};
+            MATH::Vec3 v, w;
+            float worst = 0.0f;
+            float last = 0.0f;
+            for (int step = 0; step < 600; ++step)
+            {
+                const float seconds = static_cast<float>(step) * deltaTime;
+                const float slide = moving ? std::min(seconds, 1.0f) * 5.0f : 0.0f;
+                const MATH::Vec3 mouse = localPoint + MATH::Vec3(slide, 0.0f, 0.0f);
+                v = PHYSICS::ApplyForces(v, heavyBox.mass, deltaTime);
+                const PHYSICS::VelocityChange step2 = PHYSICS::MouseConstraint(
+                    body, localPoint, mouse, heavyBox, v, w, deltaTime);
+                v += step2.changeInLinearVel;
+                w += step2.changeInAngularVel;
+                body.position = PHYSICS::UpdatePosition(body.position, v, deltaTime);
+                body.orientation = PHYSICS::UpdateOrientation(body.orientation, w, deltaTime);
+                last = length(body.position + MATH::QMath::rotate(localPoint, body.orientation) - mouse);
+                worst = std::max(worst, last);
+            }
+            std::cout << "  box held by a corner, mouse " << (moving ? "moving" : "still")
+                << ": final gap " << last << " m, worst " << worst << " m\n";
+            Check(moving ? "moving mouse: the corner ends on the mouse" : "still mouse: the corner stays on the mouse",
+                  last < 0.02f);
+        }
+    }
+
+    std::cout << "TEST CASE: angular drag slows the spin\n";
+    {
+        constexpr float deltaTime = 1.0f / 60.0f;
+        const MATH::Vec3 spin(0.0f, 2.0f, 1.0f);
+
+        const MATH::Vec3 once = PHYSICS::ApplyAngularDrag(spin, deltaTime);
+        Check("one step scales the spin by 1 - 0.25 dt", Near(once, spin * (1.0f - 0.25f * deltaTime)));
+        Check("the axis does not change", Near(MATH::VMath::normalize(once), MATH::VMath::normalize(spin)));
+        Check("zero stays zero",
+              Near(PHYSICS::ApplyAngularDrag(MATH::Vec3(0.0f, 0.0f, 0.0f), deltaTime), MATH::Vec3(0.0f, 0.0f, 0.0f)));
+
+        MATH::Vec3 spinning = spin;
+        for (int step = 0; step < 600; ++step) spinning = PHYSICS::ApplyAngularDrag(spinning, deltaTime);
+        const float left = std::sqrt(MATH::VMath::dot(spinning, spinning) / MATH::VMath::dot(spin, spin));
+        std::cout << "  after 10 s, " << left * 100.0f << "% of the spin is left\n";
+        Check("10 s leaves about e^-2.5 of the spin, 8.2%", std::abs(left - std::exp(-2.5f)) < 0.002f);
+    }
+
+    std::cout << "TEST CASE: grip and the spin limit on a held shape\n";
+    {
+        constexpr float deltaTime = 1.0f / 60.0f;
+        const auto length = [](const MATH::Vec3& v) { return std::sqrt(MATH::VMath::dot(v, v)); };
+        const MATH::Vec3 spin(0.0f, 2.0f, 1.0f);
+        const MATH::Vec3 none(0.0f, 0.0f, 0.0f);
+
+        const MATH::Vec3 gripped = PHYSICS::ApplyGrip(spin, deltaTime);
+        Check("grip divides the spin by 1 + 7 dt", Near(gripped, spin * (1.0f / (1.0f + 7.0f * deltaTime))));
+        Check("grip keeps the axis", Near(MATH::VMath::normalize(gripped), MATH::VMath::normalize(spin)));
+        Check("grip leaves zero at zero", Near(PHYSICS::ApplyGrip(none, deltaTime), none));
+
+        const MATH::Vec3 slow(3.0f, 0.0f, 4.0f);
+        const MATH::Vec3 fast(12.0f, 0.0f, 16.0f);
+        Check("a spin of 5 is under the limit and stays the same", Near(PHYSICS::LimitSpin(slow), slow));
+        Check("a spin of 20 comes out at 12", Near(length(PHYSICS::LimitSpin(fast)), 12.0f));
+        Check("the limit keeps the axis", Near(MATH::VMath::normalize(PHYSICS::LimitSpin(fast)), MATH::VMath::normalize(fast)));
+        Check("the limit leaves zero at zero", Near(PHYSICS::LimitSpin(none), none));
+
+        /* The held step as MouseConstraintSystem runs it: grip, solve, limit. A 1 kg pill held at its tip,
+         * the mouse jerked 3 m sideways at once, then still for 10 s */
+        const PHYSICS::CapsuleCollider pill{0.6f, 0.7f};
+        const PHYSICS::MassProperties pillMass{1.0f, PHYSICS::InertiaTensor(pill, 1.0f, 1.0f)};
+        const MATH::Vec3 tip(0.0f, 1.3f, 0.0f);
+        const MATH::Vec3 mouse = tip + MATH::Vec3(3.0f, 0.0f, 0.0f);
+        Transform body{};
+        MATH::Vec3 v, w;
+        float fastest = 0.0f;
+        for (int step = 0; step < 600; ++step)
+        {
+            v = PHYSICS::ApplyForces(v, pillMass.mass, deltaTime);
+            w = PHYSICS::ApplyAngularDrag(w, deltaTime);
+            w = PHYSICS::ApplyGrip(w, deltaTime);
+            const PHYSICS::VelocityChange change = PHYSICS::MouseConstraint(body, tip, mouse, pillMass, v, w, deltaTime);
+            v += change.changeInLinearVel;
+            w = PHYSICS::LimitSpin(w + change.changeInAngularVel);
+            fastest = std::max(fastest, length(w));
+            body.position = PHYSICS::UpdatePosition(body.position, v, deltaTime);
+            body.orientation = PHYSICS::UpdateOrientation(body.orientation, w, deltaTime);
+        }
+        const float gap = length(body.position + MATH::QMath::rotate(tip, body.orientation) - mouse);
+        std::cout << "  jerked pill: fastest spin " << fastest << " rad/s, final gap " << gap << " m\n";
+        Check("the held spin never goes over 12", fastest <= 12.0f + kTolerance);
+        Check("the tip still settles on the mouse", gap < 0.02f);
+    }
+
+    std::cout << "TEST CASE: the inertia tensor of each shape\n";
+    {
+        /* Diagonal only, so each check reads m[0], m[4] and m[8], with the rest 0 */
+        const auto diagonalIs = [](const MATH::Matrix3& tensor, const MATH::Vec3& expected)
+        {
+            return Near(tensor[0], expected.x) && Near(tensor[4], expected.y) && Near(tensor[8], expected.z) &&
+                Near(tensor[1], 0.0f) && Near(tensor[2], 0.0f) && Near(tensor[3], 0.0f) &&
+                Near(tensor[5], 0.0f) && Near(tensor[6], 0.0f) && Near(tensor[7], 0.0f);
+        };
+
+        const PHYSICS::BoxCollider box{MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        Check("box: m/3 times the other two half sizes squared",
+              diagonalIs(PHYSICS::InertiaTensor(box, 3.0f, 1.0f), MATH::Vec3(13.0f, 10.0f, 5.0f)));
+
+        const PHYSICS::SphereCollider sphere{1.0f};
+        Check("sphere: 2/5 m r^2 on every axis",
+              diagonalIs(PHYSICS::InertiaTensor(sphere, 2.0f, 1.0f), MATH::Vec3(0.8f, 0.8f, 0.8f)));
+        Check("scale 2 multiplies it by 4",
+              diagonalIs(PHYSICS::InertiaTensor(sphere, 2.0f, 2.0f), MATH::Vec3(3.2f, 3.2f, 3.2f)));
+
+        const PHYSICS::CylinderCollider can{1.0f, 1.0f};
+        Check("can: m (3r^2 + 4h^2) / 12 across, m r^2 / 2 along Y",
+              diagonalIs(PHYSICS::InertiaTensor(can, 12.0f, 1.0f), MATH::Vec3(7.0f, 6.0f, 7.0f)));
+        const MATH::Matrix3 longCan = PHYSICS::InertiaTensor(PHYSICS::CylinderCollider{0.7f, 1.3f}, 1.0f, 1.0f);
+        Check("a long can turns most easily about its long Y axis", longCan[4] < longCan[0]);
+
+        const MATH::Matrix3 flatPill = PHYSICS::InertiaTensor(PHYSICS::CapsuleCollider{1.0f, 0.0f}, 2.0f, 1.0f);
+        Check("a pill with no tube is a sphere", diagonalIs(flatPill, MATH::Vec3(0.8f, 0.8f, 0.8f)));
+
+        /* Expected values from 2,000,000 random points inside this pill, so the tolerance is wider */
+        const MATH::Matrix3 pill = PHYSICS::InertiaTensor(PHYSICS::CapsuleCollider{0.6f, 0.7f}, 1.0f, 1.0f);
+        Check("pill matches sampling across (0.5066)", std::abs(pill[0] - 0.5066f) < 0.002f);
+        Check("pill matches sampling along Y (0.1669)", std::abs(pill[4] - 0.1669f) < 0.002f);
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)
