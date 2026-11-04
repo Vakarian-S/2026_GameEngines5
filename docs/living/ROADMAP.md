@@ -58,6 +58,18 @@ the physics scenes hold a few hundred entities, created once.
 | 10 | Enableable components: one bit per entity per component, toggled with no structural change, honoured by queries | The answer if archetype churn ever dominates. Adding a tag is a full row copy here, against a push into one pool in EnTT. The counters say when | to-do |
 | 11 | Writes to other entities sorted by target first | A damage system that reads a contact and writes `Health` on another entity chases a pointer per write. Sorting the events by target is the usual answer. Only once it shows in a profile | to-do |
 | 12 | An intrusive free list: a free slot's unused `row` field holds the next free index | Removes `freeSlots`. Never urgent | to-do |
+| 13 | A chunk size per archetype, overriding the World's `chunkBytes` | Only once the 4, 16 and 64 KB benchmark from row 1 shows that different archetypes want different sizes: a wide row fits few entities in a small chunk, and a tiny row wastes a large one. Unreal Mass has this as `ChunkMemorySize` in `FMassArchetypeCreationParams`, where 0 means the default | to-do |
+
+**Row 9, a further option: power-of-two rows per chunk.** Round `rowsPerChunk` down with
+`std::bit_floor`, and the row-to-chunk lookup becomes `row >> rowShift` and `row & rowMask` instead of a
+divide. The cost is chunk space: a row that fits 300 times gets 256, and one that fits 511 times wastes
+about half the chunk. The lookup runs only in `GetComponent` and migrations, never in the chunk loops,
+so it comes with row 9's trigger: the counters show migration cost.
+
+**Row 10, the alternative: sparse-set storage.** Bevy lets a component opt out of the archetype tables
+and live in a sparse set. Adding and removing it then moves nothing, but iterating it gets slower. Bevy
+suggests it for per-frame markers and short status effects; here that means `Picked`, `Falling` and
+`DebugWatch`. Same trigger as row 10: the counters show archetype churn. Weigh both when it fires.
 
 Order: 1 first. It is the prerequisite under three later items - cheap change tracking, useful culling
 granularity, and one instanced draw per archetype - because each of those wants to cover a block of

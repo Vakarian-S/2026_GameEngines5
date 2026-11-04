@@ -71,8 +71,9 @@ settled, and delete them. Name each deleted file in the commit message.
 
 - **ROADMAP.md rows:** to-do, or in progress once the block has moved to PLAN.md. A finished row leaves
   the file.
-- **PLAN.md steps:** the stage the step is in: outline, prototype, design, build, recap, or done with
-  the commit hash.
+- **PLAN.md steps:** what the step is ready for, written only when PLAN.md is edited: outline when
+  the plan is made, designed when the design talk ends, or done with the commit hash. Prototype,
+  build and recap happen in the code and the chat, so they get no status word.
 
 ## Coding rules
 
