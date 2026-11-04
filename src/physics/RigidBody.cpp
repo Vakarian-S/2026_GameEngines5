@@ -73,7 +73,7 @@ MATH::Vec3 PHYSICS::LimitSpin(const MATH::Vec3& angularVelocity)
                : angularVelocity;
 }
 
-PHYSICS::VelocityChange PHYSICS::MouseConstraint(const Transform& transform,
+PHYSICS::BodyVelocity PHYSICS::MouseConstraint(const Transform& transform,
                                                  const MATH::Vec3& localPoint,
                                                  const MATH::Vec3& mouseTarget,
                                                  const MassProperties& massProperties,
@@ -114,8 +114,8 @@ PHYSICS::VelocityChange PHYSICS::MouseConstraint(const Transform& transform,
     const MATH::Vec3 lambda = MATH::MMath::inverse(mEff) * (-jv - bias);
 
     return {
-        .changeInLinearVel = lambda * (1.0f / mass),
-        .changeInAngularVel = inverseInertia * MATH::VMath::cross(r, lambda)
+        .linear = velocity + lambda * (1.0f / mass),
+        .angular = angularVelocity + inverseInertia * MATH::VMath::cross(r, lambda)
     };
 }
 

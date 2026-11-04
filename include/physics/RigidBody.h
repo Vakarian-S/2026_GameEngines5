@@ -64,15 +64,19 @@ namespace PHYSICS
     [[nodiscard]] MATH::Vec3 LimitSpin(const MATH::Vec3& angularVelocity);
 
     /**
-     * Two values indicating the changes in Velocity both angular and linear
+     * A body's linear and angular velocity together
      */
-    struct VelocityChange
+    struct BodyVelocity
     {
-        MATH::Vec3 changeInLinearVel;
-        MATH::Vec3 changeInAngularVel;
+        MATH::Vec3 linear;
+        MATH::Vec3 angular;
     };
 
-    [[nodiscard]] VelocityChange MouseConstraint(
+    /**
+     * Pulls the clicked point toward the mouse
+     * @return the body's velocities after the pull
+     */
+    [[nodiscard]] BodyVelocity MouseConstraint(
         const Transform& transform,
         const MATH::Vec3& localPoint,
         const MATH::Vec3& mouseTarget,

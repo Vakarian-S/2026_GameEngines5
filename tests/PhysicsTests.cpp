@@ -944,13 +944,14 @@ int main()
          * r = (1, 0, 0), so Meff is diag(1, 2, 2). Worked by hand */
         const PHYSICS::MassProperties unit{};
         const MATH::Vec3 arm(1.0f, 0.0f, 0.0f);
-        const PHYSICS::VelocityChange known = PHYSICS::MouseConstraint(
-            transform, arm, transform.position + arm, unit,
-            MATH::Vec3(0.0f, -1.0f, 0.0f), MATH::Vec3(0.0f, 0.0f, 0.0f), deltaTime);
+        const MATH::Vec3 knownVelocity(0.0f, -1.0f, 0.0f);
+        const MATH::Vec3 knownSpin(0.0f, 0.0f, 0.0f);
+        const PHYSICS::BodyVelocity known = PHYSICS::MouseConstraint(
+            transform, arm, transform.position + arm, unit, knownVelocity, knownSpin, deltaTime);
         Check("mass 1, identity, no gap: the linear change is the handout's (0, 0.5, 0)",
-              Near(known.changeInLinearVel, MATH::Vec3(0.0f, 0.5f, 0.0f)));
+              Near(known.linear - knownVelocity, MATH::Vec3(0.0f, 0.5f, 0.0f)));
         Check("mass 1, identity, no gap: the angular change is the handout's (0, 0, 0.5)",
-              Near(known.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.5f)));
+              Near(known.angular - knownSpin, MATH::Vec3(0.0f, 0.0f, 0.5f)));
 
         /* A real body with a gap: after the change, JV + b = 0 */
         const PHYSICS::BoxCollider box{MATH::Vec3(0.5f, 1.0f, 0.25f)};
@@ -959,29 +960,28 @@ int main()
         const MATH::Vec3 target = transform.position + localPoint + MATH::Vec3(0.2f, -0.1f, 0.3f);
         const MATH::Vec3 velocity(1.0f, -2.0f, 0.5f);
         const MATH::Vec3 angularVelocity(0.3f, 1.0f, -0.7f);
-        const PHYSICS::VelocityChange change = PHYSICS::MouseConstraint(
+        const PHYSICS::BodyVelocity after = PHYSICS::MouseConstraint(
             transform, localPoint, target, heavyBox, velocity, angularVelocity, deltaTime);
         const MATH::Vec3 gap = transform.position + localPoint - target;
-        const MATH::Vec3 pointVelocity = velocity + change.changeInLinearVel +
-            MATH::VMath::cross(angularVelocity + change.changeInAngularVel, localPoint);
+        const MATH::Vec3 pointVelocity = after.linear + MATH::VMath::cross(after.angular, localPoint);
         Check("after the change, v + w x r = -b", length(pointVelocity + gap * (beta / deltaTime)) < 1.0e-3f);
 
         /* The target sits on the clicked point at the centre, so r is 0 and only the velocity can change */
-        const PHYSICS::VelocityChange centre = PHYSICS::MouseConstraint(
+        const PHYSICS::BodyVelocity centre = PHYSICS::MouseConstraint(
             transform, MATH::Vec3(0.0f, 0.0f, 0.0f), transform.position, heavyBox, velocity, angularVelocity,
             deltaTime);
-        Check("r = 0, no gap: the linear change cancels the velocity", Near(centre.changeInLinearVel, velocity * -1.0f));
-        Check("r = 0, no gap: the angular change is 0", Near(centre.changeInAngularVel, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+        Check("r = 0, no gap: the linear velocity ends at 0", Near(centre.linear, MATH::Vec3(0.0f, 0.0f, 0.0f)));
+        Check("r = 0, no gap: the angular velocity stays the same", Near(centre.angular, angularVelocity));
 
         /* More mass with the same inertia: sliding gets harder, so less of the fix is a slide */
         const PHYSICS::MassProperties light{1.0f, MATH::Matrix3()};
         const PHYSICS::MassProperties dense{10.0f, MATH::Matrix3()};
-        const PHYSICS::VelocityChange lightChange = PHYSICS::MouseConstraint(
+        const PHYSICS::BodyVelocity lightAfter = PHYSICS::MouseConstraint(
             transform, localPoint, target, light, velocity, angularVelocity, deltaTime);
-        const PHYSICS::VelocityChange denseChange = PHYSICS::MouseConstraint(
+        const PHYSICS::BodyVelocity denseAfter = PHYSICS::MouseConstraint(
             transform, localPoint, target, dense, velocity, angularVelocity, deltaTime);
         Check("more mass, same inertia: the linear change is smaller",
-              length(denseChange.changeInLinearVel) < length(lightChange.changeInLinearVel));
+              length(denseAfter.linear - velocity) < length(lightAfter.linear - velocity));
 
         /* A box rolled 30 degrees about Z must act like an unrolled body whose tensor and point
          * are turned by hand. The turned tensor is written out here, not built with toMatrix3 */
@@ -1000,14 +1000,14 @@ int main()
             .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
         };
         const MATH::Vec3 turnedPoint = MATH::QMath::rotate(localPoint, rolled.orientation);
-        const PHYSICS::VelocityChange rolledChange = PHYSICS::MouseConstraint(
+        const PHYSICS::BodyVelocity rolledAfter = PHYSICS::MouseConstraint(
             rolled, localPoint, target, heavyBox, velocity, angularVelocity, deltaTime);
-        const PHYSICS::VelocityChange byHand = PHYSICS::MouseConstraint(
+        const PHYSICS::BodyVelocity byHand = PHYSICS::MouseConstraint(
             transform, turnedPoint, target, {2.0f, turnedTensor}, velocity, angularVelocity, deltaTime);
-        Check("rolled box: the linear change matches the box turned by hand",
-              length(rolledChange.changeInLinearVel - byHand.changeInLinearVel) < 1.0e-3f);
-        Check("rolled box: the angular change matches the box turned by hand",
-              length(rolledChange.changeInAngularVel - byHand.changeInAngularVel) < 1.0e-3f);
+        Check("rolled box: the linear velocity matches the box turned by hand",
+              length(rolledAfter.linear - byHand.linear) < 1.0e-3f);
+        Check("rolled box: the angular velocity matches the box turned by hand",
+              length(rolledAfter.angular - byHand.angular) < 1.0e-3f);
 
         /* The whole step, 10 s at 60 Hz: a 2 kg box held by a corner, mouse still and then moving 5 m in 1 s.
          * No grip, no cap and no angular drag yet */
@@ -1023,10 +1023,10 @@ int main()
                 const float slide = moving ? std::min(seconds, 1.0f) * 5.0f : 0.0f;
                 const MATH::Vec3 mouse = localPoint + MATH::Vec3(slide, 0.0f, 0.0f);
                 v = PHYSICS::ApplyForces(v, heavyBox.mass, deltaTime);
-                const PHYSICS::VelocityChange step2 = PHYSICS::MouseConstraint(
+                const PHYSICS::BodyVelocity held = PHYSICS::MouseConstraint(
                     body, localPoint, mouse, heavyBox, v, w, deltaTime);
-                v += step2.changeInLinearVel;
-                w += step2.changeInAngularVel;
+                v = held.linear;
+                w = held.angular;
                 body.position = PHYSICS::UpdatePosition(body.position, v, deltaTime);
                 body.orientation = PHYSICS::UpdateOrientation(body.orientation, w, deltaTime);
                 last = length(body.position + MATH::QMath::rotate(localPoint, body.orientation) - mouse);
@@ -1090,9 +1090,9 @@ int main()
             v = PHYSICS::ApplyForces(v, pillMass.mass, deltaTime);
             w = PHYSICS::ApplyAngularDrag(w, deltaTime);
             w = PHYSICS::ApplyGrip(w, deltaTime);
-            const PHYSICS::VelocityChange change = PHYSICS::MouseConstraint(body, tip, mouse, pillMass, v, w, deltaTime);
-            v += change.changeInLinearVel;
-            w = PHYSICS::LimitSpin(w + change.changeInAngularVel);
+            const PHYSICS::BodyVelocity held = PHYSICS::MouseConstraint(body, tip, mouse, pillMass, v, w, deltaTime);
+            v = held.linear;
+            w = PHYSICS::LimitSpin(held.angular);
             fastest = std::max(fastest, length(w));
             body.position = PHYSICS::UpdatePosition(body.position, v, deltaTime);
             body.orientation = PHYSICS::UpdateOrientation(body.orientation, w, deltaTime);

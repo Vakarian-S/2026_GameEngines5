@@ -38,7 +38,7 @@ void MouseConstraintSystem::Run(const SystemContext& context)
         for (uint32_t row = 0; row < rows; ++row)
         {
             angularVelocities[row].radiansPerSecond = PHYSICS::ApplyGrip(angularVelocities[row].radiansPerSecond, deltaTime);
-            auto [changeInLinearVel, changeInAngularVel] = PHYSICS::MouseConstraint(
+            const auto [linear, angular] = PHYSICS::MouseConstraint(
                 transforms[row],
                 pickedComponents[row].localPoint,
                 pickedComponents[row].mouseTarget,
@@ -46,9 +46,8 @@ void MouseConstraintSystem::Run(const SystemContext& context)
                 velocities[row].metresPerSecond,
                 angularVelocities[row].radiansPerSecond,
                 deltaTime);
-            velocities[row].metresPerSecond += changeInLinearVel;
-            angularVelocities[row].radiansPerSecond += changeInAngularVel;
-            angularVelocities[row].radiansPerSecond = PHYSICS::LimitSpin(angularVelocities[row].radiansPerSecond);
+            velocities[row].metresPerSecond = linear;
+            angularVelocities[row].radiansPerSecond = PHYSICS::LimitSpin(angular);
         }
     }
 }
