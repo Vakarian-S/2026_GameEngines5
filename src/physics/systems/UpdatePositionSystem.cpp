@@ -15,15 +15,15 @@ UpdatePositionSystem::UpdatePositionSystem(World& world) :
 void UpdatePositionSystem::Run(const SystemContext& context)
 {
     const float deltaTime = context.deltaTime;
-    for (Archetype* archetype : movers.Matches())
+    movers.ForEachChunk([&](ChunkView chunk)
     {
-        Transform* transform = archetype->Column<Transform>();
-        const PHYSICS::Velocity* velocities = archetype->Column<PHYSICS::Velocity>();
-        const uint32_t rows = archetype->Count();
+        Transform* transform = chunk.Column<Transform>();
+        const PHYSICS::Velocity* velocities = chunk.Column<PHYSICS::Velocity>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             transform[row].position = PHYSICS::UpdatePosition(transform[row].position, velocities[row].metresPerSecond,
                                                               deltaTime);
         }
-    }
+    });
 }

@@ -52,7 +52,7 @@ namespace
     constexpr uint32_t kCullStride = 20;
     /** One row in every this many gains or loses the tag on a tag frame */
     constexpr uint32_t kTagStride = 10;
-    /** Slab bytes per entity. Four archetypes of this load use 108, measured with MemoryStats. */
+    /** Slab bytes per entity. This load peaks at about 49 with chunks of 4 to 64 KB, measured as arena high water at 100,000. */
     constexpr std::size_t kArenaBytesPerEntity = 128;
     /** Slab bytes on top of that, for the archetype objects and their lists */
     constexpr std::size_t kArenaBaseBytes = 64 * 1024;
@@ -78,11 +78,11 @@ namespace
      */
     void Move(Query& movers)
     {
-        for (Archetype* archetype : movers.Matches())
+        movers.ForEachChunk([](ChunkView chunk)
         {
-            Position* positions = archetype->Column<Position>();
-            const Velocity* velocities = archetype->Column<Velocity>();
-            const uint32_t rows = archetype->Count();
+            Position* positions = chunk.Column<Position>();
+            const Velocity* velocities = chunk.Column<Velocity>();
+            const uint32_t rows = chunk.Count();
 
             for (uint32_t row = 0; row < rows; ++row)
             {
@@ -90,7 +90,38 @@ namespace
                 positions[row].y += velocities[row].y * kFixedDelta;
                 positions[row].z += velocities[row].z * kFixedDelta;
             }
-        }
+        });
+    }
+
+    /**
+     * Calls visit with the entity in every stride-th row of each matching archetype. Rows count across
+     * chunks, so the rows picked are the same whatever the chunk size.
+     * @param query archetypes to walk
+     * @param stride visit one row in every this many
+     * @param visit called with each picked row's entity
+     */
+    template <typename Visit>
+    void ForEveryStrideRow(Query& query, const uint32_t stride, Visit&& visit)
+    {
+        const Archetype* current = nullptr;
+        uint32_t firstRow = 0;
+
+        query.ForEachChunk([&](const ChunkView chunk)
+        {
+            /* A new archetype starts its row count again, as the loop over whole archetypes did. */
+            if (chunk.Owner() != current)
+            {
+                current = chunk.Owner();
+                firstRow = 0;
+            }
+
+            const Entity* owners = chunk.Entities();
+            for (uint32_t local = 0; local < chunk.Count(); ++local)
+            {
+                if ((firstRow + local) % stride == 0) visit(owners[local]);
+            }
+            firstRow += chunk.Count();
+        });
     }
 
     /**
@@ -103,17 +134,11 @@ namespace
     {
         uint32_t killed = 0;
 
-        for (Archetype* archetype : movers.Matches())
+        ForEveryStrideRow(movers, kCullStride, [&](const Entity owner)
         {
-            const Entity* owners = archetype->EntityColumn();
-            const uint32_t rows = archetype->Count();
-
-            for (uint32_t row = 0; row < rows; row += kCullStride)
-            {
-                buffer.DestroyEntity(owners[row]);
-                ++killed;
-            }
-        }
+            buffer.DestroyEntity(owner);
+            ++killed;
+        });
 
         for (uint32_t i = 0; i < killed; ++i)
         {
@@ -133,39 +158,29 @@ namespace
      */
     void ToggleTags(Query& untagged, Query& tagged, CommandBuffer& buffer)
     {
-        for (Archetype* archetype : untagged.Matches())
+        ForEveryStrideRow(untagged, kTagStride, [&](const Entity owner)
         {
-            const Entity* owners = archetype->EntityColumn();
-            const uint32_t rows = archetype->Count();
+            buffer.AddComponent<Hit>(owner);
+        });
 
-            for (uint32_t row = 0; row < rows; row += kTagStride)
-            {
-                buffer.AddComponent<Hit>(owners[row]);
-            }
-        }
-
-        for (Archetype* archetype : tagged.Matches())
+        ForEveryStrideRow(tagged, 1, [&](const Entity owner)
         {
-            const Entity* owners = archetype->EntityColumn();
-            const uint32_t rows = archetype->Count();
-
-            for (uint32_t row = 0; row < rows; ++row)
-            {
-                buffer.RemoveComponent<Hit>(owners[row]);
-            }
-        }
+            buffer.RemoveComponent<Hit>(owner);
+        });
     }
 
     /**
      * Runs one scale end to end and prints what it cost.
      * @param count how many entities to start with
      * @param useArena true for one slab sized for count, false for the heap
+     * @param chunkBytes bytes in each chunk of the world
      */
-    void RunScale(const int count, const bool useArena)
+    void RunScale(const int count, const bool useArena, const uint32_t chunkBytes)
     {
         WorldConfig config;
         config.maxEntities = static_cast<uint32_t>(count);
         config.arenaBytes = useArena ? kArenaBaseBytes + kArenaBytesPerEntity * static_cast<std::size_t>(count) : 0;
+        config.chunkBytes = chunkBytes;
 
         World world(config);
         CommandBuffer buffer;
@@ -217,13 +232,17 @@ namespace
         const WorldStats snapshot = world.Snapshot();
 
         std::cout << "\n==== " << count << " entities, " << kFrames << " frames, "
-            << (useArena ? "arena" : "heap") << " ====\n";
+            << (useArena ? "arena" : "heap") << ", " << chunkBytes / 1024 << " KB chunks ====\n";
         Profiler::Report();
 
         std::cout << "  totals    created " << totals.entitiesCreated
             << ", destroyed " << totals.entitiesDestroyed
             << ", migrations " << totals.migrations
             << ", bytes " << totals.bytesCopied << "\n";
+        std::cout << "  chunks    taken " << totals.chunksTaken
+            << ", returned " << totals.chunksReturned
+            << ", " << (totals.chunksTaken - totals.chunksReturned) << " in use, "
+            << snapshot.chunksFree << " free\n";
         std::cout << "  world     " << snapshot.liveEntities << " live, "
             << snapshot.totalRows << " rows, "
             << snapshot.archetypeCount << " archetypes ("
@@ -245,10 +264,16 @@ int main()
 {
     std::cout << "EcsBench\n";
 
+    /* The chunk sizes the plan measures. 16 KB is the World's default and what Unity and Unreal Mass use. */
+    constexpr uint32_t kChunkSizes[] = {4 * 1024, 16 * 1024, 64 * 1024};
+
     for (const int count : {1000, 10000, 100000})
     {
-        RunScale(count, false);
-        RunScale(count, true);
+        RunScale(count, false, 16 * 1024);
+        for (const uint32_t chunkBytes : kChunkSizes)
+        {
+            RunScale(count, true, chunkBytes);
+        }
     }
 
     return 0;

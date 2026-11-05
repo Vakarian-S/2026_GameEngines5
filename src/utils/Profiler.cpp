@@ -203,16 +203,16 @@ void Profiler::Report()
         order[position] = current;
     }
 
-    Print("{}  {:<24}{:>6}{:>6}{:>9}{:>9}{:>9}{:>8}{:>8}{:>10}{}\n",
+    Print("{}  {:<24}{:>6}{:>6}{:>9}{:>9}{:>9}{:>8}{:>8}{:>10}{:>8}{:>8}{}\n",
           PROF_COLOR::kSection, "span", "frames", "calls", "min ms", "avg ms", "max ms",
-          "mig/f", "mig max", "bytes/f", PROF_COLOR::kReset);
+          "mig/f", "mig max", "bytes/f", "take/f", "ret/f", PROF_COLOR::kReset);
 
     for (std::size_t i = 0; i < spanCount; ++i)
     {
         const ProfileSpan& span = spans[order[i]];
         const double average = ToMilliseconds(span.totalNanoseconds / span.framesSeen);
 
-        Print("  {}{:<24}{}{:>6}{:>6}{:>9.3f}{:>9.3f}{:>9.3f}{:>8.1f}{:>8}{:>10}\n",
+        Print("  {}{:<24}{}{:>6}{:>6}{:>9.3f}{:>9.3f}{:>9.3f}{:>8.1f}{:>8}{:>10}{:>8.1f}{:>8.1f}\n",
               PROF_COLOR::kName, span.name, PROF_COLOR::kReset,
               span.framesSeen,
               span.totalCalls,
@@ -221,7 +221,9 @@ void Profiler::Report()
               ToMilliseconds(span.maxNanoseconds),
               static_cast<double>(span.totalStats.migrations) / static_cast<double>(span.framesSeen),
               span.maxFrameMigrations,
-              span.totalStats.bytesCopied / span.framesSeen);
+              span.totalStats.bytesCopied / span.framesSeen,
+              static_cast<double>(span.totalStats.chunksTaken) / static_cast<double>(span.framesSeen),
+              static_cast<double>(span.totalStats.chunksReturned) / static_cast<double>(span.framesSeen));
     }
 
     /* When a table runs out of size, print the dropped fields info. */
@@ -237,8 +239,8 @@ void Profiler::ReportFrame()
     Print("{}-- Frame {} --{}  {:.3f} ms\n",
           PROF_COLOR::kSection, frameCount, PROF_COLOR::kReset, ToMilliseconds(lastFrameNanoseconds));
 
-    Print("{}  {:<24}{:>6}{:>10}{:>8}{:>10}{}\n",
-          PROF_COLOR::kSection, "span", "calls", "ms", "mig", "bytes", PROF_COLOR::kReset);
+    Print("{}  {:<24}{:>6}{:>10}{:>8}{:>10}{:>6}{:>6}{}\n",
+          PROF_COLOR::kSection, "span", "calls", "ms", "mig", "bytes", "take", "ret", PROF_COLOR::kReset);
 
     for (std::size_t i = 0; i < spanCount; ++i)
     {
@@ -247,12 +249,14 @@ void Profiler::ReportFrame()
         /* A frame runs only a few spans, and the silent ones would bury them. */
         if (span.frameCalls == 0) continue;
 
-        Print("  {}{:<24}{}{:>6}{:>10.3f}{:>8}{:>10}\n",
+        Print("  {}{:<24}{}{:>6}{:>10.3f}{:>8}{:>10}{:>6}{:>6}\n",
               PROF_COLOR::kName, span.name, PROF_COLOR::kReset,
               span.frameCalls,
               ToMilliseconds(span.frameNanoseconds),
               span.frameStats.migrations,
-              span.frameStats.bytesCopied);
+              span.frameStats.bytesCopied,
+              span.frameStats.chunksTaken,
+              span.frameStats.chunksReturned);
     }
 }
 

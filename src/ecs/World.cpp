@@ -14,14 +14,15 @@ namespace
 World::World(const WorldConfig& config)
     : arena(config.arenaBytes),
       memory(arena),
-      reservedRows(config.arenaBytes > 0 ? config.maxEntities : 0),
+      maxRows(config.arenaBytes > 0 ? config.maxEntities : 0),
+      chunkPool(&memory, config.chunkBytes, frameStats),
       entitySlots(&memory),
       freeSlots(&memory),
       archetypes(&memory)
 {
-    entitySlots.reserve(reservedRows > 0 ? reservedRows : kHeapReserve);
-    freeSlots.reserve(reservedRows > 0 ? reservedRows : kHeapReserve);
-    if (reservedRows > 0) archetypes.reserve(kArchetypeReserve);
+    entitySlots.reserve(maxRows > 0 ? maxRows : kHeapReserve);
+    freeSlots.reserve(maxRows > 0 ? maxRows : kHeapReserve);
+    if (maxRows > 0) archetypes.reserve(kArchetypeReserve);
 }
 
 World::~World()
@@ -48,7 +49,7 @@ Entity World::CreateEntity()
     {
         /* Grow the table. A new slot starts at version 1, never 0, so a default Entity{} never matches it. */
         index = static_cast<uint32_t>(entitySlots.size());
-        assert((reservedRows == 0 || index < reservedRows) && "the world is full, raise maxEntities");
+        assert((maxRows == 0 || index < maxRows) && "the world is full, raise maxEntities");
         entitySlots.push_back({1, kInvalidArchetype, 0});
     }
 
@@ -152,7 +153,8 @@ WorldStats World::Snapshot() const
         stats.totalRows += rows;
         if (rows == 0) stats.emptyArchetypes++;
     }
-
+    
+    stats.chunksFree = chunkPool.FreeCount();
     return stats;
 }
 
@@ -170,7 +172,7 @@ void World::AddComponentById(const Entity entity, const ComponentId id, const st
     const ComponentMask currentArchetypeMask = archetypes[entitySlots[entity.index].archetype]->Mask();
     /* Zero bytes are not a valid value for every component, so a component with data must come with its bytes */
     assert((COMPONENTS::InfoOf(id).size == 0 || (value != nullptr && size != 0)) &&
-           "a component with data needs a value and a size; only a tag may pass nullptr");
+        "a component with data needs a value and a size; only a tag may pass nullptr");
     MoveEntity(entity, currentArchetypeMask | (ComponentMask{1} << id));
 
     if (value == nullptr || size == 0) return;
@@ -206,7 +208,7 @@ uint16_t World::ArchetypeIndexFor(const ComponentMask mask)
     }
     assert(archetypes.size() < kInvalidArchetype);
     void* place = memory.allocate(sizeof(Archetype), alignof(Archetype));
-    archetypes.push_back(new(place) Archetype(mask, &memory, reservedRows));
+    archetypes.push_back(new(place) Archetype(mask, &memory, &chunkPool));
     archetypeGeneration++;
     GE5_ECS_COUNT(frameStats, archetypesCreated, 1);
     return static_cast<uint16_t>(archetypes.size() - 1);

@@ -28,9 +28,13 @@ namespace
             << "  migrations          " << totals.migrations << "\n"
             << "  bytes copied        " << totals.bytesCopied << "\n"
             << "  archetypes created  " << totals.archetypesCreated << "\n"
+            << "  chunks taken        " << totals.chunksTaken << "\n"
+            << "  chunks returned     " << totals.chunksReturned << "\n"
             << "  live entities       " << snapshot.liveEntities << "\n"
             << "  archetypes now      " << snapshot.archetypeCount
-            << " (" << snapshot.emptyArchetypes << " empty)\n";
+            << " (" << snapshot.emptyArchetypes << " empty)\n"
+            << "  chunks in use       " << totals.chunksTaken - totals.chunksReturned
+            << " (" << snapshot.chunksFree << " free in the pool)\n";
 
         const auto [arena, resource] = world.MemoryStats();
 

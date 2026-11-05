@@ -28,15 +28,15 @@ void DrawGrabLineSystem::Run(const SystemContext& context)
     assert(context.debugLines != nullptr && "DrawGrabLine runs in Extract, which hands it a debug lines list");
     DebugLines& debugLines = *context.debugLines;
 
-    for (const Archetype* archetype : entities.Matches())
+    entities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::Picked* pickedComponents = archetype->Column<PHYSICS::Picked>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::Picked* pickedComponents = chunk.Column<PHYSICS::Picked>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             AddLine(debugLines, ModelMatrix(transforms[row]) * pickedComponents[row].localPoint,
                     pickedComponents[row].mouseTarget, kGrabLineColour);
         }
-    }
+    });
 }

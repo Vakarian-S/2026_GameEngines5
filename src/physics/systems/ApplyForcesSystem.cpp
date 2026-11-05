@@ -24,12 +24,12 @@ ApplyForcesSystem::ApplyForcesSystem(World& world) :
 void ApplyForcesSystem::Run(const SystemContext& context)
 {
     const float deltaTime = context.deltaTime;
-    for (Archetype* archetype : entities.Matches())
+    entities.ForEachChunk([&](ChunkView chunk)
     {
-        PHYSICS::Velocity* velocities = archetype->Column<PHYSICS::Velocity>();
-        PHYSICS::AngularVelocity* angularVelocities = archetype->Column<PHYSICS::AngularVelocity>();
-        const PHYSICS::MassProperties* massProperties = archetype->Column<PHYSICS::MassProperties>();
-        const uint32_t rows = archetype->Count();
+        PHYSICS::Velocity* velocities = chunk.Column<PHYSICS::Velocity>();
+        PHYSICS::AngularVelocity* angularVelocities = chunk.Column<PHYSICS::AngularVelocity>();
+        const PHYSICS::MassProperties* massProperties = chunk.Column<PHYSICS::MassProperties>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             velocities[row].metresPerSecond = PHYSICS::ApplyForces(velocities[row].metresPerSecond,
@@ -38,5 +38,5 @@ void ApplyForcesSystem::Run(const SystemContext& context)
             angularVelocities[row].radiansPerSecond = PHYSICS::ApplyAngularDrag(
                 angularVelocities[row].radiansPerSecond, deltaTime);
         }
-    }
+    });
 }

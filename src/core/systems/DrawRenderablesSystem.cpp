@@ -24,15 +24,15 @@ void DrawRenderablesSystem::Run(const SystemContext& context)
     /* Reserved once, so the list takes one block from the frame arena */
     drawList.reserve(drawList.size() + total);
 
-    for (const Archetype* archetype : drawables.Matches())
+    drawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const Renderable* renderables = archetype->Column<Renderable>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const Renderable* renderables = chunk.Column<Renderable>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
             drawList.push_back({renderables[row].meshHandle, renderables[row].materialHandle, modelMatrixTransform});
         }
-    }
+    });
 }

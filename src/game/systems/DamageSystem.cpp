@@ -20,13 +20,13 @@ void DamageSystem::Run(const SystemContext& context)
     /* This damage frame does the opposite of the last one */
     hitOn = !hitOn;
 
-    for (const Archetype* archetype : damageables.Matches())
+    damageables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Entity* rows = archetype->EntityColumn();
-        for (uint32_t row = 0; row < archetype->Count(); ++row)
+        const Entity* rows = chunk.Entities();
+        for (uint32_t row = 0; row < chunk.Count(); ++row)
         {
             if (hitOn) context.commands.AddComponent<Hit>(rows[row]);
             else context.commands.RemoveComponent<Hit>(rows[row]);
         }
-    }
+    });
 }

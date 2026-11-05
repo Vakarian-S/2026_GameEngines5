@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include "Archetype.h"
+#include "ChunkPool.h"
 #include "Component.h"
 #include "ecs/Entity.h"
 #include "ecs/EntitySlot.h"
@@ -23,6 +24,8 @@ struct WorldConfig
      * grows on the heap, as the world did before the arena existed.
      */
     std::size_t arenaBytes = 1024 * 1024;
+    /** Bytes in one chunk. Every archetype in this World uses this size */
+    std::uint32_t chunkBytes = 16 * 1024;
 };
 
 /** What a World's arena holds, and how much of the world missed it. */
@@ -100,8 +103,8 @@ public:
         }
 
         const EntitySlot& slot = entitySlots[entity.index];
-        T* column = archetypes[slot.archetype]->Column<T>();
-        return column != nullptr ? column + slot.row : nullptr;
+        T* column = reinterpret_cast<T*>(archetypes[slot.archetype]->ElementAt(COMPONENTS::IdOf<T>(), slot.row));
+        return column;
     }
 
     /**
@@ -125,8 +128,8 @@ public:
 
         const EntitySlot& slot = entitySlots[entity.index];
         const Archetype* archetype = archetypes[slot.archetype];
-        const T* column = archetype->Column<T>();
-        return column != nullptr ? column + slot.row : nullptr;
+        const T* column = reinterpret_cast<const T*>(archetype->ElementAt(COMPONENTS::IdOf<T>(), slot.row));
+        return column;
     }
 
     /**
@@ -136,7 +139,7 @@ public:
      * @return boolean indicating whether the entity has the component or not
      */
     template <typename T>
-    bool HasComponent(Entity entity) const
+    bool HasComponent(const Entity entity) const
     {
         if (!DoesEntityExist(entity))
         {
@@ -236,8 +239,11 @@ private:
     Arena arena;
     /** Where every container below allocates. With no slab behind it, every call goes to the heap. */
     ArenaResource memory;
-    /** Rows each archetype reserves, or zero when there is no arena */
-    uint32_t reservedRows;
+    /** Amount of entity slot rows the world can have */
+    uint32_t maxRows;
+    /** Memory pool of chunks to use for archetypes memory management */
+    ChunkPool chunkPool;
+
 
     /** One record per index ever handed out. The index into this vector is the entity's index. */
     std::pmr::vector<EntitySlot> entitySlots;

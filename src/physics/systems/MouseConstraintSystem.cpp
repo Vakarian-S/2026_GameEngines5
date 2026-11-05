@@ -27,14 +27,14 @@ MouseConstraintSystem::MouseConstraintSystem(World& world) :
 void MouseConstraintSystem::Run(const SystemContext& context)
 {
     const float deltaTime = context.deltaTime;
-    for (Archetype* archetype : entities.Matches())
+    entities.ForEachChunk([&](ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::Picked* pickedComponents = archetype->Column<PHYSICS::Picked>();
-        PHYSICS::Velocity* velocities = archetype->Column<PHYSICS::Velocity>();
-        PHYSICS::AngularVelocity* angularVelocities = archetype->Column<PHYSICS::AngularVelocity>();
-        const PHYSICS::MassProperties* massProperties = archetype->Column<PHYSICS::MassProperties>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::Picked* pickedComponents = chunk.Column<PHYSICS::Picked>();
+        PHYSICS::Velocity* velocities = chunk.Column<PHYSICS::Velocity>();
+        PHYSICS::AngularVelocity* angularVelocities = chunk.Column<PHYSICS::AngularVelocity>();
+        const PHYSICS::MassProperties* massProperties = chunk.Column<PHYSICS::MassProperties>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             angularVelocities[row].radiansPerSecond = PHYSICS::ApplyGrip(angularVelocities[row].radiansPerSecond, deltaTime);
@@ -49,5 +49,5 @@ void MouseConstraintSystem::Run(const SystemContext& context)
             velocities[row].metresPerSecond = linear;
             angularVelocities[row].radiansPerSecond = PHYSICS::LimitSpin(angular);
         }
-    }
+    });
 }

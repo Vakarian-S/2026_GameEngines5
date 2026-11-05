@@ -22,16 +22,16 @@ UpdateOrientationSystem::UpdateOrientationSystem(World& world) :
 void UpdateOrientationSystem::Run(const SystemContext& context)
 {
     const float deltaTime = context.deltaTime;
-    for (Archetype* archetype : entities.Matches())
+    entities.ForEachChunk([&](ChunkView chunk)
     {
-        Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::AngularVelocity* angularVelocities = archetype->Column<PHYSICS::AngularVelocity>();
-        const uint32_t rows = archetype->Count();
+        Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::AngularVelocity* angularVelocities = chunk.Column<PHYSICS::AngularVelocity>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             transforms[row].orientation = PHYSICS::UpdateOrientation(transforms[row].orientation,
                                                                      angularVelocities[row].radiansPerSecond,
                                                                      deltaTime);
         }
-    }
+    });
 }

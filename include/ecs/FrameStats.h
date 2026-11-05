@@ -53,6 +53,11 @@ struct FrameStats
      * Archetypes created by adding new components to entities
      */
     uint64_t archetypesCreated = 0;
+    
+    /** How many chunks were taken */
+    uint64_t  chunksTaken = 0;
+    /** How many chunks were returned */
+    uint64_t  chunksReturned = 0;
 };
 
 /**
@@ -71,6 +76,8 @@ inline FrameStats StatsSince(const FrameStats& before, const FrameStats& after)
     gained.migrations = after.migrations - before.migrations;
     gained.bytesCopied = after.bytesCopied - before.bytesCopied;
     gained.archetypesCreated = after.archetypesCreated - before.archetypesCreated;
+    gained.chunksTaken = after.chunksTaken - before.chunksTaken;
+    gained.chunksReturned = after.chunksReturned - before.chunksReturned;
     return gained;
 }
 
@@ -88,6 +95,8 @@ inline void AddStats(FrameStats& totals, const FrameStats& frame)
     totals.migrations += frame.migrations;
     totals.bytesCopied += frame.bytesCopied;
     totals.archetypesCreated += frame.archetypesCreated;
+    totals.chunksTaken += frame.chunksTaken;
+    totals.chunksReturned += frame.chunksReturned;  
 }
 
 /**
@@ -119,4 +128,9 @@ struct WorldStats
      * Entity Slots handed out, live and dead
      */
     uint32_t slotTableSize = 0;
+    
+    /**
+    * Chunks waiting on the World's ChunkPool free list
+    */
+    uint32_t chunksFree = 0;
 };

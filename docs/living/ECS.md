@@ -1,6 +1,6 @@
 # ECS
 
-**Last updated:** 2026-11-03.
+**Last updated:** 2026-11-05.
 
 The ECS design: the settled decisions, the invariants, the rules for systems and phases, and the
 house rules. The data model lives on the Miro board, under "The diagram".
@@ -23,12 +23,14 @@ Do not reopen these without a measurement.
 | decision | reason |
 |---|---|
 | **Archetype storage**, not sparse set | the house rules assume it — tags only remove work from a loop when they physically partition memory |
-| **Block-shaped iteration** from day one | a block is a whole archetype today and a 16 KB chunk later, with no change to any system |
+| **Systems loop with `Query::ForEachChunk`** | the query walks every matching archetype and chunk, and calls the system's lambda once per chunk with a `ChunkView`. The query owns the loop, so work around each chunk (a profiler span, a debug check, threads) goes in one place. The lambda is a template parameter, so it can be inlined |
 | **Single threaded** | at a few thousand entities, iteration is not the bottleneck. If threads ever come, a scheduler may split one system's rows across threads, or run neighbouring systems side by side when they do not conflict. It never reorders them. See "Systems and phases" |
 | **`pmr::vector<Archetype*>`, each archetype built in the arena with placement new** | the vector reallocates as archetypes appear, and queries cache raw `Archetype*`, so the archetypes must not move. `World`'s destructor destroys each one by hand |
 | **Components are trivially copyable** | enforced by `static_assert` in `Register<T>`. It is what makes an archetype move a `memcpy` and nothing else. It is not an ECS law: EnTT needs none of it, because nothing there migrates |
-| **Components need no more alignment than plain `new`** | also a `static_assert`. A column is a byte array placed like plain `new` memory, and `sizeof(T)` being a multiple of `alignof(T)` keeps every element aligned. 16 on x64, 8 on Win32 |
-| **Columns reserve `maxEntities` rows once and never grow** | a growing vector abandons its old block, and a bump arena cannot reuse it. A column growing from empty leaves dead bytes of about twice its final size. The cost is 108 bytes per entity in the bench load, whether or not the archetype fills |
+| **Components need no more alignment than plain `new`** | also a `static_assert`. A chunk starts aligned like plain `new`, and the archetype rounds each column's offset up to its type's alignment. `sizeof(T)` being a multiple of `alignof(T)` then keeps every element aligned. 16 on x64, 8 on Win32 |
+| **Archetypes store rows in fixed-size chunks from the World's `ChunkPool`** | the arena never frees, so a growing column would leave its old blocks behind. Equal-size chunks go back on the pool's free list when an archetype empties one, and any archetype can reuse them. Measured 2026-11-04 with `EcsBench` at 100,000 entities: the arena peak fell from 10,548 KB, when every archetype reserved `maxEntities` rows, to 4,759 KB. `WorldConfig::chunkBytes` sets the size, 16 KB by default |
+| **Each chunk holds every column for a range of rows** | the entity IDs sit at offset 0, then one slice per component. One row count fits the whole chunk, so a row is a chunk plus an offset, and a chunk empties as one piece. Unity lays its chunks out the same way |
+| **Every chunk is full except the last one** | a remove swaps the archetype's last row into the gap. So an `EntitySlot` keeps one row number, and the archetype finds the chunk with `row / rowsPerChunk` and `row % rowsPerChunk` |
 | **`World` owns its arena. `arenaBytes = 0` is heap mode** | one program can compare both modes, and the heap path still goes through the program's `operator new`, so the Memory Monitor counts it |
 | **Tags have size 0** | from `std::is_empty_v<T>`, not `sizeof`, which is 1 for an empty struct |
 | **`GetComponent<T>` rejects tags at compile time** | a tag has no data to point at; `HasComponent<T>` tests the mask instead |
@@ -56,11 +58,15 @@ and packing `Entity` into one 32-bit integer.
   every query rebuild forever.
 - **Matching is by mask, never by contents.** An archetype with zero rows still matches. This is
   why entities moving between archetypes cannot invalidate a query.
-- **Column pointers die on any structural change.** `Column<T>()`, `EntityColumn()`,
+- **Column pointers die on any structural change.** `ChunkView::Column<T>()`, `Entities()`,
   `GetComponent<T>()` and `Matches()` all return things that go stale on the next `AddRow`,
-  `RemoveRow`, `AddComponent` or `DestroyEntity`. One narrowing since 2026-10-01: a World with
-  an arena reserves every column, so `AddRow` no longer moves a column there. The contents
-  still shift on a removal or a migration, so the rule stays as written.
+  `RemoveRow`, `AddComponent` or `DestroyEntity`. `AddRow` never moves an existing chunk, but a
+  remove shifts rows, and an emptied chunk goes back to the pool, where another archetype reuses it.
+- **A `ChunkView` lives only inside the `ForEachChunk` call that hands it out.** It owns nothing.
+  Never store one, or a pointer it returned.
+- **An archetype gives a chunk back the moment it empties, and its destructor gives back the
+  rest.** So every chunk is on the pool's free list when the pool dies, and the pool frees them all.
+  This keeps heap mode at 0 leaked blocks.
 - **`Clear()` resets `placeholderCount` alongside `created`.** If the counter kept climbing
   while the list restarted, `Resolve` would read the wrong slot and say nothing.
 - **`Clear()` does not reset `playedInto`.** Every other member belongs to one round; that one
@@ -72,11 +78,10 @@ and packing `Entity` into one 32-bit integer.
   the next round hands out. Outside a loop, call `World::CreateEntity` and get a real handle.
 - **`Playback` clears the buffer.** Replaying one twice would apply handles the first pass
   invalidated, so it is made impossible rather than written down.
-- **The arena members of `World` are declared before every container that uses them.** Members
-  are destroyed in reverse order. A container that outlived its resource would give its memory
-  back to a dead object.
-- **A reserved column does not move until its reserve is passed.** Debug asserts there. Release
-  lets the vector grow, which moves the column and leaves any cached pointer stale.
+- **The arena members of `World` are declared before every container that uses them, and the
+  `ChunkPool` after them.** Members are destroyed in reverse order. A container that outlived its
+  resource would give its memory back to a dead object, and the pool must outlive the archetypes
+  that give their chunks back to it.
 - **`CommandBuffer`, `Query` and the scene's own vectors stay on the heap.** They keep their blocks
   across frames, so a frame arena reset would leave them pointing at reused memory.
 
@@ -87,27 +92,28 @@ and packing `Entity` into one 32-bit integer.
 A system may not create, destroy, add or remove while walking a block. It has two ways to go
 wrong, and they fail very differently.
 
-**Shuffle** — destroy, add or remove. `RemoveRow` slides the last row into the one the loop is
-standing on and shrinks the column. Shrinking never reallocates, so the pointer stays valid and
-the contents move under it. The loop skips an entity and ends early. Silent, no crash.
+**Shuffle** — destroy, add or remove. `RemoveRow` slides the archetype's last row into the one
+the loop is standing on, and the last row may sit in another chunk. The loop skips an entity and
+ends early. If the last chunk empties, it goes back to the pool, and the loop can then read a
+chunk that another archetype reuses.
 
-**Growth** — create. `AddRow` resizes a column upward, which can reallocate, so a cached column
-pointer dangles. `Count()` also grows, so the loop runs past where it started, and a system
-that spawns into the archetype it reads from never terminates.
+**Growth** — create. `AddRow` may push a new chunk onto the archetype's chunk list, and that
+vector can reallocate, so the loop's iterator dangles. The last chunk's `Count()` also grows, so a
+system that spawns into the archetype it reads from can run without end.
 
 The fix for both is the same: record the change, keep looping, apply at a sync point.
 
 ```cpp
-for (Archetype* a : query.Matches())
+query.ForEachChunk([&](const ChunkView chunk)
 {
-    Health* health = a->Column<Health>();
-    const Entity* rows = a->EntityColumn();
+    const Health* health = chunk.Column<Health>();
+    const Entity* rows = chunk.Entities();
 
-    for (uint32_t i = 0; i < a->Count(); ++i)
+    for (uint32_t i = 0; i < chunk.Count(); ++i)
     {
         if (health[i].current <= 0.0f) buffer.AddComponent<Dead>(rows[i]);
     }
-}
+});
 
 buffer.Playback(world);
 ```
@@ -165,9 +171,14 @@ writes wins. "The playback rule" below says what a system sees.
 3. The order stays manual. A later scheduler may run neighbours side by side when they do not
    conflict, but never reorders them.
 
-**The const `Column`.** `Archetype::Column<T>() const` returns `const T*`. An Extract system loops
-over `const Archetype*`, so the compiler stops a write. It does not check a system's declared
-reads against its code.
+**The const `Column`.** `ChunkView::Column<T>() const` returns `const T*`. An Extract system's
+lambda takes a `const ChunkView`, so the compiler stops a write. It does not check a system's
+declared reads against its code.
+
+**The chunk counters.** `FrameStats` counts `chunksTaken` and `chunksReturned`, which are events,
+so they reset every frame like `migrations`. The pool writes them through a reference to the
+World's `FrameStats`. `WorldStats::chunksFree` is a level, so `World::Snapshot` reads it from the
+pool.
 
 **The profiler.** `RunPhase` opens one span per system, named after it. A playback gets an ECS
 span named "Playback Fixed", "Playback Update" or "Playback Extract". An empty buffer gets no

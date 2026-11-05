@@ -6,24 +6,23 @@
 #include "Component.h"
 #include "Entity.h"
 
-/* One column for each component type's bytes */
-struct ComponentColumn
+class ChunkPool;
+
+/** One fixed-size buffer that holds the     same rows of every column of one archetype. */
+struct Chunk
+{
+    std::byte* bytes;
+    /** Rows in use in this chunk */
+    uint32_t count;
+};
+
+/** Where one component type sits inside every chunk of an archetype. */
+struct ColumnLayout
 {
     ComponentId type;
     uint32_t elementSize;
-    std::pmr::vector<std::byte> data;
-
-    /**
-     * @param type_ component type this column stores
-     * @param elementSize_ bytes one element takes
-     * @param memory where the bytes come from
-     */
-    ComponentColumn(ComponentId type_, uint32_t elementSize_, std::pmr::memory_resource* memory);
-
-    /* A copied pmr vector lands on the default heap, so a column can only be moved. */
-    ComponentColumn(const ComponentColumn&) = delete;
-    ComponentColumn& operator=(const ComponentColumn&) = delete;
-    ComponentColumn(ComponentColumn&&) noexcept = default;
+    /** Bytes from the start of the chunk to this column's first element. */
+    uint32_t offset;
 };
 
 /* A collection of entities with the same components */
@@ -33,10 +32,11 @@ public:
     /**
      * @param mask one bit per component type this archetype holds
      * @param memory where the columns and the entity list allocate
-     * @param reservedRows rows to reserve up front. Zero reserves nothing and the columns grow.
+     * @param pool Chunk Pool to use as a memory pool for creating archetype chunks
      */
-    explicit Archetype(ComponentMask mask, std::pmr::memory_resource* memory, uint32_t reservedRows = 0);
+    explicit Archetype(ComponentMask mask, std::pmr::memory_resource* memory, ChunkPool* pool);
 
+    ~Archetype();
     /**
      * Raw bytes of one component in one row, or nullptr if this archetype has no such column. 
      * @param type Component Id of the component type column to search from
@@ -44,6 +44,14 @@ public:
      * @return bytes of the component or nullptr if component is not found
      */
     std::byte* ElementAt(ComponentId type, uint32_t row);
+    
+    /**
+     * Raw bytes of one component in one row, read only, or nullptr if this archetype has no such column. 
+     * @param type Component Id of the component type column to search from
+     * @param row row where the component lives
+     * @return bytes of the component or nullptr if component is not found
+     */
+    const std::byte* ElementAt(ComponentId type, uint32_t row) const;
 
     /**
      * Appends a row (entity and components). The component bytes start zeroed
@@ -58,30 +66,6 @@ public:
      * @return The moved entity, or {0,0} if none was moved.
      */
     Entity RemoveRow(uint32_t row);
-
-    /**
-     * First element of a column, or nullptr if the archetype has no such column
-     * @tparam T Component of the column to find
-     * @return Pointer to the first element of the found component column, or nullptr if no column was found
-     */
-    template <typename T>
-    T* Column()
-    {
-        ComponentColumn* column = FindColumn(COMPONENTS::IdOf<T>());
-        return column != nullptr ? reinterpret_cast<T*>(column->data.data()) : nullptr;
-    }
-    
-    /**
-    * Constant First element of a column, or nullptr if the archetype has no such column
-    * @tparam T Component of the column to find
-    * @return Pointer to the first element of the found component column, or nullptr if no column was found
-    */
-    template <typename T>
-    const T* Column() const
-    {
-        const ComponentColumn* column = FindColumn(COMPONENTS::IdOf<T>());
-        return column != nullptr ? reinterpret_cast<const T*>(column->data.data()) : nullptr;
-    }
 
     /**
      * Returns the amount of component columns in the archetype, this does not count tags.
@@ -100,28 +84,40 @@ public:
      * @return rows as an int.
      */
     uint32_t Count() const;
-    
-    /** The entity owning each row, parallel to every component column. */
-    const Entity* EntityColumn() const { return entities.data(); }
-
-private:
-    ComponentMask mask;
-    std::pmr::vector<ComponentColumn> componentColumns;
-    std::pmr::vector<Entity> entities;
-    /** Rows reserved at creation, or zero when the columns grow on demand */
-    uint32_t reservedRows;
 
     /**
-     * Get the component column of the given component type
+     * Get the column layout of the given component type
      * @param type Type of component to find
      * @return The column
      */
-    ComponentColumn* FindColumn(ComponentId type);
-    
+    ColumnLayout* FindLayout(ComponentId type);
+
     /**
-     * Get the component column of the given component type
+     * Get the column layout of the given component type
      * @param type Type of component to find
      * @return Constant version of The column
      */
-    const ComponentColumn* FindColumn(ComponentId type) const;
+    const ColumnLayout* FindLayout(ComponentId type) const;
+
+    /** Every chunk of this archetype. Each is full except the last one. */
+    std::pmr::vector<Chunk>& Chunks() { return chunks; }
+
+    /** Every chunk of this archetype, read only. Each is full except the last one. */
+    const std::pmr::vector<Chunk>& Chunks() const { return chunks; }
+
+    /** Rows that fit in one chunk of this archetype */
+    uint32_t RowsPerChunk() const { return rowsPerChunk; }
+
+private:
+    ComponentMask mask;
+    /** Where each data component sits inside a chunk, in ascending id order. The same for every chunk. */
+    std::pmr::vector<ColumnLayout> columns;
+    /** Every chunk is full except the last one. */
+    std::pmr::vector<Chunk> chunks;
+    /** Rows that fit in one chunk, computed once from the chunk size and the row size */
+    uint32_t rowsPerChunk = 0;
+    /** Rows across every chunk */
+    uint32_t rowsCount = 0;
+    /** Where this archetype takes chunks from and gives them back to */
+    ChunkPool* pool;
 };

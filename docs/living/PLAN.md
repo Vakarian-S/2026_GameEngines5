@@ -1,6 +1,6 @@
 # Plan
 
-**Last updated:** 2026-11-03.
+**Last updated:** 2026-11-05.
 
 This plan hardens the ECS storage. Every archetype reserves `maxEntities` rows up front, so most
 memory goes to empty archetypes, and Scene3 ran out of arena. Each spawn hops through about 8 to 9
@@ -12,7 +12,7 @@ Hardening, rows 1, 2, 4, 7 and 12. Rows 3, 5, 6 and 8 to 11 stay in the roadmap.
 
 | # | step | done when | stage |
 |---|---|---|---|
-| 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | designed |
+| 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | done |
 | 2 | Create with components: one call puts an entity in its final archetype | A spawn makes zero migrations, in the World and through the command buffer | designed |
 | 3 | Clear the World in one call | R in `PhysicsScene` clears and respawns the shapes, a handle from before reads as dead, and the respawn takes no new chunks from the arena | designed |
 | 4 | An intrusive free list: a free slot's `row` holds the next free index | `freeSlots` is gone, the slot tests pass unchanged, `CheckFreeList` passes after every test sequence, and the arena's used bytes drop by `maxEntities × 4` | designed |
@@ -173,6 +173,41 @@ layout to find the column inside the chunk, and `Archetype()` gives the archetyp
   part-full last chunk, and decision 3's divide would stop working.
 - Power-of-two rows per chunk, a chunk size per archetype and sparse-set storage are in ROADMAP.md,
   Hardening.
+
+### What the build changed
+
+- **`ChunkView::Owner()`, not `Archetype()`.** A member function named `Archetype` would hide the
+  class name inside `ChunkView`.
+- **`Archetype::FindLayout` is public,** so `ChunkView::Column<T>()` can find a column's offset.
+  `Chunks()` gives the chunk list to `ForEachChunk`.
+- **The counters split by kind.** `chunksTaken` and `chunksReturned` count events, so they sit in
+  `FrameStats`, and the pool writes them through a `FrameStats&` to the World's counters.
+  `chunksFree` is a level, so it sits in `WorldStats`.
+- **`World::maxRows`** replaces `reservedRows`. It only limits the slot table now.
+- **The Scene3 check was dropped.** Scene3 lives on the prototype branch. Vakarian ran
+  `PhysicsScene` instead, on 2026-11-05.
+
+### What the build measured
+
+`bin\x64\Release\EcsBench.exe`, against the same bench built from `7d265d5`. Each is the mean of 3
+warm runs, with the cold run dropped. 100,000 entities, arena mode:
+
+| | before | 4 KB | 16 KB | 64 KB |
+|---|---|---|---|---|
+| Movement, ns per entity | 0.70 | 0.91 | 0.78 | 0.73 |
+| Playback, ms per frame | 0.420 | 0.429 | 0.433 | 0.430 |
+| Spawn, ms | 17.1 | 20.6 | 20.3 | 20.4 |
+| Arena high water | 10,548 KB | 4,780 KB | 4,759 KB | 4,895 KB |
+
+- **Done when:** under 1 ns per entity holds at every size. Movement at 16 KB is about 11% slower,
+  just above the 8% noise floor. A guess, not measured: the row loop starts again every 511 rows,
+  and each chunk looks up its columns.
+- **Memory:** the arena peak halves at 10,000 and 100,000 entities. At 1,000 entities a 64 KB chunk
+  costs more than before (145 KB against 106 KB), because each archetype in use pays for one whole
+  chunk. The bench's 193 KB slab then falls back to the heap for 2 chunks.
+- **Decision 6:** chunks taken are about 2 per created entity (1,206,688 for 600,099 creates at
+  100,000). Each spawn's hops through the empty and Position-only archetypes take a chunk and give it
+  back. Step 2 removes those hops. Measure again there before adding a spare chunk per archetype.
 
 ## 2. Create with components
 

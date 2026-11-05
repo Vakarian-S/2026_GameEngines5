@@ -8,14 +8,19 @@
  */
 
 #include <bitset>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
+#include <memory_resource>
+#include <new>
 #include <string_view>
 #include <vector>
 
 #include "core/FixedStep.h"
 #include "ecs/Archetype.h"
+#include "ecs/ChunkPool.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/Component.h"
 #include "ecs/Entity.h"
@@ -124,6 +129,34 @@ private:
     Entity target;
 };
 
+/** A heap resource that counts its calls, so a test can see what a ChunkPool asks for and gives back. */
+class CountingResource final : public std::pmr::memory_resource
+{
+public:
+    /** Blocks handed out by CountingResource so far */
+    int allocations = 0;
+    /** Blocks CountingResource has had back so far */
+    int deallocations = 0;
+
+private:
+    void* do_allocate(const std::size_t bytes, const std::size_t alignment) override
+    {
+        ++allocations;
+        return ::operator new(bytes, std::align_val_t{alignment});
+    }
+
+    void do_deallocate(void* block, const std::size_t bytes, const std::size_t alignment) override
+    {
+        ++deallocations;
+        ::operator delete(block, bytes, std::align_val_t{alignment});
+    }
+
+    bool do_is_equal(const std::pmr::memory_resource& other) const noexcept override
+    {
+        return this == &other;
+    }
+};
+
 namespace
 {
     int checks = 0;
@@ -139,6 +172,12 @@ namespace
         ++checks;
         if (!held) ++failures;
         std::cout << (held ? "  pass  " : "  FAIL  ") << what << "\n";
+    }
+
+    /** A view of an archetype's first chunk, for checks on archetypes that hold fewer rows than one chunk. */
+    ChunkView FirstChunk(Archetype* archetype)
+    {
+        return ChunkView{archetype, &archetype->Chunks().front()};
     }
 }
 
@@ -226,12 +265,16 @@ int main()
      */
     std::cout << "\n-- archetypes --\n";
 
-    Archetype archetype(COMPONENTS::MaskOf<Position, Velocity, Dead>(), std::pmr::new_delete_resource());
+    /* Declared before the archetype, so the archetype gives its chunks back before the pool dies. */
+    FrameStats archetypeStats;
+    ChunkPool archetypePool(std::pmr::new_delete_resource(), 16 * 1024, archetypeStats);
+    Archetype archetype(COMPONENTS::MaskOf<Position, Velocity, Dead>(), std::pmr::new_delete_resource(),
+                        &archetypePool);
 
     Check("three components, two columns", archetype.ColumnCount() == 2);
-    Check("a tag has no column", archetype.Column<Dead>() == nullptr);
-    Check("a component not in the mask has no column", archetype.Column<Health>() == nullptr);
-    Check("starts empty", archetype.Count() == 0);
+    Check("a tag has no column", archetype.FindLayout(COMPONENTS::IdOf<Dead>()) == nullptr);
+    Check("a component not in the mask has no column", archetype.FindLayout(COMPONENTS::IdOf<Health>()) == nullptr);
+    Check("starts empty", archetype.Count() == 0 && archetype.Chunks().empty());
 
     const Entity e1 = world.CreateEntity();
     const Entity e2 = world.CreateEntity();
@@ -242,16 +285,16 @@ int main()
     Check("third row is 2", archetype.AddRow(e3) == 2);
     Check("three rows", archetype.Count() == 3);
 
-    /* Fetched after the last AddRow: every resize can move the column. */
-    Position* positions = archetype.Column<Position>();
+    Check("three rows fit in one chunk", archetype.Chunks().size() == 1);
+
+    Position* positions = FirstChunk(&archetype).Column<Position>();
     positions[0] = {1.0f, 0.0f, 0.0f};
     positions[1] = {2.0f, 0.0f, 0.0f};
     positions[2] = {3.0f, 0.0f, 0.0f};
 
-    Check("writes land in the column", archetype.Column<Position>()[2].x == 3.0f);
+    Check("writes land in the column", FirstChunk(&archetype).Column<Position>()[2].x == 3.0f);
 
     const Entity moved = archetype.RemoveRow(0);
-    positions = archetype.Column<Position>();
 
     Check("the last row moved down", moved.index == e3.index && moved.version == e3.version);
     Check("count dropped to 2", archetype.Count() == 2);
@@ -259,7 +302,96 @@ int main()
 
     Check("removing the last row moves nobody", archetype.RemoveRow(1).version == 0);
     Check("one row left", archetype.Count() == 1);
-    Check("the entity column tracks the rows", archetype.EntityColumn()[0].index == e3.index);
+    Check("the entity column tracks the rows", FirstChunk(&archetype).Entities()[0].index == e3.index);
+
+    archetype.RemoveRow(0);
+    Check("an emptied chunk goes back to the pool",
+          archetype.Chunks().empty() && archetypePool.FreeCount() == 1);
+
+    std::cout << "\n-- archetype layout --\n";
+
+    /* The plan's example: Position and Velocity, 12 bytes each with alignment 4, in a 16 KB chunk. */
+    Check("an 8 + 12 + 12 byte row fits 511 times in 16 KB", archetype.RowsPerChunk() == 511);
+    Check("the entity slice comes first, so Position starts after 511 entities",
+          archetype.FindLayout(COMPONENTS::IdOf<Position>())->offset == 511 * 8);
+    Check("Velocity starts after the Position slice",
+          archetype.FindLayout(COMPONENTS::IdOf<Velocity>())->offset == 511 * 8 + 511 * 12);
+
+    /* A tag-only archetype has a row of just an Entity. */
+    Archetype tagOnly(COMPONENTS::MaskOf<Dead>(), std::pmr::new_delete_resource(), &archetypePool);
+    Check("a tag-only row is one Entity, so 2,048 fit", tagOnly.RowsPerChunk() == 16 * 1024 / 8);
+
+    std::cout << "\n-- archetype, rows across chunks --\n";
+
+    Archetype spanning(COMPONENTS::MaskOf<Position, Velocity>(), std::pmr::new_delete_resource(), &archetypePool);
+    const uint32_t perChunk = spanning.RowsPerChunk();
+
+    /* One full chunk and three rows into the next. Each row's x is its row number. */
+    for (uint32_t i = 0; i < perChunk + 3; ++i)
+    {
+        const uint32_t row = spanning.AddRow(Entity{i, 1});
+        std::byte* bytes = spanning.ElementAt(COMPONENTS::IdOf<Position>(), row);
+        const Position value{static_cast<float>(i), 0.0f, 0.0f};
+        std::memcpy(bytes, &value, sizeof(Position));
+    }
+
+    Check("a full chunk makes the next row take a second chunk", spanning.Chunks().size() == 2);
+    Check("the first chunk is full", spanning.Chunks()[0].count == perChunk);
+    Check("the last chunk holds the rest", spanning.Chunks()[1].count == 3);
+    Check("rows keep counting across chunks", spanning.Count() == perChunk + 3);
+
+    const auto positionAt = [&spanning](const uint32_t row)
+    {
+        Position value{};
+        std::memcpy(&value, spanning.ElementAt(COMPONENTS::IdOf<Position>(), row), sizeof(Position));
+        return value.x;
+    };
+    Check("a row in the second chunk reads its own value", positionAt(perChunk + 1) == static_cast<float>(perChunk + 1));
+    Check("ElementAt finds the second chunk at local row 0",
+          spanning.ElementAt(COMPONENTS::IdOf<Position>(), perChunk) ==
+          spanning.Chunks()[1].bytes + spanning.FindLayout(COMPONENTS::IdOf<Position>())->offset);
+
+    /* Removing row 5 pulls the very last row, which sits in the second chunk, into the first. */
+    const Entity pulled = spanning.RemoveRow(5);
+    Check("a remove pulls the last row across chunks", pulled.index == perChunk + 2);
+    Check("its value came with it", positionAt(5) == static_cast<float>(perChunk + 2));
+    Check("the entity came with it",
+          ChunkView(&spanning, &spanning.Chunks()[0]).Entities()[5].index == perChunk + 2);
+    Check("the last chunk shrank", spanning.Chunks()[1].count == 2);
+
+    const uint32_t freeBefore = archetypePool.FreeCount();
+    spanning.RemoveRow(spanning.Count() - 1);
+    spanning.RemoveRow(spanning.Count() - 1);
+    Check("emptying the last chunk gives it back", spanning.Chunks().size() == 1 &&
+          archetypePool.FreeCount() == freeBefore + 1);
+
+    std::cout << "\n-- query, every chunk --\n";
+
+    WorldConfig chunkConfig;
+    chunkConfig.maxEntities = 2048;
+    World chunkWorld(chunkConfig);
+    std::vector<Entity> chunkEntities;
+    Query chunkQuery(chunkWorld, COMPONENTS::MaskOf<Position, Velocity>());
+    for (uint32_t i = 0; i < 1200; ++i)
+    {
+        const Entity spawned = chunkWorld.CreateEntity();
+        chunkWorld.AddComponent<Position>(spawned, {1.0f, 0.0f, 0.0f});
+        chunkWorld.AddComponent<Velocity>(spawned, {0.0f, 0.0f, 0.0f});
+        chunkEntities.push_back(spawned);
+    }
+
+    uint32_t chunkCalls = 0;
+    float chunkTotal = 0.0f;
+    chunkQuery.ForEachChunk([&](const ChunkView chunk)
+    {
+        ++chunkCalls;
+        const Position* chunkPositions = chunk.Column<Position>();
+        for (uint32_t row = 0; row < chunk.Count(); ++row) chunkTotal += chunkPositions[row].x;
+    });
+    Check("1,200 rows at 511 a chunk take three chunks", chunkCalls == 3);
+    Check("the loop reaches every row in every chunk", chunkTotal == 1200.0f);
+    Check("GetComponent finds an entity in the last chunk",
+          chunkWorld.GetComponent<Position>(chunkEntities.back())->x == 1.0f);
 
     /*
      * World and archetypes together. A fresh world, so the row numbers are predictable.
@@ -393,15 +525,15 @@ int main()
 
     /* The canonical system loop: outer over archetypes, inner over rows. */
     float total = 0.0f;
-    for (Archetype* a : moving.Matches())
+    moving.ForEachChunk([&](const ChunkView chunk)
     {
-        Position* positions = a->Column<Position>();
+        const Position* positions = chunk.Column<Position>();
 
-        for (uint32_t i = 0; i < a->Count(); ++i)
+        for (uint32_t i = 0; i < chunk.Count(); ++i)
         {
             total += positions[i].x;
         }
-    }
+    });
 
     Check("the loop reaches both live entities", total == 4.0f);
 
@@ -617,17 +749,17 @@ int main()
     CommandBuffer frame;
     uint32_t rowsVisited = 0;
 
-    for (Archetype* a : living.Matches())
+    living.ForEachChunk([&](const ChunkView chunk)
     {
-        Health* health = a->Column<Health>();
-        const Entity* rows = a->EntityColumn();
+        const Health* health = chunk.Column<Health>();
+        const Entity* rows = chunk.Entities();
 
-        for (uint32_t i = 0; i < a->Count(); ++i)
+        for (uint32_t i = 0; i < chunk.Count(); ++i)
         {
             ++rowsVisited;
             if (health[i].current <= 0.0f) frame.AddComponent<Dead>(rows[i]);
         }
-    }
+    });
 
     Check("the loop visits every row", rowsVisited == 4);
     Check("the loop changed nothing while it ran",
@@ -643,15 +775,15 @@ int main()
     /* A second frame on the same buffer, where the loop destroys what the first one tagged. */
     Query dying(frameWorld, COMPONENTS::MaskOf<Dead>(), 0);
 
-    for (Archetype* a : dying.Matches())
+    dying.ForEachChunk([&](const ChunkView chunk)
     {
-        const Entity* rows = a->EntityColumn();
+        const Entity* rows = chunk.Entities();
 
-        for (uint32_t i = 0; i < a->Count(); ++i)
+        for (uint32_t i = 0; i < chunk.Count(); ++i)
         {
             frame.DestroyEntity(rows[i]);
         }
-    }
+    });
 
     Check("the second frame queued only its own commands", frame.Count() == 2);
 
@@ -720,7 +852,7 @@ int main()
     Check("every queued component landed on one entity",
           builtArchetypes.size() == 1 && builtArchetypes[0]->Count() == 1);
 
-    const Entity realBuilt = builtArchetypes[0]->EntityColumn()[0];
+    const Entity realBuilt = FirstChunk(builtArchetypes[0]).Entities()[0];
 
     Check("the created entity is live", resolveWorld.DoesEntityExist(realBuilt));
     Check("its first value survived", resolveWorld.GetComponent<Position>(realBuilt)->y == 12.0f);
@@ -740,15 +872,15 @@ int main()
 
     Check("the first placeholder got only its own component",
           plainPosition.size() == 1 && plainPosition[0]->Count() == 1 &&
-          plainPosition[0]->Column<Position>()[0].x == 1.0f);
+          FirstChunk(plainPosition[0]).Column<Position>()[0].x == 1.0f);
 
     std::vector<Archetype*> movingPosition;
     resolveWorld.CollectMatching(COMPONENTS::MaskOf<Position, Velocity>(), 0, movingPosition);
 
     Check("the second placeholder got its own two",
           movingPosition.size() == 1 && movingPosition[0]->Count() == 1 &&
-          movingPosition[0]->Column<Position>()[0].x == 2.0f &&
-          movingPosition[0]->Column<Velocity>()[0].x == 9.0f);
+          FirstChunk(movingPosition[0]).Column<Position>()[0].x == 2.0f &&
+          FirstChunk(movingPosition[0]).Column<Velocity>()[0].x == 9.0f);
 
     const Entity shortLived = building.CreateEntity();
     building.AddComponent<Health>(shortLived, {5.0f, 5.0f});
@@ -786,11 +918,11 @@ int main()
 
     uint32_t moverRowsVisited = 0;
 
-    for (Archetype* a : movers.Matches())
+    movers.ForEachChunk([&](const ChunkView chunk)
     {
-        const Position* positions = a->Column<Position>();
+        const Position* positions = chunk.Column<Position>();
 
-        for (uint32_t i = 0; i < a->Count(); ++i)
+        for (uint32_t i = 0; i < chunk.Count(); ++i)
         {
             ++moverRowsVisited;
 
@@ -799,7 +931,7 @@ int main()
             spawnFrame.AddComponent<Position>(trail, positions[i]);
             spawnFrame.AddComponent<Velocity>(trail, {0.0f, 0.0f, 0.0f});
         }
-    }
+    });
 
     Check("the spawning loop visits only the rows it started with", moverRowsVisited == 4);
     Check("nothing was spawned while the loop ran", movers.Matches()[0]->Count() == 4);
@@ -818,7 +950,7 @@ int main()
 
     Check("the second round resolves to its own entity",
           healthHolders.size() == 1 && healthHolders[0]->Count() == 1 &&
-          healthHolders[0]->Column<Health>()[0].current == 42.0f);
+          FirstChunk(healthHolders[0]).Column<Health>()[0].current == 42.0f);
 
     /* ===== Counters ===== */
 
@@ -872,6 +1004,77 @@ int main()
     Check("playback counts through the world it played into",
           bufferWorld.Stats().entitiesCreated == 1 && bufferWorld.Stats().componentsAdded == 1);
 
+    std::cout << "\n-- chunk pool --\n";
+
+    CountingResource chunkMemory;
+    {
+        constexpr uint32_t kTestChunkBytes = 1024;
+        FrameStats poolStats;
+        ChunkPool pool(&chunkMemory, kTestChunkBytes, poolStats);
+
+        Check("the pool reports its chunk size", pool.ChunkBytes() == kTestChunkBytes);
+        Check("a new pool has taken nothing", poolStats.chunksTaken == 0 && chunkMemory.allocations == 0);
+
+        std::byte* first = pool.TakeChunk();
+        std::byte* second = pool.TakeChunk();
+        Check("an empty free list asks the resource for each chunk", chunkMemory.allocations == 2);
+        Check("two takes give two different chunks", first != nullptr && second != nullptr && first != second);
+        Check("a chunk is aligned like plain new",
+              reinterpret_cast<std::uintptr_t>(first) % alignof(std::max_align_t) == 0);
+
+        pool.ReturnChunk(first);
+        pool.ReturnChunk(second);
+        Check("both returned chunks are free", pool.FreeCount() == 2);
+        Check("every return is counted in the frame stats", poolStats.chunksReturned == 2);
+
+        std::byte* reusedSecond = pool.TakeChunk();
+        std::byte* reusedFirst = pool.TakeChunk();
+        Check("the chunk returned last comes back first", reusedSecond == second && reusedFirst == first);
+        Check("a reused chunk asks the resource for nothing", chunkMemory.allocations == 2);
+        Check("the free list is empty again", pool.FreeCount() == 0);
+        Check("every take is counted in the frame stats, new or reused", poolStats.chunksTaken == 4);
+
+        std::byte* third = pool.TakeChunk();
+        Check("an empty free list asks the resource again", chunkMemory.allocations == 3 && third != first &&
+              third != second);
+
+        pool.ReturnChunk(reusedFirst);
+        pool.ReturnChunk(reusedSecond);
+        pool.ReturnChunk(third);
+        Check("nothing goes back to the resource while the pool lives", chunkMemory.deallocations == 0);
+    }
+    Check("the pool gives every free chunk back when it dies", chunkMemory.deallocations == 3);
+
+    std::cout << "\n-- chunk counters in a world --\n";
+
+    World chunkStatsWorld;
+    chunkStatsWorld.ResetFrameStats();
+
+    const Entity chunkUser = chunkStatsWorld.CreateEntity();
+    Check("the first row of an archetype takes a chunk", chunkStatsWorld.Stats().chunksTaken == 1);
+
+    chunkStatsWorld.AddComponent<Position>(chunkUser, {1.0f, 0.0f, 0.0f});
+    Check("a migration takes a chunk in the new archetype", chunkStatsWorld.Stats().chunksTaken == 2);
+    Check("and the old archetype, now empty, gives its chunk back", chunkStatsWorld.Stats().chunksReturned == 1);
+    Check("the snapshot sees the free chunk", chunkStatsWorld.Snapshot().chunksFree == 1);
+
+    const Entity secondUser = chunkStatsWorld.CreateEntity();
+    Check("the next create reuses the free chunk", chunkStatsWorld.Snapshot().chunksFree == 0 &&
+          chunkStatsWorld.Stats().chunksTaken == 3);
+
+    const FrameStats chunkFrame = chunkStatsWorld.Stats();
+    chunkStatsWorld.ResetFrameStats();
+    Check("a reset clears the chunk counters",
+          chunkStatsWorld.Stats().chunksTaken == 0 && chunkStatsWorld.Stats().chunksReturned == 0);
+    Check("the run totals keep them", chunkStatsWorld.Totals().chunksTaken == chunkFrame.chunksTaken &&
+          chunkStatsWorld.Totals().chunksReturned == chunkFrame.chunksReturned);
+
+    chunkStatsWorld.DestroyEntity(secondUser);
+    const FrameStats destroyBefore = chunkStatsWorld.Stats();
+    chunkStatsWorld.DestroyEntity(chunkUser);
+    Check("StatsSince carries the chunk counters",
+          StatsSince(destroyBefore, chunkStatsWorld.Stats()).chunksReturned == 1);
+
     std::cout << "\n-- memory, a world in an arena --\n";
 
     WorldConfig arenaConfig;
@@ -884,7 +1087,7 @@ int main()
 
     std::vector<Archetype*> arenaArchetypes;
     arenaWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), 0, arenaArchetypes);
-    const Position* columnBefore = arenaArchetypes[0]->Column<Position>();
+    const Position* columnBefore = FirstChunk(arenaArchetypes[0]).Column<Position>();
     const std::size_t usedBefore = arenaWorld.MemoryStats().arena.used;
 
     for (int i = 1; i < 100; ++i)
@@ -898,12 +1101,15 @@ int main()
     Check("the world took the slab it was asked for", arenaMemory.arena.capacity == 64 * 1024);
     Check("the world lives inside the slab", arenaMemory.arena.used > 0);
     Check("nothing fell back to the heap", arenaMemory.resource.fromHeap == 0);
-    Check("filling a reserved archetype takes no more memory", arenaMemory.arena.used == usedBefore);
-    Check("a reserved column does not move as rows are added",
-          arenaArchetypes[0]->Column<Position>() == columnBefore);
+    Check("filling a chunk takes no more memory", arenaMemory.arena.used == usedBefore);
+    Check("a chunk's column does not move as rows are added",
+          FirstChunk(arenaArchetypes[0]).Column<Position>() == columnBefore);
     Check("the column holds every row", arenaArchetypes[0]->Count() == 100);
-    Check("a column is aligned like plain new",
-          reinterpret_cast<std::uintptr_t>(columnBefore) % __STDCPP_DEFAULT_NEW_ALIGNMENT__ == 0);
+    Check("a chunk starts aligned like plain new",
+          reinterpret_cast<std::uintptr_t>(arenaArchetypes[0]->Chunks()[0].bytes) %
+          __STDCPP_DEFAULT_NEW_ALIGNMENT__ == 0);
+    Check("a column starts aligned for its own type",
+          reinterpret_cast<std::uintptr_t>(columnBefore) % alignof(Position) == 0);
     Check("the first value survived", arenaWorld.GetComponent<Position>(firstInArena)->y == 2.0f);
 
     std::cout << "\n-- memory, a world on the heap --\n";
@@ -979,15 +1185,17 @@ int main()
     Check("a queued tag is not in the world during its own phase", !watcherSystem->sawTag);
     Check("the phase plays the buffer back when it ends", playbackWorld.HasComponent<Dead>(tagged));
 
-    std::cout << "\n-- archetype, const columns --\n";
+    std::cout << "\n-- chunk view, const columns --\n";
 
     std::vector<Archetype*> taggedArchetypes;
-    playbackWorld.CollectMatching(COMPONENTS::MaskOf<Position>(), 0, taggedArchetypes);
-    const Archetype* readOnly = taggedArchetypes[0];
-    Check("a const archetype hands out the same column",
-          readOnly->Column<Position>() == taggedArchetypes[0]->Column<Position>());
-    Check("a const column reads the value", readOnly->Column<Position>()[0].y == 2.0f);
-    Check("a const archetype has no column for a missing component", readOnly->Column<Velocity>() == nullptr);
+    /* Position and Dead: the Position-only archetype is empty now, and an empty archetype has no chunk. */
+    playbackWorld.CollectMatching(COMPONENTS::MaskOf<Position, Dead>(), 0, taggedArchetypes);
+    ChunkView writable = FirstChunk(taggedArchetypes[0]);
+    const ChunkView readOnly = writable;
+    Check("a const view hands out the same column",
+          readOnly.Column<Position>() == writable.Column<Position>());
+    Check("a const column reads the value", readOnly.Column<Position>()[0].y == 2.0f);
+    Check("a const view has no column for a missing component", readOnly.Column<Velocity>() == nullptr);
 
     std::cout << "\n-- fixed step --\n";
 

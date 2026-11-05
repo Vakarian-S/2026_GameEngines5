@@ -31,10 +31,10 @@ WrapIntoBoxSystem::WrapIntoBoxSystem(World& world, const float boxHalfWidth_) :
 void WrapIntoBoxSystem::Run(const SystemContext& context)
 {
     const float halfWidth = boxHalfWidth;
-    for (Archetype* archetype : movers.Matches())
+    movers.ForEachChunk([&](ChunkView chunk)
     {
-        Transform* transforms = archetype->Column<Transform>();
-        const uint32_t rows = archetype->Count();
+        Transform* transforms = chunk.Column<Transform>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             MATH::Vec3& position = transforms[row].position;
@@ -42,5 +42,5 @@ void WrapIntoBoxSystem::Run(const SystemContext& context)
             position.y = WrapIntoBox(position.y, halfWidth);
             position.z = WrapIntoBox(position.z, halfWidth);
         }
-    }
+    });
 }

@@ -55,28 +55,28 @@ void PickSystem::Run(const SystemContext& context)
     if (drop)
     {
         /* Remove picked from every holder since we are no longer holding the mouse */
-        for (const Archetype* archetype : pickedEntities.Matches())
+        pickedEntities.ForEachChunk([&](const ChunkView chunk)
         {
-            const Entity* owners = archetype->EntityColumn();
-            const uint32_t rows = archetype->Count();
+            const Entity* owners = chunk.Entities();
+            const uint32_t rows = chunk.Count();
             for (uint32_t row = 0; row < rows; ++row)
             {
                 context.commands.RemoveComponent<PHYSICS::Picked>(owners[row]);
             }
-        }
+        });
     }
     else
     {
         /* Update the Picked entity to have an updated position based on the mouse */
-        for (Archetype* archetype : pickedEntities.Matches())
+        pickedEntities.ForEachChunk([&](ChunkView chunk)
         {
-            PHYSICS::Picked* pickedComponents = archetype->Column<PHYSICS::Picked>();
-            const uint32_t rows = archetype->Count();
+            PHYSICS::Picked* pickedComponents = chunk.Column<PHYSICS::Picked>();
+            const uint32_t rows = chunk.Count();
             for (uint32_t row = 0; row < rows; ++row)
             {
                 pickedComponents[row].mouseTarget = mouseRay.PointAt(pickedComponents[row].grabT);
             }
-        }
+        });
     }
     
     if (!context.inputState->mousePressed[SDL_BUTTON_LEFT]) return;
@@ -85,11 +85,11 @@ void PickSystem::Run(const SystemContext& context)
     Entity pickedEntity{};
     PHYSICS::RayHit finalRayHit{};
 
-    for (const Archetype* archetype : boxColliderEntities.Matches())
+    boxColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::BoxCollider* colliders = archetype->Column<PHYSICS::BoxCollider>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::BoxCollider* colliders = chunk.Column<PHYSICS::BoxCollider>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             if (transforms[row].scale < MATH::kVerySmall) continue;
@@ -99,15 +99,15 @@ void PickSystem::Run(const SystemContext& context)
             {
                 t = rayHit->t;
                 finalRayHit = rayHit.value();
-                pickedEntity = archetype->EntityColumn()[row];
+                pickedEntity = chunk.Entities()[row];
             }
         }
-    }
-    for (const Archetype* archetype : sphereColliderEntities.Matches())
+    });
+    sphereColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::SphereCollider* colliders = archetype->Column<PHYSICS::SphereCollider>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::SphereCollider* colliders = chunk.Column<PHYSICS::SphereCollider>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             if (transforms[row].scale < MATH::kVerySmall) continue;
@@ -117,15 +117,15 @@ void PickSystem::Run(const SystemContext& context)
             {
                 t = rayHit->t;
                 finalRayHit = rayHit.value();
-                pickedEntity = archetype->EntityColumn()[row];
+                pickedEntity = chunk.Entities()[row];
             }
         }
-    }
-    for (const Archetype* archetype : cylinderColliderEntities.Matches())
+    });
+    cylinderColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::CylinderCollider* colliders = archetype->Column<PHYSICS::CylinderCollider>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::CylinderCollider* colliders = chunk.Column<PHYSICS::CylinderCollider>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             if (transforms[row].scale < MATH::kVerySmall) continue;
@@ -135,15 +135,15 @@ void PickSystem::Run(const SystemContext& context)
             {
                 t = rayHit->t;
                 finalRayHit = rayHit.value();
-                pickedEntity = archetype->EntityColumn()[row];
+                pickedEntity = chunk.Entities()[row];
             }
         }
-    }
-    for (const Archetype* archetype : capsuleColliderEntities.Matches())
+    });
+    capsuleColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::CapsuleCollider* colliders = archetype->Column<PHYSICS::CapsuleCollider>();
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::CapsuleCollider* colliders = chunk.Column<PHYSICS::CapsuleCollider>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             if (transforms[row].scale < MATH::kVerySmall) continue;
@@ -153,10 +153,10 @@ void PickSystem::Run(const SystemContext& context)
             {
                 t = rayHit->t;
                 finalRayHit = rayHit.value();
-                pickedEntity = archetype->EntityColumn()[row];
+                pickedEntity = chunk.Entities()[row];
             }
         }
-    }
+    });
     
     const bool hasHit = pickedEntity.version != 0;
     if (hasHit)
@@ -186,10 +186,10 @@ void PickSystem::Run(const SystemContext& context)
     }
 
     /* A miss draws the ray out to the far plane */
-    for (Archetype* archetype : pickRays.Matches())
+    pickRays.ForEachChunk([&](ChunkView chunk)
     {
-        PHYSICS::PickRay* pickRayComponents = archetype->Column<PHYSICS::PickRay>();
-        const uint32_t rows = archetype->Count();
+        PHYSICS::PickRay* pickRayComponents = chunk.Column<PHYSICS::PickRay>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             pickRayComponents[row] = {
@@ -198,5 +198,5 @@ void PickSystem::Run(const SystemContext& context)
                 .hasHit = hasHit
             };
         }
-    }
+    });
 }

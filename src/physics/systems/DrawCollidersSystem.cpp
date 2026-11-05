@@ -46,57 +46,57 @@ void DrawCollidersSystem::Run(const SystemContext& context)
     assert(context.debugLines != nullptr && "DrawColliders runs in Extract, which hands it a debug lines list");
     DebugLines& debugLines = *context.debugLines;
     
-    for (const Archetype* archetype : boxColliderDrawables.Matches())
+    boxColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::BoxCollider* colliders = archetype->Column<PHYSICS::BoxCollider>();
-        const MATH::Vec3 colour = WireColour(archetype);
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::BoxCollider* colliders = chunk.Column<PHYSICS::BoxCollider>();
+        const MATH::Vec3 colour = WireColour(chunk.Owner());
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
             AddWireBox(debugLines, modelMatrixTransform, colliders[row].halfExtents, colour);
         }
-    }
+    });
 
-    for (const Archetype* archetype : sphereColliderDrawables.Matches())
+    sphereColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::SphereCollider* colliders = archetype->Column<PHYSICS::SphereCollider>();
-        const MATH::Vec3 colour = WireColour(archetype);
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::SphereCollider* colliders = chunk.Column<PHYSICS::SphereCollider>();
+        const MATH::Vec3 colour = WireColour(chunk.Owner());
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
             AddWireSphere(debugLines, modelMatrixTransform, colliders[row].radius, colour);
         }
-    }
+    });
 
-    for (const Archetype* archetype : cylinderColliderDrawables.Matches())
+    cylinderColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::CylinderCollider* colliders = archetype->Column<PHYSICS::CylinderCollider>();
-        const MATH::Vec3 colour = WireColour(archetype);
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::CylinderCollider* colliders = chunk.Column<PHYSICS::CylinderCollider>();
+        const MATH::Vec3 colour = WireColour(chunk.Owner());
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
             AddWireCylinder(debugLines, modelMatrixTransform, colliders[row].radius, colliders[row].halfHeight,
                             colour);
         }
-    }
+    });
 
-    for (const Archetype* archetype : capsuleColliderDrawables.Matches())
+    capsuleColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = archetype->Column<Transform>();
-        const PHYSICS::CapsuleCollider* colliders = archetype->Column<PHYSICS::CapsuleCollider>();
-        const MATH::Vec3 colour = WireColour(archetype);
-        const uint32_t rows = archetype->Count();
+        const Transform* transforms = chunk.Column<Transform>();
+        const PHYSICS::CapsuleCollider* colliders = chunk.Column<PHYSICS::CapsuleCollider>();
+        const MATH::Vec3 colour = WireColour(chunk.Owner());
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
             AddWireCapsule(debugLines, modelMatrixTransform, colliders[row].radius, colliders[row].halfHeight,
                            colour);
         }
-    }
+    });
 }

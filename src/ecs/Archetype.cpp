@@ -3,92 +3,140 @@
 #include <cassert>
 #include <cstring>
 
-ComponentColumn::ComponentColumn(const ComponentId type_, const uint32_t elementSize_,
-                                 std::pmr::memory_resource* memory)
-    : type(type_), elementSize(elementSize_), data(memory)
-{
-}
+#include "ecs/ChunkPool.h"
 
-Archetype::Archetype(const ComponentMask mask, std::pmr::memory_resource* memory, const uint32_t reservedRows)
-    : mask(mask), componentColumns(memory), entities(memory), reservedRows(reservedRows)
+Archetype::Archetype(const ComponentMask mask, std::pmr::memory_resource* memory, ChunkPool* pool)
+    : mask(mask),
+      columns(memory), chunks(memory), pool(pool)
 {
-    /* Counted first, so the column list is allocated once at its final size. */
-    uint32_t columnCount = 0;
-    for (ComponentId id = 0; id < kMaxComponents; id++)
-    {
-        if ((mask & ComponentMask{1} << id) != 0 && COMPONENTS::InfoOf(id).size > 0) ++columnCount;
-    }
-    componentColumns.reserve(columnCount);
-
-    /* Navigate the bits in ascending order so component always land in ascending id order */
+    /* First pass: the totals, so the layout list is allocated once and the row count is known. */
+    uint32_t layoutCount = 0;
+    uint32_t rowBytes = sizeof(Entity);
+    uint32_t worstPadding = 0;
     for (ComponentId id = 0; id < kMaxComponents; id++)
     {
         if ((mask & ComponentMask{1} << id) == 0) continue;
-        /* If its a tag, it stores nothing */
-        const uint32_t elementSize = COMPONENTS::InfoOf(id).size;
-        if (elementSize == 0) continue;
-        componentColumns.emplace_back(id, elementSize, memory);
-        componentColumns.back().data.reserve(static_cast<size_t>(reservedRows) * elementSize);
+        const ComponentInfo& info = COMPONENTS::InfoOf(id);
+        if (info.size == 0) continue;
+        ++layoutCount;
+        rowBytes += info.size;
+        worstPadding += info.alignment - 1;
     }
 
-    entities.reserve(reservedRows);
+    /* Taking the worst padding off first means the offsets below can never run past the chunk. */
+    rowsPerChunk = (pool->ChunkBytes() - worstPadding) / rowBytes;
+    assert(rowsPerChunk > 0 && "one row is bigger than a chunk, raise chunkBytes");
+
+    /* Second pass: the entity slice sits at 0, then each column in ascending id order. */
+    columns.reserve(layoutCount);
+    uint32_t offset = rowsPerChunk * static_cast<uint32_t>(sizeof(Entity));
+    for (ComponentId id = 0; id < kMaxComponents; id++)
+    {
+        if ((mask & ComponentMask{1} << id) == 0) continue;
+        const ComponentInfo& info = COMPONENTS::InfoOf(id);
+        if (info.size == 0) continue;
+        offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
+        columns.push_back({id, info.size, offset});
+
+        offset += rowsPerChunk * info.size;
+    }
+    assert(offset <= pool->ChunkBytes() && "the layout ran past the end of the chunk");
+}
+
+Archetype::~Archetype()
+{
+    for (const auto& [bytes, count] : chunks)
+    {
+        pool->ReturnChunk(bytes);
+    }
 }
 
 std::byte* Archetype::ElementAt(const ComponentId type, const uint32_t row)
 {
-    ComponentColumn* column = FindColumn(type);
+    const ColumnLayout* column = FindLayout(type);
     if (column == nullptr) return nullptr;
-    return column->data.data() + row * column->elementSize;
+    const uint32_t chunkNumber = row / rowsPerChunk;
+    return chunks[chunkNumber].bytes + column->offset + row % rowsPerChunk * column->elementSize;
+}
+
+const std::byte* Archetype::ElementAt(const ComponentId type, const uint32_t row) const
+{
+    const ColumnLayout* column = FindLayout(type);
+    if (column == nullptr) return nullptr;
+    const uint32_t chunkNumber = row / rowsPerChunk;
+    return chunks[chunkNumber].bytes + column->offset + row % rowsPerChunk * column->elementSize;
 }
 
 uint32_t Archetype::AddRow(const Entity entity)
 {
-    const uint32_t row = static_cast<uint32_t>(entities.size());
-
-    /* Past the reserve a column takes a new block and abandons the old one inside the arena. */
-    assert((reservedRows == 0 || row < reservedRows) && "the archetype is full, raise maxEntities");
-
-    entities.push_back(entity);
-
-    for (ComponentColumn& column : componentColumns)
+    if (chunks.empty() || chunks.back().count >= rowsPerChunk)
     {
-        column.data.resize(static_cast<size_t>(row + 1) * column.elementSize);
+        chunks.push_back({pool->TakeChunk(), 0});
     }
-    return row;
+    auto& [bytes, count] = chunks.back();
+    const uint32_t localChunkRow = count;
+    std::byte* startOfBuffer = bytes;
+    std::memcpy(
+        startOfBuffer + localChunkRow * sizeof(Entity),
+        &entity,
+        sizeof(Entity)
+    );
+    for (const ColumnLayout& column : columns)
+    {
+        std::memset(
+            startOfBuffer + column.offset + localChunkRow * column.elementSize,
+            0,
+            column.elementSize
+        );
+    }
+    count++;
+    return rowsCount++;
 }
 
 Entity Archetype::RemoveRow(const uint32_t row)
 {
-    assert(row < entities.size());
+    assert(row < rowsCount);
 
-    const uint32_t last = static_cast<uint32_t>(entities.size()) - 1;
-    Entity moved{0, 0};
+    const uint32_t lastRow = rowsCount - 1;
+    auto& [lastChunkBytes, lastChunkCount] = chunks.back();
+    const uint32_t lastLocalRow = lastChunkCount - 1;
+    Entity moved{.index = 0, .version = 0};
 
-    if (row != last)
+    if (row != lastRow)
     {
-        for (ComponentColumn& column : componentColumns)
+        const auto& [targetChunkBytes, targetChunkCount] =
+            chunks[row / rowsPerChunk];
+        const uint32_t targetLocal = row % rowsPerChunk;
+
+        std::memcpy(targetChunkBytes + targetLocal * sizeof(Entity),
+                    lastChunkBytes + lastLocalRow * sizeof(Entity),
+                    sizeof(Entity));
+        for (const ColumnLayout& column : columns)
         {
-            std::byte* base = column.data.data();
-            std::memcpy(base + static_cast<size_t>(row) * column.elementSize,
-                        base + static_cast<size_t>(last) * column.elementSize,
+            std::memcpy(targetChunkBytes + column.offset + targetLocal * column.elementSize,
+                        lastChunkBytes + column.offset + lastLocalRow * column.elementSize,
                         column.elementSize);
         }
-        entities[row] = entities[last];
-        moved = entities[row];
+
+        /* Read before the counts change, because the last chunk may go back to the pool below. */
+        std::memcpy(&moved, targetChunkBytes + targetLocal * sizeof(Entity), sizeof(Entity));
+    }
+    lastChunkCount--;
+    rowsCount--;
+
+    if (lastChunkCount == 0)
+    {
+        pool->ReturnChunk(lastChunkBytes);
+        chunks.pop_back();
     }
 
-    entities.pop_back();
-    for (ComponentColumn& column : componentColumns)
-    {
-        column.data.resize(last * column.elementSize);
-    }
     return moved;
 }
 
 
 uint32_t Archetype::ColumnCount() const
 {
-    return static_cast<uint32_t>(componentColumns.size());
+    return static_cast<uint32_t>(columns.size());
 }
 
 ComponentMask Archetype::Mask() const
@@ -98,12 +146,12 @@ ComponentMask Archetype::Mask() const
 
 uint32_t Archetype::Count() const
 {
-    return static_cast<uint32_t>(entities.size());
+    return rowsCount;
 }
 
-ComponentColumn* Archetype::FindColumn(const ComponentId type)
+ColumnLayout* Archetype::FindLayout(const ComponentId type)
 {
-    for (ComponentColumn& column : componentColumns)
+    for (ColumnLayout& column : columns)
     {
         if (column.type == type)
         {
@@ -113,9 +161,9 @@ ComponentColumn* Archetype::FindColumn(const ComponentId type)
     return nullptr;
 }
 
-const ComponentColumn* Archetype::FindColumn(const ComponentId type) const
+const ColumnLayout* Archetype::FindLayout(const ComponentId type) const
 {
-    for (const ComponentColumn& column : componentColumns)
+    for (const ColumnLayout& column : columns)
     {
         if (column.type == type)
         {

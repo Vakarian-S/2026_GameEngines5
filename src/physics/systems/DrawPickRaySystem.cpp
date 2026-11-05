@@ -27,10 +27,10 @@ void DrawPickRaySystem::Run(const SystemContext& context)
     assert(context.debugLines != nullptr && "DrawPickRay runs in Extract, which hands it a debug lines list");
     DebugLines& debugLines = *context.debugLines;
 
-    for (const Archetype* archetype : pickRays.Matches())
+    pickRays.ForEachChunk([&](const ChunkView chunk)
     {
-        const PHYSICS::PickRay* pickRayComponents = archetype->Column<PHYSICS::PickRay>();
-        const uint32_t rows = archetype->Count();
+        const PHYSICS::PickRay* pickRayComponents = chunk.Column<PHYSICS::PickRay>();
+        const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
             const auto& [ray, t, hasHit] = pickRayComponents[row];
@@ -48,5 +48,5 @@ void DrawPickRaySystem::Run(const SystemContext& context)
             AddLine(debugLines, end - armY, end + armY, kCrossColour);
             AddLine(debugLines, end - armZ, end + armZ, kCrossColour);
         }
-    }
+    });
 }
