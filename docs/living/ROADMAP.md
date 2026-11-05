@@ -30,6 +30,7 @@ hold the measurements behind most rows.
 - [Debug tools](#debug-tools)
   - [Persistent debug lines](#persistent-debug-lines)
   - [A shipping build](#a-shipping-build)
+  - [Automated game tests](#automated-game-tests)
 - [Course topics](#course-topics)
   - [Semester topics](#semester-topics)
   - [The Ubisoft Next contest](#the-ubisoft-next-contest)
@@ -203,6 +204,21 @@ way PhysX ships its visualization switched off.
 | # | builds | why | status |
 |---|---|---|---|
 | 1 | A define of its own for debug drawing, such as `GE5_DEBUG_DRAW`, wrapping the helpers and the lines that register debug systems, once the engine has a shipping configuration | Not `_DEBUG`: the wires are wanted in optimized builds too, for example while profiling a physics bug in Release. Unreal does the same, wrapping debug drawing in `UE_ENABLE_DEBUG_DRAWING` and removing it only from Shipping builds. An environment variable cannot do this job: it picks settings at runtime but cannot take code out of the binary | to-do |
+
+### Automated game tests
+
+From 2026-11-05. `scripts/run-game.ps1` drives the game from outside: it sends keys and mouse input
+through Windows and photographs the window. Its first runs found a real crash (Scene1's world arena
+fills at startup). It needs the desktop and the window's focus, its timing is wall-clock time, and its
+screenshots depend on the screen. These rows move the same job inside the engine, so a run needs no
+desktop and plays the same frames every time.
+
+| # | builds | why | status |
+|---|---|---|---|
+| 1 | Input replay: a file of "frame N: this input" that fills `InputState` instead of SDL | Input enters in one place (STATE.md, architecture rule 8), so a replay changes nothing else. With the fixed step, a replay plays the same frames on every run, with no focus or desktop | to-do |
+| 2 | Frame capture: the renderer saves a frame to a PNG on request | An exact image of what the GPU drew, with no screen, window border or DPI in it | to-do |
+| 3 | Image compare: save a known-good image once, compare each run against it | Catches visual changes no log shows. Needs 1 and 2, so the same frames give the same image | to-do |
+| 4 | `run-game.ps1` starts the exe with a replay file, and the PowerShell input goes | Once 1 and 2 exist, the script only starts, waits and reads the summary | to-do |
 
 ## Course topics
 

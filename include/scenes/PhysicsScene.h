@@ -74,4 +74,7 @@ private:
     MaterialHandle marioMaterial;
     MeshHandle cubeMesh;
     MaterialHandle cubeMaterial;
+    
+    /** Spawns all the entities on the scene */
+    void SpawnShapes();
 };

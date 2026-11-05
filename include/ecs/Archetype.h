@@ -99,6 +99,11 @@ public:
      */
     const ColumnLayout* FindLayout(ComponentId type) const;
 
+    /**
+     * Releases all the currently held chunks, returning them to the pools
+     */
+    void ReleaseChunks();
+
     /** Every chunk of this archetype. Each is full except the last one. */
     std::pmr::vector<Chunk>& Chunks() { return chunks; }
 

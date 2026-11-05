@@ -213,6 +213,23 @@ void World::RemoveComponentById(const Entity entity, const ComponentId id)
     MoveEntity(entity, currentArchetypeMask & ~(ComponentMask{1} << id));
 }
 
+void World::Clear()
+{
+    for (Archetype* archetype : archetypes)
+    {
+        archetype->ReleaseChunks();
+    }
+
+    for (uint32_t index = 0; index < entitySlots.size(); ++index)
+    {
+        EntitySlot& slot = entitySlots[index];
+        if (slot.archetype == kInvalidArchetype) continue;
+        slot.version++;
+        slot.archetype = kInvalidArchetype;
+        freeSlots.push_back(index);
+    }
+}
+
 uint16_t World::ArchetypeIndexFor(const ComponentMask mask)
 {
     for (size_t i = 0; i < archetypes.size(); i++)

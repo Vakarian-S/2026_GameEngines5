@@ -38,8 +38,52 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
     cubeMaterial = resourceLoader.CreateMaterial({
         .albedo = skullTexture, .shininess = 4.0f, .specularStrength = 0.1f
     });
+    SpawnShapes();
+    systems.Add(Phase::Update, std::make_unique<PickSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<ApplyForcesSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<MouseConstraintSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<UpdatePositionSystem>(world));
+    systems.Add(Phase::Fixed, std::make_unique<UpdateOrientationSystem>(world));
+    drawRenderables = systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
+    drawColliders = systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
+    drawPickRay = systems.Add(Phase::Extract, std::make_unique<DrawPickRaySystem>(world));
+    drawGrabLines = systems.Add(Phase::Extract, std::make_unique<DrawGrabLineSystem>(world));
 
-    /* ========== Entities ======== */
+    return true;
+}
+
+void PhysicsScene::OnDestroy()
+{
+    /* Folds the final frame into the run totals, which Main prints. */
+    world.ResetFrameStats();
+}
+
+void PhysicsScene::Update(const float deltaTime, const InputState& input)
+{
+    world.ResetFrameStats();
+    flyCameraController.Update(deltaTime);
+    camera.view = flyCameraController.View();
+    if (input.Pressed(SDL_SCANCODE_C))
+    {
+        systems.SetEnabled(drawColliders, !systems.IsEnabled(drawColliders));
+        systems.SetEnabled(drawPickRay, !systems.IsEnabled(drawPickRay));
+        systems.SetEnabled(drawGrabLines, !systems.IsEnabled(drawGrabLines));
+    }
+    if (input.Pressed(SDL_SCANCODE_M)) systems.SetEnabled(drawRenderables, !systems.IsEnabled(drawRenderables));
+    if (input.Pressed(SDL_SCANCODE_R))
+    {
+        world.Clear();
+        SpawnShapes();
+    }
+}
+
+void PhysicsScene::HandleEvents(const SDL_Event& sdlEvent)
+{
+    flyCameraController.HandleEvent(sdlEvent);
+}
+
+void PhysicsScene::SpawnShapes()
+{
     constexpr PHYSICS::BoxCollider cubeCollider{};
     world.CreateEntity(
         Transform{
@@ -124,43 +168,5 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
             .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, 2.f)
         }
     );
-
     world.CreateEntity(PHYSICS::PickRay{});
-
-    systems.Add(Phase::Update, std::make_unique<PickSystem>(world));
-    systems.Add(Phase::Fixed, std::make_unique<ApplyForcesSystem>(world));
-    systems.Add(Phase::Fixed, std::make_unique<MouseConstraintSystem>(world));
-    systems.Add(Phase::Fixed, std::make_unique<UpdatePositionSystem>(world));
-    systems.Add(Phase::Fixed, std::make_unique<UpdateOrientationSystem>(world));
-    drawRenderables = systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
-    drawColliders = systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
-    drawPickRay = systems.Add(Phase::Extract, std::make_unique<DrawPickRaySystem>(world));
-    drawGrabLines = systems.Add(Phase::Extract, std::make_unique<DrawGrabLineSystem>(world));
-
-    return true;
-}
-
-void PhysicsScene::OnDestroy()
-{
-    /* Folds the final frame into the run totals, which Main prints. */
-    world.ResetFrameStats();
-}
-
-void PhysicsScene::Update(const float deltaTime, const InputState& input)
-{
-    world.ResetFrameStats();
-    flyCameraController.Update(deltaTime);
-    camera.view = flyCameraController.View();
-    if (input.Pressed(SDL_SCANCODE_C))
-    {
-        systems.SetEnabled(drawColliders, !systems.IsEnabled(drawColliders));
-        systems.SetEnabled(drawPickRay, !systems.IsEnabled(drawPickRay));
-        systems.SetEnabled(drawGrabLines, !systems.IsEnabled(drawGrabLines));
-    }
-    if (input.Pressed(SDL_SCANCODE_M)) systems.SetEnabled(drawRenderables, !systems.IsEnabled(drawRenderables));
-}
-
-void PhysicsScene::HandleEvents(const SDL_Event& sdlEvent)
-{
-    flyCameraController.HandleEvent(sdlEvent);
 }

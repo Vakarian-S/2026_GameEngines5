@@ -1,9 +1,9 @@
 # Build and test
 
-**Last updated:** 2026-10-28.
+**Last updated:** 2026-11-05.
 
-How the repository is laid out, how to build it, and how to run its checks. Taking MemoryMonitor
-into another project is in tools/memory-monitor.md.
+How the repository is laid out, how to build it, how to run its checks, and how to run the game from
+a script. Taking MemoryMonitor into another project is in tools/memory-monitor.md.
 
 ## Layout
 
@@ -119,7 +119,7 @@ next to the setting.
 Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.
 
 `EcsTests`, `ArenaTests` and `PhysicsTests` are their own programs, registered with CTest next to
-`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 220 checks in
+`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 281 checks in
 every configuration (2026-11-05), 5 of them for `FixedStep`, which is core but needs nothing else. `ArenaTests` runs 73 in Debug and 72 in Release, because the check that reads
 the `0xDD` fill only exists in Debug.
 
@@ -144,3 +144,67 @@ even when nothing else changed. Release prints no file tags, so it stays a clean
 ./scripts/capture-output.sh step0          # before the change
 ./scripts/capture-output.sh step1 step0    # after, and compare
 ```
+
+## Running the game from a script
+
+`scripts/run-game.ps1` starts `GameEngines5.exe`, plays a list of steps into its window, closes it the
+way the X button does, and prints a summary. It is how a Claude session checks a change that shows on
+screen, instead of asking Vakarian to test it.
+
+```powershell
+.\scripts\run-game.ps1 -Scene 0 -Steps "press F2","wait 1500","shot scene1"
+.\scripts\run-game.ps1 -Steps (1..20 | ForEach-Object { "press F2", "wait 700", "press F1", "wait 700" })
+.\scripts\run-game.ps1 -Steps "wait 500","click 540 390","wait 800","shot picked"
+```
+
+| parameter | meaning | default |
+|---|---|---|
+| `-Scene` | the scene index passed to the exe | none, which starts the last scene |
+| `-Steps` | the steps, one per string | none |
+| `-Config` | `Debug` or `Release` | `Debug` |
+| `-OutDir` | where the logs and screenshots go | `%TEMP%\ge5-run` |
+| `-StartWait` | milliseconds to wait for the window | 4000 |
+
+| step | does |
+|---|---|
+| `press KEY` | taps a key for 50 ms |
+| `hold KEY[,KEY] MS` | holds one or more keys together, for example `hold W,Shift 600` |
+| `wait MS` | waits |
+| `shot NAME` | saves the window as `NAME.png` in the output folder |
+| `move DX DY [COUNT]` | moves the mouse by DX, DY, COUNT times, 16 ms apart |
+| `rightdown`, `rightup`, `leftdown`, `leftup` | presses or releases a mouse button |
+| `click X Y` | left-clicks at X, Y inside the window, counted from its top-left corner |
+| `resize W H` | moves the window to 50, 50 and sizes it W by H |
+| `minimize`, `maximize`, `restore` | the window states |
+
+Keys are F1 to F4, A to Z, 0 to 9, Shift, Space and Escape.
+
+The summary gives the exit code, the counts of `[WARNING]` and `[ERROR]` lines and failed asserts
+(with the first five), how many scenes closed, the leaked blocks, and each "fell to the heap" count. A
+clean run reads exit code 0, zero of each, 0 leaked blocks and 0 fell to the heap. The full output is
+in `out.txt` and `err.txt` in the output folder.
+
+How it works:
+
+- Keys go through Windows' `SendInput` as scancodes, because SDL reads keys by scancode. The mouse
+  goes through the same call.
+- Windows sends input only to the active window, so the script focuses the game before each step.
+- Screenshots copy the window's area of the screen. The script turns on DPI awareness first, or the
+  area comes out at the wrong size.
+- The close is a real close request, so the game shuts down normally and prints its leak report.
+- If the game exits early, the script stops, says before which step, and still prints the summary.
+
+Limits:
+
+- It needs the desktop. The game takes focus while it runs, so a click elsewhere can steal a step. A
+  cloud session cannot run it.
+- Timing is wall-clock time, so a held key covers a different number of frames on each run.
+- Screenshots show the screen, so another window or a DPI change alters them.
+
+ROADMAP.md, "Automated game tests", moves this inside the engine.
+
+## Files
+
+- `scripts/run-tests.bat`: builds and runs the four test programs.
+- `scripts/capture-output.sh`: the refactor check above.
+- `scripts/run-game.ps1`: runs the game from a script.

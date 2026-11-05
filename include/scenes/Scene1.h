@@ -46,8 +46,8 @@ private:
     
     /** Most entities alive at once: Mario and two cubes, with room to spare */
     static constexpr uint32_t kMaxEntities = 16;
-    /** Bytes in the world's slab. Each archetype reserves kMaxEntities rows, so a few hundred bytes each */
-    static constexpr std::size_t kWorldArenaBytes = 16 * 1024;
+    /** Bytes in Scene1's world slab: one 16 KB chunk per archetype with rows, two today, plus the slots and archetypes */
+    static constexpr std::size_t kWorldArenaBytes = 64 * 1024;
 
     World world;
     /** Every system this scene runs */

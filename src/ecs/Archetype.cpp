@@ -45,10 +45,7 @@ Archetype::Archetype(const ComponentMask mask, std::pmr::memory_resource* memory
 
 Archetype::~Archetype()
 {
-    for (const auto& [bytes, count] : chunks)
-    {
-        pool->ReturnChunk(bytes);
-    }
+    ReleaseChunks();
 }
 
 std::byte* Archetype::ElementAt(const ComponentId type, const uint32_t row)
@@ -171,4 +168,14 @@ const ColumnLayout* Archetype::FindLayout(const ComponentId type) const
         }
     }
     return nullptr;
+}
+
+void Archetype::ReleaseChunks()
+{
+    for (const auto& [bytes, count] : chunks)
+    {
+        pool->ReturnChunk(bytes);
+    }
+    chunks.clear();
+    rowsCount = 0;
 }

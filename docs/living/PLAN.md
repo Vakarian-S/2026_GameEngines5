@@ -13,7 +13,7 @@ Hardening, rows 1, 2, 4, 7 and 12. Rows 3, 5, 6 and 8 to 11 stay in the roadmap.
 | # | step | done when | stage |
 |---|---|---|---|
 | 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | done `5de98168` |
-| 2 | Create with components: one call puts an entity in its final archetype | A spawn makes zero migrations, in the World and through the command buffer | designed |
+| 2 | Create with components: one call puts an entity in its final archetype | A spawn makes zero migrations, in the World and through the command buffer | done `66e17cf` |
 | 3 | Clear the World in one call | R in `PhysicsScene` clears and respawns the shapes, a handle from before reads as dead, and the respawn takes no new chunks from the arena | designed |
 | 4 | An intrusive free list: a free slot's `row` holds the next free index | `freeSlots` is gone, the slot tests pass unchanged, `CheckFreeList` passes after every test sequence, and the arena's used bytes drop by `maxEntities × 4` | designed |
 | 5 | Entity breakpoints: a `DebugWatch` tag, checked inside `ForEachChunk` | Under Rider, every system that reaches the tagged shape stops, the plain exe runs on with the tag in place, and `EcsBench` shows no cost with no tag | designed |
@@ -432,6 +432,46 @@ void World::Clear()
   respawn, with the arena's used bytes unchanged.
 - A test: hold a handle, clear, and check that `DoesEntityExist` is false and that the next entity
   at that index has a higher version.
+
+### What the build changed
+
+- **`Archetype::ReleaseChunks()`** gives every chunk back to the pool, empties the chunk list and sets
+  the row count to 0. The destructor now calls it, so one loop does both jobs.
+- **`World::Clear()`** is the sketch above: release every archetype's chunks, then bump and free each
+  live slot. It does not count `entitiesDestroyed`, so a scene's ECS report shows more creates than
+  live entities after a clear.
+- **`PhysicsScene::SpawnShapes()`** holds the six shapes and the `PickRay`. `OnCreate` calls it before
+  adding the systems, and R in `Update` calls `world.Clear()` and then `SpawnShapes()`.
+- **No system keeps an `Entity` across frames.** `PickSystem`'s `pickedEntity` is a local, and a grab
+  lives in the `Picked` component, so R while holding a shape clears the grab with the rest.
+- **Scene1's slab went from 16 KB to 64 KB.** The game run below found Scene1 stopping on the arena
+  assert at startup. Since step 1 an archetype with rows holds at least one 16 KB chunk, and Scene1
+  has two, so 16 KB could not even hold the slots and one chunk. Step 1 checked `PhysicsScene`, not
+  Scene1, so it went unseen from `5de98168` on.
+
+### What the build checked
+
+**Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` runs 281 checks, 24
+of them in a new "clear" section, on a world of 1,010 entities in two archetypes:
+
+- A handle from before the clear reads as gone and reads no component, before and after the respawn.
+- The clear leaves no rows but keeps every archetype, the generation and the slot table, and returns
+  every chunk in use to the free list.
+- The respawn takes back exactly the chunks the clear returned, with no new arena bytes, nothing sent
+  to the heap and no new archetype. Every respawned entity has version 2, with its new values.
+- 50 more clear and respawn rounds leave the arena's used bytes, the heap count and the free chunks
+  unchanged.
+- Two clears in a row free each slot once, so no two entities share an index.
+- Clearing an empty world is harmless.
+
+**The game,** in Debug, through `scripts\run-game.ps1`:
+
+| run | steps | result |
+|---|---|---|
+| R in `PhysicsScene` | `-Scene 0`: F3, then R three times | exit 0, no asserts, warnings or errors, 0 fell to the heap, 0 leaked blocks. The ECS report: 28 created (7 shapes, 4 times), 20 chunks taken and 15 returned, 0 migrations, 7 live. The screenshot after R shows the six shapes back where they start |
+| Scene1 before the fix | `-Scene 1`, wait | the arena assert, exit code 3 |
+| Scene1 after the fix | `-Scene 1`, wait | exit 0, clean, 0 leaked blocks |
+| Every scene, five times | `-Scene 1`: F1, F2, F3, R, five times | 16 scenes closed, no asserts, warnings or errors, 0 fell to the heap in every world and the frame arena, 0 leaked blocks |
 
 ## 4. An intrusive free list
 

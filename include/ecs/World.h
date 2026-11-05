@@ -251,6 +251,12 @@ public:
     */
     void RemoveComponentById(Entity entity, ComponentId id);
 
+    /**
+     * Clears the world, releasing all the archetypes and marking all the entity slots with a new version
+     * and point to an invalid archetype
+     */
+    void Clear();
+
 private:
     /* Declared first, so they are built before every container below and destroyed after them. */
 

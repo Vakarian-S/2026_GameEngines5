@@ -110,6 +110,9 @@ settled, and delete them. Name each deleted file in the commit message.
 - **A step is checked** by building, running, closing the window and reading the error stream: no
   `[WARNING]`, no `[ERROR]`, and 0 leaked blocks. `scripts\run-tests.bat` passes in all four
   configurations.
+- **The game is checked by running it,** not by asking Vakarian: `scripts\run-game.ps1` starts it,
+  presses keys, clicks, takes screenshots, closes it and prints those checks.
+  tools/build-and-test.md, "Running the game from a script", has the steps.
 - **Timings** move about 8% from run to run, and the first run of a fresh build is about 25% slower.
   Compare the mean of three runs, and drop the cold one. Counters (migrations, bytes, allocations)
   are exact on one run.

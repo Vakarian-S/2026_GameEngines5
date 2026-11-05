@@ -1348,6 +1348,127 @@ int main()
           FirstChunk(deadHealth[0]).Column<Health>()[0].current == 3.0f);
     Check("only the later add migrates", bufferedWorld.Stats().migrations == 1);
 
+    std::cout << "\n-- clear --\n";
+
+    WorldConfig clearConfig;
+    clearConfig.maxEntities = 2048;
+    World clearWorld(clearConfig);
+
+    constexpr uint32_t kClearMovers = 1000;
+    constexpr uint32_t kClearTagged = 10;
+    constexpr uint32_t kClearTotal = kClearMovers + kClearTagged;
+
+    /* Fills the world with movers and a few tagged ones, and returns every handle in creation order. */
+    const auto spawnClearLoad = [&clearWorld]()
+    {
+        std::vector<Entity> handles;
+        for (uint32_t i = 0; i < kClearMovers; ++i)
+        {
+            handles.push_back(clearWorld.CreateEntity(Position{static_cast<float>(i), 0.0f, 0.0f},
+                                                      Velocity{1.0f, 0.0f, 0.0f}));
+        }
+        for (uint32_t i = 0; i < kClearTagged; ++i)
+        {
+            handles.push_back(clearWorld.CreateEntity(Position{}, Dead{}));
+        }
+        return handles;
+    };
+
+    /* Counts the chunks every archetype holds right now. */
+    const auto chunksInUse = [&clearWorld]()
+    {
+        std::vector<Archetype*> all;
+        clearWorld.CollectMatching(0, 0, all);
+        uint32_t total = 0;
+        for (Archetype* archetype : all) total += static_cast<uint32_t>(archetype->Chunks().size());
+        return total;
+    };
+
+    const std::vector<Entity> beforeClear = spawnClearLoad();
+    const Entity heldHandle = beforeClear.front();
+
+    const uint32_t generationBefore = clearWorld.ArchetypeGeneration();
+    const WorldStats snapshotBefore = clearWorld.Snapshot();
+    const uint32_t chunksBefore = chunksInUse();
+    const std::size_t clearUsedBefore = clearWorld.MemoryStats().arena.used;
+    const uint64_t clearHeapBefore = clearWorld.MemoryStats().resource.fromHeap;
+
+    clearWorld.ResetFrameStats();
+    clearWorld.Clear();
+    const WorldStats snapshotCleared = clearWorld.Snapshot();
+
+    Check("a handle from before the clear reads as gone", !clearWorld.DoesEntityExist(heldHandle));
+    Check("and reads no component", clearWorld.GetComponent<Position>(heldHandle) == nullptr);
+    Check("a clear leaves no live entity", snapshotCleared.liveEntities == 0 && snapshotCleared.totalRows == 0);
+    Check("a clear keeps every archetype", snapshotCleared.archetypeCount == snapshotBefore.archetypeCount);
+    Check("and empties every one", snapshotCleared.emptyArchetypes == snapshotCleared.archetypeCount);
+    Check("a clear does not change the archetype generation", clearWorld.ArchetypeGeneration() == generationBefore);
+    Check("a clear keeps the slot table", snapshotCleared.slotTableSize == snapshotBefore.slotTableSize);
+    Check("a clear returns every chunk in use", clearWorld.Stats().chunksReturned == chunksBefore);
+    Check("and every one waits on the free list", snapshotCleared.chunksFree == snapshotBefore.chunksFree + chunksBefore);
+    Check("a clear takes no arena bytes", clearWorld.MemoryStats().arena.used == clearUsedBefore);
+
+    clearWorld.ResetFrameStats();
+    const std::vector<Entity> afterClear = spawnClearLoad();
+
+    Check("the respawn takes back the chunks the clear returned", clearWorld.Stats().chunksTaken == chunksBefore);
+    Check("the respawn takes no new arena bytes", clearWorld.MemoryStats().arena.used == clearUsedBefore);
+    Check("the respawn sends nothing to the heap", clearWorld.MemoryStats().resource.fromHeap == clearHeapBefore);
+    Check("the respawn makes no archetype", clearWorld.ArchetypeGeneration() == generationBefore);
+    Check("the respawn reuses the slot table", clearWorld.Snapshot().slotTableSize == snapshotBefore.slotTableSize);
+
+    bool versionsAdvanced = true;
+    for (const Entity& fresh : afterClear)
+    {
+        if (fresh.version != 2) versionsAdvanced = false;
+    }
+    Check("every respawned entity carries the version after the clear's bump", versionsAdvanced);
+    Check("the old handle still reads as gone after the respawn", !clearWorld.DoesEntityExist(heldHandle));
+
+    float respawnedSum = 0.0f;
+    std::vector<Archetype*> respawnedMovers;
+    clearWorld.CollectMatching(COMPONENTS::MaskOf<Position, Velocity>(), 0, respawnedMovers);
+    for (Archetype* archetype : respawnedMovers)
+    {
+        for (Chunk& chunk : archetype->Chunks())
+        {
+            const ChunkView view{archetype, &chunk};
+            for (uint32_t row = 0; row < view.Count(); ++row) respawnedSum += view.Column<Position>()[row].x;
+        }
+    }
+    /* 0 + 1 + ... + 999 */
+    Check("the respawned rows hold their new values", respawnedSum == 499500.0f);
+
+    /* Many rounds, as a player restarting again and again would make. */
+    for (int round = 0; round < 50; ++round)
+    {
+        clearWorld.Clear();
+        spawnClearLoad();
+    }
+    Check("50 more rounds take no new arena bytes", clearWorld.MemoryStats().arena.used == clearUsedBefore);
+    Check("50 more rounds send nothing to the heap", clearWorld.MemoryStats().resource.fromHeap == clearHeapBefore);
+    Check("50 more rounds keep the free chunk count", clearWorld.Snapshot().chunksFree == snapshotBefore.chunksFree);
+
+    /* A second clear in a row must not free any slot twice, or two entities would share an index. */
+    clearWorld.Clear();
+    clearWorld.Clear();
+    const std::vector<Entity> afterDoubleClear = spawnClearLoad();
+
+    std::vector<bool> indexSeen(clearWorld.Snapshot().slotTableSize, false);
+    bool indicesDistinct = true;
+    for (const Entity& fresh : afterDoubleClear)
+    {
+        if (fresh.index >= indexSeen.size() || indexSeen[fresh.index]) indicesDistinct = false;
+        else indexSeen[fresh.index] = true;
+    }
+    Check("two clears in a row free each slot once", indicesDistinct && afterDoubleClear.size() == kClearTotal);
+    Check("and the slot table does not grow", clearWorld.Snapshot().slotTableSize == snapshotBefore.slotTableSize);
+
+    World emptyClearWorld;
+    emptyClearWorld.Clear();
+    Check("clearing an empty world is harmless", emptyClearWorld.Snapshot().liveEntities == 0 &&
+          emptyClearWorld.DoesEntityExist(emptyClearWorld.CreateEntity()));
+
     std::cout << "\n-- fixed step --\n";
 
     /* One clock fed frame after frame, so each feed starts from the time the last one left over */
