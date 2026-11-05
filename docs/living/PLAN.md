@@ -12,7 +12,7 @@ Hardening, rows 1, 2, 4, 7 and 12. Rows 3, 5, 6 and 8 to 11 stay in the roadmap.
 
 | # | step | done when | stage |
 |---|---|---|---|
-| 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | done |
+| 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | done `5de98168` |
 | 2 | Create with components: one call puts an entity in its final archetype | A spawn makes zero migrations, in the World and through the command buffer | designed |
 | 3 | Clear the World in one call | R in `PhysicsScene` clears and respawns the shapes, a handle from before reads as dead, and the respawn takes no new chunks from the arena | designed |
 | 4 | An intrusive free list: a free slot's `row` holds the next free index | `freeSlots` is gone, the slot tests pass unchanged, `CheckFreeList` passes after every test sequence, and the arena's used bytes drop by `maxEntities × 4` | designed |
@@ -304,6 +304,62 @@ case CommandKind::CreateEntityWith:
   drop.
 - The spawn cost from step 1's measurements belongs here: each in-between hop also took and returned
   a chunk.
+
+### What the build changed
+
+- **The untyped call is `CreateEntityByComponentIds`, not `CreateEntityById`.** In `AddComponentById`,
+  "ById" sits next to "Component". In `CreateEntityById` it sat next to "Entity" and read as the
+  entity's id. A File I/O load may later want that name, to make an entity at a saved index.
+- **One function places every new entity.** `CreateEntity()` with no arguments is gone, in the World
+  and in the command buffer. The typed template takes the empty list with
+  `if constexpr (sizeof...(Ts) == 0)` and calls `CreateEntityByComponentIds({})`. The `else` branch
+  is required: C++ rejects the zero-size `list[]` that an empty list would build.
+- **`CommandKind::CreateEntity` is gone.** A plain create records a `CreateEntityWith` command with an
+  empty payload block.
+- **`ComponentValue`, `kAllDifferent` and `COMPONENTS::ValueOf` live in `Component.h`,** because the
+  World and the command buffer both use them. `kAllDifferent` is a variable template: a fold over
+  `std::is_same_v` checks the first type against the rest, and a partial specialization recurses on
+  the rest.
+- **The payload block holds an `{id, size}` header and the bytes for each component.** The command
+  keeps the block's offset and size. `ReadComponents` copies each header out with `memcpy`, because a
+  component whose size is not a multiple of 4 leaves the next header at an address `uint32_t` may not
+  be read from.
+- **`TakeNextEntitySlot`, private to the World, holds the slot code** that `CreateEntity()` had.
+- **Every spawn site uses the new call:** `PhysicsScene`, `Scene0`, `Scene1`, and `EcsBench`'s
+  `Spawn` and `CullAndRespawn`. `Scene0` makes its cubes with two calls, one with the `Damageable`
+  tag and one without, because the tag picks the archetype.
+- **The tests:** a new "create with components" section in `EcsTests`. 257 checks pass in all four
+  configurations. It checks zero migrations, zero bytes copied, one archetype and one chunk per
+  create, values in the right columns whatever the order, and slot reuse. Through the command buffer
+  it checks a shared placeholder count, 100 creates that make the payload grow, and an add on the
+  placeholder in the same pass.
+
+### What the build measured
+
+`bin\x64\Release\EcsBench.exe`, against the same bench built from `5de98168`. Each is the mean of 3
+warm runs, with the cold run dropped. 100,000 entities, arena mode, 16 KB chunks:
+
+| | step 1 | step 2 |
+|---|---|---|
+| Spawn, ms | 20.32 | 2.78 |
+| Spawn migrations | 200,000 | 0 |
+| Spawn chunk takes | 200,196 | 196 |
+| Chunk takes in the whole run | 1,206,688 | 6,490 |
+| Playback, ms per frame | 0.418 | 0.339 |
+| Movement, ns per entity | 0.73 | 0.71 |
+| Arena high water | 4,758 KB | 4,726 KB |
+
+- **Done when:** a spawn makes zero migrations, in the World (the Spawn span) and through the
+  command buffer (`CullAndRespawn`'s 500,099 replacements). The run's migrations fell by 1,200,198,
+  2 for each of its 600,099 creates. The 2,762,715 left all come from `ToggleTags`.
+- **Spawn** is about 7 times faster than in step 1, and 16% of its time before chunks (17.1 ms). The
+  196 chunk takes are what 100,000 rows need at 511 rows per chunk. At 4 and 64 KB, Spawn takes 2.83
+  and 2.88 ms. At 10,000 entities it falls from 2.08 to 0.28 ms.
+- **Playback** is 19% faster, above the 8% noise floor: the replacements no longer hop.
+- **Decision 6 holds.** After the spawn, the run takes 6,294 chunks in 1,000 frames and returns as
+  many, about 6 a frame. They come from the `Hit` toggle, which empties the tagged archetype, and
+  from cull and respawn. Each is one push or pop on the free list. Not timed on its own, but 6 a
+  frame against a 0.34 ms playback does not pay for a spare chunk per archetype.
 
 ## 3. Clear the World
 

@@ -1197,6 +1197,157 @@ int main()
     Check("a const column reads the value", readOnly.Column<Position>()[0].y == 2.0f);
     Check("a const view has no column for a missing component", readOnly.Column<Velocity>() == nullptr);
 
+    std::cout << "\n-- create with components --\n";
+
+    /* ===== World ===== */
+
+    World withWorld;
+    withWorld.ResetFrameStats();
+
+    const Entity wholeEntity = withWorld.CreateEntity(Position{1.0f, 2.0f, 3.0f}, Velocity{4.0f, 5.0f, 6.0f}, Dead{});
+
+    Check("a create with components makes a live entity", withWorld.DoesEntityExist(wholeEntity));
+    Check("the entity has every component it was given",
+          withWorld.HasComponent<Position>(wholeEntity) && withWorld.HasComponent<Velocity>(wholeEntity) &&
+          withWorld.HasComponent<Dead>(wholeEntity));
+    Check("Position holds the value it was given",
+          withWorld.GetComponent<Position>(wholeEntity)->x == 1.0f && withWorld.GetComponent<Position>(wholeEntity)->z == 3.0f);
+    Check("Velocity holds the value it was given",
+          withWorld.GetComponent<Velocity>(wholeEntity)->x == 4.0f && withWorld.GetComponent<Velocity>(wholeEntity)->z == 6.0f);
+    Check("a create with components makes zero migrations", withWorld.Stats().migrations == 0);
+    Check("a create with components copies no bytes between archetypes", withWorld.Stats().bytesCopied == 0);
+    Check("a create with components counts one create", withWorld.Stats().entitiesCreated == 1);
+    Check("a create with components counts one add per component", withWorld.Stats().componentsAdded == 3);
+    Check("only the final archetype is made, not the empty one", withWorld.Stats().archetypesCreated == 1);
+    Check("a create with components takes one chunk and returns none",
+          withWorld.Stats().chunksTaken == 1 && withWorld.Stats().chunksReturned == 0);
+
+    /* The same types in another order must find the same archetype and fill the right columns. */
+    const Entity reordered = withWorld.CreateEntity(Dead{}, Velocity{40.0f, 50.0f, 60.0f}, Position{10.0f, 20.0f, 30.0f});
+
+    uint16_t wholeArchetype = 0;
+    uint16_t reorderedArchetype = 0;
+    uint32_t wholeRow = 0;
+    uint32_t reorderedRow = 0;
+    withWorld.Locate(wholeEntity, wholeArchetype, wholeRow);
+    withWorld.Locate(reordered, reorderedArchetype, reorderedRow);
+
+    Check("the order of the values does not change the archetype", wholeArchetype == reorderedArchetype);
+    Check("the second entity takes the next row", wholeRow == 0 && reorderedRow == 1);
+    Check("each value lands in its own column, whatever the order",
+          withWorld.GetComponent<Position>(reordered)->x == 10.0f &&
+          withWorld.GetComponent<Velocity>(reordered)->x == 40.0f);
+    Check("the first entity's values are untouched", withWorld.GetComponent<Position>(wholeEntity)->x == 1.0f);
+
+    /* The old path, one add at a time, must end in the same archetype. */
+    const Entity stepByStep = withWorld.CreateEntity();
+    withWorld.AddComponent<Position>(stepByStep, {0.0f, 0.0f, 0.0f});
+    withWorld.AddComponent<Velocity>(stepByStep, {0.0f, 0.0f, 0.0f});
+    withWorld.AddComponent<Dead>(stepByStep);
+
+    uint16_t stepArchetype = 0;
+    uint32_t stepRow = 0;
+    withWorld.Locate(stepByStep, stepArchetype, stepRow);
+    Check("one add at a time reaches the same archetype", stepArchetype == wholeArchetype);
+
+    const Entity tagOnlyEntity = withWorld.CreateEntity(Dead{});
+    Check("a tag alone makes an entity with the tag", withWorld.HasComponent<Dead>(tagOnlyEntity));
+    Check("and nothing else", !withWorld.HasComponent<Position>(tagOnlyEntity));
+
+    withWorld.DestroyEntity(wholeEntity);
+    const Entity reused = withWorld.CreateEntity(Health{7.0f, 10.0f});
+    Check("a create with components reuses a free slot", reused.index == wholeEntity.index);
+    Check("and gives it a newer version", reused.version == wholeEntity.version + 1);
+    Check("the old handle reads as gone", !withWorld.DoesEntityExist(wholeEntity));
+    Check("the reused slot holds the new component", withWorld.GetComponent<Health>(reused)->current == 7.0f);
+    Check("and not the old ones", !withWorld.HasComponent<Position>(reused));
+
+    /* ===== By id ===== */
+
+    const Position idPosition{7.0f, 8.0f, 9.0f};
+    const ComponentValue idValues[] = {
+        {COMPONENTS::IdOf<Position>(), reinterpret_cast<const std::byte*>(&idPosition), sizeof(Position)},
+        {COMPONENTS::IdOf<Dead>(), nullptr, 0}
+    };
+    const Entity fromIds = withWorld.CreateEntityByComponentIds(idValues);
+
+    Check("CreateEntityByComponentIds copies a value in", withWorld.GetComponent<Position>(fromIds)->y == 8.0f);
+    Check("CreateEntityByComponentIds takes a tag with no bytes", withWorld.HasComponent<Dead>(fromIds));
+    Check("CreateEntityByComponentIds adds only what it was given", !withWorld.HasComponent<Velocity>(fromIds));
+
+    const Entity fromNothing = withWorld.CreateEntityByComponentIds({});
+    Check("an empty list makes a live entity with no components",
+          withWorld.DoesEntityExist(fromNothing) && !withWorld.HasComponent<Position>(fromNothing) &&
+          !withWorld.HasComponent<Dead>(fromNothing));
+
+    /* ===== Command buffer ===== */
+
+    World bufferedWorld;
+    CommandBuffer bufferedSpawns;
+    bufferedWorld.ResetFrameStats();
+
+    const Entity plainFirst = bufferedSpawns.CreateEntity();
+    const Entity withSecond = bufferedSpawns.CreateEntity(Position{1.0f, 0.0f, 0.0f}, Velocity{2.0f, 0.0f, 0.0f});
+
+    Check("a queued create with components returns a placeholder", (withSecond.index & kPlaceholderBit) != 0);
+    Check("plain and full creates share one placeholder count",
+          (plainFirst.index & ~kPlaceholderBit) == 0 && (withSecond.index & ~kPlaceholderBit) == 1);
+    Check("a create with components queues one command", bufferedSpawns.Count() == 2);
+
+    /* Enough creates that the payload vector grows and moves while recording. */
+    constexpr int kQueuedCreates = 100;
+    for (int i = 0; i < kQueuedCreates; ++i)
+    {
+        bufferedSpawns.CreateEntity(Position{static_cast<float>(i), 0.0f, 0.0f},
+                                    Velocity{0.0f, static_cast<float>(2 * i), 0.0f});
+    }
+
+    bufferedSpawns.Playback(bufferedWorld);
+
+    Check("playback of creates with components makes zero migrations", bufferedWorld.Stats().migrations == 0);
+    Check("playback counts every create", bufferedWorld.Stats().entitiesCreated == 2 + kQueuedCreates);
+    Check("playback counts two adds per create with components",
+          bufferedWorld.Stats().componentsAdded == 2 * (1 + kQueuedCreates));
+
+    std::vector<Archetype*> queuedMovers;
+    bufferedWorld.CollectMatching(COMPONENTS::MaskOf<Position, Velocity>(), 0, queuedMovers);
+
+    uint32_t queuedRows = 0;
+    float positionSum = 0.0f;
+    float velocitySum = 0.0f;
+    for (Archetype* archetype : queuedMovers)
+    {
+        for (Chunk& chunk : archetype->Chunks())
+        {
+            const ChunkView view{archetype, &chunk};
+            for (uint32_t row = 0; row < view.Count(); ++row)
+            {
+                ++queuedRows;
+                positionSum += view.Column<Position>()[row].x;
+                velocitySum += view.Column<Velocity>()[row].y;
+            }
+        }
+    }
+
+    /* 1 from withSecond, plus 0 to 99. Velocity's y is 2i, and withSecond's is 0. */
+    Check("every queued create with components lands in one archetype",
+          queuedMovers.size() == 1 && queuedRows == 1 + kQueuedCreates);
+    Check("every queued Position survived the payload growing", positionSum == 1.0f + 4950.0f);
+    Check("every queued Velocity survived the payload growing", velocitySum == 9900.0f);
+
+    /* A later command in the same pass can still name the placeholder. */
+    bufferedWorld.ResetFrameStats();
+    const Entity tagLater = bufferedSpawns.CreateEntity(Health{3.0f, 3.0f});
+    bufferedSpawns.AddComponent<Dead>(tagLater);
+    bufferedSpawns.Playback(bufferedWorld);
+
+    std::vector<Archetype*> deadHealth;
+    bufferedWorld.CollectMatching(COMPONENTS::MaskOf<Health, Dead>(), 0, deadHealth);
+    Check("an add on the placeholder resolves to the created entity",
+          deadHealth.size() == 1 && deadHealth[0]->Count() == 1 &&
+          FirstChunk(deadHealth[0]).Column<Health>()[0].current == 3.0f);
+    Check("only the later add migrates", bufferedWorld.Stats().migrations == 1);
+
     std::cout << "\n-- fixed step --\n";
 
     /* One clock fed frame after frame, so each feed starts from the time the last one left over */

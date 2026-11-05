@@ -26,7 +26,7 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 
 | part | what it does | where | details |
 |---|---|---|---|
-| ECS | Archetype storage in fixed-size chunks (16 KB by default) from the World's `ChunkPool`. Each chunk holds every column for a range of rows. Systems loop with `Query::ForEachChunk`, which hands them one `ChunkView` per chunk. Queries with a cached match list, a command buffer for structural changes, per-frame counters, chunk takes and returns included. Single threaded | `include/ecs` | ECS.md |
+| ECS | Archetype storage in fixed-size chunks (16 KB by default) from the World's `ChunkPool`. Each chunk holds every column for a range of rows. Systems loop with `Query::ForEachChunk`, which hands them one `ChunkView` per chunk. `CreateEntity(values...)` puts a new entity straight in its final archetype, in the World and through the command buffer. Queries with a cached match list, a command buffer for structural changes, per-frame counters, chunk takes and returns included. Single threaded | `include/ecs` | ECS.md |
 | Systems and phases | Each scene owns a `SystemRegistry` and adds its systems in `OnCreate`. Phases run in order: Fixed (a 1/60 s `FixedStep`, 0 or more times a frame), Update, Extract. The command buffer plays back after each phase. `SetEnabled` switches a system off | `include/ecs`, `include/core/FixedStep.h` | ECS.md, dev-notes/systems-and-phases.md |
 | Components and systems | Split by module, each with a `Components.h` and a `systems/` folder: `core` (transform, drawing), `physics` (motion, colliders, picking), `game` (Scene0's test load) | `include/core`, `include/physics`, `include/game` | the headers |
 | Transform | One component: position, uniform scale, a quaternion orientation. `ModelMatrix` is the one place translate × rotate × scale is built | `include/core/Components.h` | dev-notes/transform.md |
@@ -53,8 +53,8 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 4. **Components are plain, trivially copyable data,** because a migration is a `memcpy`. The math types
    default their copies, so a component may hold them; a hand-written copy breaks `Register<T>()` at
    compile time.
-5. **A new archetype row is zero bytes,** and no constructor runs. Every add of a component with data
-   hands over its bytes; `T{}` is the default. ECS.md, "Rules of this engine".
+5. **A new archetype row is zero bytes,** and no constructor runs. Every add or create of a component
+   with data hands over its bytes; `T{}` is the default. ECS.md, "Rules of this engine".
 6. **Structural changes go through the command buffer.** They apply at the end of the phase, so later
    phases see them and the same phase never does.
 7. **A system gets everything through `SystemContext`,** never from the scene.

@@ -28,12 +28,17 @@ with its time and the ECS work it caused:
 0.12 microseconds, and the worst frame moved 24,000 entities in 4.2 ms. That answered whether the
 archetype design could afford its copying. It can.
 
+Since 2026-11-05 the table has two more columns, `take/f` and `ret/f`: chunks taken from and given
+back to the World's `ChunkPool`, per frame. `ReportFrame` shows them as `take` and `ret`. In
+`EcsBench` at 10,000 entities, `Spawn` takes 20,020 chunks and returns 20,000, about two for each
+entity, because each spawn passes through two archetypes on the way to its last one.
+
 ## How it works
 
 Wrap a block in `PROFILE_SCOPE("Name")`. When the block starts, the profiler reads a precise clock;
 when it ends, it reads the clock again and adds the difference to that name's row.
 `PROFILE_SCOPE_ECS(world, "Name")` also reads the world's counters before and after, so the row
-records the migrations and bytes copied that the block caused.
+records the migrations, bytes copied and chunks taken and returned that the block caused.
 
 Rows are added up per frame, between `Profiler::BeginFrame()` and `Profiler::EndFrame()`. At exit,
 `Profiler::Report()` prints the table, sorted with the most expensive block first.
@@ -54,14 +59,19 @@ Profiler::EndFrame();
 - `include/utils/Profiler.h`, `src/utils/Profiler.cpp`: the profiler and its macros. Since
   2026-10-24 they sit in CMake's `ECS_SOURCES`, because `SystemRegistry` opens a span per system,
   so every program that compiles `src/ecs` links the profiler.
-- `include/ecs/FrameStats.h`: the counters the `World` keeps about its own changes.
+- `include/ecs/FrameStats.h`: the counters the `World` keeps about its own changes, and
+  `WorldStats`, what a World holds at one moment. The `ChunkPool` writes the two chunk counters
+  into the World's `FrameStats`.
 - `bench/EcsBench.cpp`: a heavy load at 1,000, 10,000 and 100,000 entities, built to give the
-  profiler something worth measuring.
+  profiler something worth measuring. It runs the heap once and the arena at 4, 16 and 64 KB
+  chunks, and prints the chunk counters after each table.
 
 ## Decisions while building
 
 - **The counters live in the ECS, not in the profiler.** `World` counts its own changes in
   `FrameStats`. The profiler only reads them before and after a block.
+- **Events go in `FrameStats`, levels in `WorldStats`.** Chunks taken and returned are events, so
+  they reset every frame like migrations. Chunks free is a level, so `World::Snapshot` reports it.
 - **`std::chrono::steady_clock`, not the engine's `Timer`.** `Timer` counts whole milliseconds,
   fine for a frame and useless for a block that takes a fifth of one.
 - **Names must be string literals.** The profiler compares names by address, not by text, which is

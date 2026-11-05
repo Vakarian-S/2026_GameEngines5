@@ -2,6 +2,7 @@
 #include <memory_resource>
 #include <vector>
 #include <cstddef>
+#include <span>
 
 #include "Archetype.h"
 #include "ChunkPool.h"
@@ -55,19 +56,37 @@ public:
     ~World();
 
     /**
-     * Makes a live entity and returns a handle to it.
-     *
-     * Reuses a dead index when one is free, so the slot table grows to the peak number of
-     * live entities and then stops. A reused index comes back with a higher version, which
-     * is what makes handles to the previous occupant read as dead.
+     * Makes a live entity with all the given components already in it
+     * @tparam Ts Types of the components wanted for the entity
+     * @param values values for every one of the components passed
+     * @return the handle to the newly created entity
      */
-    Entity CreateEntity();
+    template <typename... Ts>
+    Entity CreateEntity(const Ts&... values)
+    {
+        static_assert(kAllDifferent<Ts...>, "CreateEntity got the same component type twice.");
+        if constexpr (sizeof...(Ts) == 0) return CreateEntityByComponentIds({});
+        else
+        {
+            const ComponentValue list[] = {COMPONENTS::ValueOf(values)...};
+            return CreateEntityByComponentIds(list);
+        }
+    }
+
+    /**
+     * Creates an entity with a group of components defined by their ids.
+     * @param componentValues values of each of the components to add to the entity
+     * @return Entity handle of the created entity.
+     */
+    Entity CreateEntityByComponentIds(std::span<const ComponentValue> componentValues);
+
 
     /**
      * Kills an entity and puts its index back in the pool.
      *
      * Bumping the version here is what invalidates every copy of the handle at once, with no
      * list of who was holding one. Passing an already-dead handle does nothing.
+     * @param entity The handle of the entity to destroy
      */
     void DestroyEntity(Entity entity);
 
@@ -261,6 +280,11 @@ private:
 
     /** Structural changes across every frame so far */
     FrameStats runTotals;
+
+    /** Takes the next available entity slot, reusing a freed slot when possible or creating a new slot in the entity table.
+    * @return Index of the entity slot to use.
+    */
+    uint32_t TakeNextEntitySlot();
 
     /**
      * Gets the index for the archetype that matches the given mask, if no archetype is found, it adds it.

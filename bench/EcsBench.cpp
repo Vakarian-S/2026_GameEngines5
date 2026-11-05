@@ -66,9 +66,7 @@ namespace
     {
         for (int i = 0; i < count; ++i)
         {
-            const Entity entity = world.CreateEntity();
-            world.AddComponent<Position>(entity, {static_cast<float>(i), 0.0f, 0.0f});
-            world.AddComponent<Velocity>(entity, {1.0f, 0.5f, 0.25f});
+            world.CreateEntity(Position{static_cast<float>(i), 0.0f, 0.0f}, Velocity{1.0f, 0.5f, 0.25f});
         }
     }
 
@@ -142,9 +140,7 @@ namespace
 
         for (uint32_t i = 0; i < killed; ++i)
         {
-            const Entity replacement = buffer.CreateEntity();
-            buffer.AddComponent<Position>(replacement, {0.0f, 0.0f, 0.0f});
-            buffer.AddComponent<Velocity>(replacement, {1.0f, 0.5f, 0.25f});
+            buffer.CreateEntity(Position{0.0f, 0.0f, 0.0f}, Velocity{1.0f, 0.5f, 0.25f});
         }
 
         return killed;

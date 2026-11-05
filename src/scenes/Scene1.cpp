@@ -37,12 +37,11 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     });
 
     /* Mario stands in the middle and turns half a radian per second, a full turn in about 12.6 seconds */
-    const Entity mario = world.CreateEntity();
-    world.AddComponent<Transform>(mario, {
-                                      .position = MATH::Vec3(),
-                                  });
-    world.AddComponent<Renderable>(mario, {marioMesh, marioMaterial});
-    world.AddComponent<PHYSICS::AngularVelocity>(mario, {MATH::Vec3(0.f, 0.5f, 0.f)});
+    world.CreateEntity(
+        Transform{.position = MATH::Vec3()},
+        Renderable{marioMesh, marioMaterial},
+        PHYSICS::AngularVelocity{MATH::Vec3(0.f, 0.5f, 0.f)}
+    );
 
 
     /* Two cubes, one on each side */
@@ -50,21 +49,18 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     constexpr auto up = MATH::Vec3(0.0f, 1.0f, 0.0f);
     for (const float x : cubeX)
     {
-        const Entity cube = world.CreateEntity();
-        world.AddComponent<Transform>(cube, {
-                                          .position = MATH::Vec3(x, 0.0f, 0.0f),
-                                          .scale = 1.0f,
-                                          .orientation = x > 0.0f
-                                                             ? MATH::QMath::angleAxisRotation(45.0f, up)
-                                                             : MATH::QMath::angleAxisRotation(
-                                                                 30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f)) *
-                                                             MATH::QMath::angleAxisRotation(45.0f, up)
-                                      });
-        world.AddComponent<PHYSICS::BoxCollider>(cube,
-                                                 {
-                                                     MATH::Vec3(0.5f, 0.5f, 0.5f),
-                                                 });
-        world.AddComponent<Renderable>(cube, {cubeMesh, cubeMaterial});
+        world.CreateEntity(
+            Transform{
+                .position = MATH::Vec3(x, 0.0f, 0.0f),
+                .scale = 1.0f,
+                .orientation = x > 0.0f
+                                   ? MATH::QMath::angleAxisRotation(45.0f, up)
+                                   : MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f)) *
+                                   MATH::QMath::angleAxisRotation(45.0f, up)
+            },
+            PHYSICS::BoxCollider{MATH::Vec3(0.5f, 0.5f, 0.5f)},
+            Renderable{cubeMesh, cubeMaterial}
+        );
     }
 
     /* In each phase, systems run in the order they are added */

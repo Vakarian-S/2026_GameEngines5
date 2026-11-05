@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <typeinfo>
@@ -13,6 +14,18 @@ constexpr ComponentId kMaxComponents = 64;
 /* Id for null component, as 0 can be a real component */
 constexpr ComponentId kNoComponent = 0xFFFFFFFF;
 
+/** True when no type in Rest is the same as T. An empty Rest gives true. */
+template <typename T, typename... Rest>
+constexpr bool kDiffersFromAll = (!std::is_same_v<T, Rest> && ...);
+
+/** True when no type appears twice in Ts. An empty list counts as all different. */
+template <typename... Ts>
+constexpr bool kAllDifferent = true;
+
+/** A list is all different when its first type differs from the rest, and the rest are all different too. */
+template <typename First, typename... Rest>
+constexpr bool kAllDifferent<First, Rest...> = kDiffersFromAll<First, Rest...> && kAllDifferent<Rest...>;
+
 /**
  * Everything an archetype needs to know about a component type without knowing the type.
  * It allocates, indexes and copies using nothing but these three numbers.
@@ -24,6 +37,14 @@ struct ComponentInfo
     uint32_t alignment;
     /** For the debug tooling later. On MSVC this reads "struct Position". */
     const char* name;
+};
+
+/** One component's id and bytes, for paths that have no type in hand. A tag passes nullptr and 0. */
+struct ComponentValue
+{
+    ComponentId id;
+    const std::byte* bytes;
+    uint32_t size;
 };
 
 namespace COMPONENTS
@@ -131,5 +152,33 @@ namespace COMPONENTS
     ComponentMask MaskOf()
     {
         return (ComponentMask{0} | ... | (ComponentMask{1} << IdOf<Args>()));
+    }
+
+    /**
+     * Gets a ComponentValue Object of a given component T
+     * @tparam T Component to check
+     * @param value current data value of the component
+     * @return 
+     */
+    template <typename T>
+    ComponentValue ValueOf(const T& value)
+    {
+        /* Tags have no data */
+        if constexpr (std::is_empty_v<T>)
+        {
+            return {
+                .id = IdOf<T>(),
+                .bytes = nullptr,
+                .size = 0
+            };
+        }
+        else
+        {
+            return {
+                .id = IdOf<T>(),
+                .bytes = reinterpret_cast<const std::byte*>(&value),
+                .size = sizeof(T)
+            };
+        }
     }
 }

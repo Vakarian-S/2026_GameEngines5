@@ -35,10 +35,9 @@ World::~World()
     }
 }
 
-Entity World::CreateEntity()
+uint32_t World::TakeNextEntitySlot()
 {
     uint32_t index;
-
     if (!freeSlots.empty())
     {
         /* Reuse the most recently freed index. Its version was already bumped by Destroy. */
@@ -52,17 +51,34 @@ Entity World::CreateEntity()
         assert((maxRows == 0 || index < maxRows) && "the world is full, raise maxEntities");
         entitySlots.push_back({1, kInvalidArchetype, 0});
     }
+    return index;
+}
 
+Entity World::CreateEntityByComponentIds(const std::span<const ComponentValue> componentValues)
+{
+    ComponentMask mask = ComponentMask{0};
+    for (const ComponentValue& value : componentValues)
+    {
+        assert((mask & (ComponentMask{1} << value.id)) == 0 && "CreateEntityByComponentIds got the same component type twice.");
+        mask = mask | (ComponentMask{1} << value.id);
+    }
+    const uint32_t index = TakeNextEntitySlot();
     const Entity entity{index, entitySlots[index].version};
-
-    /* Everything is born in the empty archetype and moves out when it gains a component. */
-    const uint16_t archetypeIndex = ArchetypeIndexFor(0);
+    const uint16_t archetypeIndex = ArchetypeIndexFor(mask);
     const uint32_t row = archetypes[archetypeIndex]->AddRow(entity);
 
+    /* Copy the Component Data */
+    for (size_t i = 0; i < componentValues.size(); i++)
+    {
+        std::byte* data = archetypes[archetypeIndex]->ElementAt(componentValues[i].id, row);
+        if (data == nullptr) continue;
+        std::memcpy(data, componentValues[i].bytes, componentValues[i].size);
+    }
     entitySlots[index].archetype = archetypeIndex;
     entitySlots[index].row = row;
 
     GE5_ECS_COUNT(frameStats, entitiesCreated, 1);
+    GE5_ECS_COUNT(frameStats, componentsAdded, componentValues.size());
     return entity;
 }
 
@@ -153,7 +169,7 @@ WorldStats World::Snapshot() const
         stats.totalRows += rows;
         if (rows == 0) stats.emptyArchetypes++;
     }
-    
+
     stats.chunksFree = chunkPool.FreeCount();
     return stats;
 }
@@ -219,7 +235,7 @@ void World::MoveEntity(const Entity entity, const ComponentMask newMask)
     const EntitySlot slot = entitySlots[entity.index];
     const uint16_t sourceIndex = slot.archetype;
     const uint32_t sourceRow = slot.row;
-    ComponentMask sourceMask = archetypes[sourceIndex]->Mask();
+    const ComponentMask sourceMask = archetypes[sourceIndex]->Mask();
 
     if (sourceMask == newMask) return;
     GE5_ECS_COUNT(frameStats, migrations, 1);

@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 #include <cstddef>
+#include <span>
 
 #include "Component.h"
 #include "Entity.h"
@@ -11,10 +12,10 @@ class World;
 /** Which of the four structural changes a Command names. */
 enum class CommandKind : uint8_t
 {
-    CreateEntity,
     DestroyEntity,
     AddComponent,
-    RemoveComponent
+    RemoveComponent,
+    CreateEntityWith
 };
 
 /** One recorded structural change. Any value it carries lives in the buffer's payload. */
@@ -37,15 +38,32 @@ class CommandBuffer
 {
 public:
     /**
-    * Queues the creation of an entity and returns a placeholder naming it.
-    *
-    * The placeholder is only meaningful to later calls on this buffer, and only until the
-    * next playback. It does not exist in any world.
-    * @return A handle to pass to this buffer's other calls in the same pass
+    * Queues an entity made straight in the archetype of all the given components, copying each value now.
+    * @return A placeholder to pass to this buffer's other calls in the same pass
     */
-    Entity CreateEntity();
+    template <typename... Ts>
+    Entity CreateEntity(const Ts&... values)
+    {
+        static_assert(kAllDifferent<Ts...>, "CreateEntity got the same component type twice.");
+        if constexpr (sizeof...(Ts) == 0) return CreateEntityByComponentIds({});
+        else
+        {
+            const ComponentValue list[] = {COMPONENTS::ValueOf(values)...};
+            return CreateEntityByComponentIds(list);
+        }
+    }
 
-    /** Queues the destruction of an entity. A handle that is already gone is ignored at playback. */
+    /**
+     * Records a create command on an entity with a group of components defined by their ids.
+     * @param componentValues values of each of the components to add to the entity
+     * @return placeholder entity handle of the created entity.
+     */
+    Entity CreateEntityByComponentIds(std::span<const ComponentValue> componentValues);
+    
+    /**
+     * Records a command to delete an entity in a given handle.
+     * @param entity handle of the entity to delete.
+     */
     void DestroyEntity(Entity entity);
 
     /**
@@ -102,6 +120,22 @@ private:
 
     /** Copies size bytes onto the end of the payload and returns where they landed. */
     uint32_t AppendPayload(const std::byte* value, uint32_t size);
+
+    /** What the payload holds in front of each component's bytes in a CreateEntityWith command. */
+    struct ComponentHeader
+    {
+        ComponentId id;
+        uint32_t size;
+    };
+
+    /**
+     * Turns one CreateEntityWith block of the payload back into a list of components.
+     * @param offset Where the block starts in the payload
+     * @param size Bytes the block takes
+     * @param out Filled with one entry per component, pointing into the payload
+     * @return How many entries were filled
+     */
+    uint32_t ReadComponents(uint32_t offset, uint32_t size, ComponentValue* out) const;
 
     /**
      * Appends one command to the list.

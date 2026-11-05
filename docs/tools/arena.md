@@ -26,7 +26,8 @@ only all at once: the marker jumps back to the start.
 
 The engine uses two of them:
 
-- **The World's arena** holds every entity slot and every component column. It is never reset.
+- **The World's arena** holds every entity slot, every archetype and every chunk of rows. It is
+  never reset.
 - **The frame arena** in `Main.cpp` holds the draw list. It is reset at the top of every frame.
 
 ## Files
@@ -34,7 +35,8 @@ The engine uses two of them:
 - `include/utils/Arena.h`, `src/utils/Arena.cpp`: the block and its marker.
 - `include/utils/ArenaResource.h`, `src/utils/ArenaResource.cpp`: lets standard containers use an
   arena.
-- `World` and `Archetype` take their memory from one.
+- `World` and `Archetype` take their memory from one. The World's `ChunkPool`
+  (`include/ecs/ChunkPool.h`) takes chunk-size pieces through the same `ArenaResource`.
 - `demo/ArenaDemo.cpp` compares heap and arena. `tests/ArenaTests.cpp` checks it.
 
 ## Decisions while building
@@ -43,15 +45,17 @@ The engine uses two of them:
   its blocks, and the resource is picked when the container is built. That is how the same `World`
   code runs with or without an arena. The resource must be passed to every container by hand; a
   forgotten one quietly uses the heap.
-- **Columns reserve `maxEntities` rows up front.** A vector that grows takes a new, bigger block and
-  leaves the old one behind. An arena cannot reuse the old block, so a growing column would waste
-  about twice its final size.
+- **Archetypes take fixed-size chunks from a pool, not growing columns.** A vector that grows takes
+  a new, bigger block and leaves the old one behind, and an arena cannot reuse the old block. Until
+  2026-11-05 every column reserved `maxEntities` rows up front to avoid that, and most of those rows
+  sat empty. Now an archetype hands an emptied chunk back to the World's `ChunkPool`, and any
+  archetype reuses it. `EcsBench` at 100,000 entities: the arena peak fell from 10,548 KB to 4,759 KB
+  with 16 KB chunks.
 - **`ArenaResource` raises every request to the default `new` alignment** (16 bytes on x64, 8 on
-  Win32). A byte vector asks for alignment 1,
-  and an arena honours that exactly. Without the raise, a `Position` column could start at an odd
-  address.
-- **`ComponentColumn` cannot be copied.** A copied `pmr` vector moves onto the default heap, so only
-  moving is allowed.
+  Win32). A byte vector asks for alignment 1, and an arena honours that exactly. Without the raise,
+  a byte buffer could start at an odd address.
+- **A chunk starts aligned like plain `new`.** The pool asks for `alignof(std::max_align_t)`, and
+  each archetype rounds every column's offset up to its type's alignment.
 - **When the arena is full, it falls back to the heap.** Debug asserts first, so the size gets
   fixed. Release counts it in `fromHeap` and keeps running.
 - **Debug fills a reset arena with `0xDD`.** A pointer kept past a reset then reads an obvious

@@ -38,6 +38,8 @@ Do not reopen these without a measurement.
 | **The command buffer records into its own memory** | recording never reads or writes the world, which is what makes one buffer per thread possible later with no locking |
 | **Placeholders are a flag bit on the index**, DOTS-style | an index above 2^31 is past the end of any slot table, so every existing `World` check already answers correctly for one, with no new code |
 | **Playback applies in recording order**, no coalescing | grouping an entity's operations into one move is a real win with sharp edges. The counters decided it on 2026-09-30: not needed. 24,000 migrations fit inside a 4.2 ms frame |
+| **One call places every new entity: `CreateEntityByComponentIds`** | it ORs the ids into one mask, finds the final archetype and copies each value in, so a spawn makes no migration. The typed `CreateEntity(values...)` and command buffer playback both end in it, and `CreateEntity()` is the same call with an empty list |
+| **A queued create stores each component as an `{id, size}` header and its bytes, by offset** | the payload vector moves as it grows, so playback builds pointers into it only when nothing appends any more |
 | **`AddComponentById` is public, not friended** | playback holds a `ComponentId` and loose bytes, never a type. One honest public method beats making `CommandBuffer` a friend of `World` |
 
 **Not taken, from the EnTT comparison (2026-09-28):** sparse-set storage, views and groups,
@@ -271,9 +273,10 @@ exists. Never say "died" for destruction. Conflating these caused confusion twic
   has scale 0 and the zero quaternion, so the mesh draws as a single point and no error appears.
 - `World::AddComponentById` asserts it. A component whose size is not 0 must come with a value
   and a size. A tag has size 0, so it passes with `nullptr`.
-- Two future paths will need the same care: loading entities from a file, and ROADMAP.md's
-  create-with-components. A default value per component type waits for the second one (ROADMAP.md,
-  ECS hardening, row 2).
+- `CreateEntity(values...)` follows the rule too: the caller builds every value, so `Transform{}`
+  already holds scale 1 and the identity quaternion when the World copies it.
+- Loading entities from a file will need the same care, because a saved entity can miss a field. A
+  default value per component type waits for that caller (PLAN.md, step 2, decision 1).
 
 **The playback rule.** Added 2026-10-28, in step 4b: dev-notes/physics-scene.md.
 

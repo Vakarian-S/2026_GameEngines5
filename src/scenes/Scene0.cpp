@@ -52,21 +52,29 @@ bool Scene0::OnCreate(ResourceLoader& resourceLoader)
             /* Moves the grid's centre onto the origin */
             constexpr float centre = 0.5f * static_cast<float>(kGridSide - 1);
 
-            const Entity entity = world.CreateEntity();
-            world.AddComponent<Transform>(entity, {
-                                              .position = MATH::Vec3(
-                                                  (static_cast<float>(column) - centre) * kGridSpacing,
-                                                  (static_cast<float>(row) - centre) * kGridSpacing,
-                                                  (static_cast<float>(layer) - centre) * kGridSpacing)
-                                          });
+            const Transform transform{
+                .position = MATH::Vec3(
+                    (static_cast<float>(column) - centre) * kGridSpacing,
+                    (static_cast<float>(row) - centre) * kGridSpacing,
+                    (static_cast<float>(layer) - centre) * kGridSpacing)
+            };
             /* Each entity gets a different speed between -1.5 and 1.5 m/s on each axis, so the grid breaks up as it moves */
-            world.AddComponent<PHYSICS::Velocity>(entity, {
-                                             MATH::Vec3(0.5f * static_cast<float>(static_cast<int>(i % 7) - 3),
-                                                        0.5f * static_cast<float>(static_cast<int>(i % 5) - 2),
-                                                        0.5f * static_cast<float>(static_cast<int>(i % 3) - 1))
-                                         });
-            world.AddComponent<Renderable>(entity, {cubeMesh, materials[i % 2]});
-            if (i < kDamageCount) world.AddComponent<Damageable>(entity);
+            const PHYSICS::Velocity velocity{
+                MATH::Vec3(0.5f * static_cast<float>(static_cast<int>(i % 7) - 3),
+                           0.5f * static_cast<float>(static_cast<int>(i % 5) - 2),
+                           0.5f * static_cast<float>(static_cast<int>(i % 3) - 1))
+            };
+            const Renderable renderable{cubeMesh, materials[i % 2]};
+
+            /* The tag picks the archetype, so the two kinds of cube are two calls. */
+            if (i < kDamageCount)
+            {
+                world.CreateEntity(transform, velocity, renderable, Damageable{});
+            }
+            else
+            {
+                world.CreateEntity(transform, velocity, renderable);
+            }
         }
 
         systems.Add(Phase::Fixed, std::make_unique<UpdatePositionSystem>(world));
