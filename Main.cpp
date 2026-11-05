@@ -5,6 +5,12 @@
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
 
+#include <crtdbg.h>
+#include <cstdlib>
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
 /*
  * Where the engine starts.
  *
@@ -22,9 +28,36 @@
  * Both test programs are built and run by scripts\run-tests.bat.
  */
 
+namespace
+{
+    /**
+     * When GE5_NO_DIALOGS is set, a failed assert, an abort or a crash prints to stderr and ends
+     * the process, instead of opening a window that waits for a click. scripts\run-game.ps1 sets it;
+     * a run from the IDE does not, so the IDE keeps the window and its Retry into the debugger.
+     */
+    void TurnOffErrorWindowsWhenAsked()
+    {
+        char value[2]{};
+        if (GetEnvironmentVariableA("GE5_NO_DIALOGS", value, sizeof(value)) == 0) return;
+
+        /* abort() opens no window and sends no crash report. */
+        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+        /* assert() prints its line to stderr instead of opening a window. */
+        _set_error_mode(_OUT_TO_STDERR);
+        _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+        _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+        /* A real crash, such as an access violation, ends the process without the Windows error window. */
+        SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    }
+}
+
 
 int main(const int argc, char* argv[])
 {
+    TurnOffErrorWindowsWhenAsked();
+
     /*
      * The runtime allocates before main, so measure against this point.
      *

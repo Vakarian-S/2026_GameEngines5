@@ -192,6 +192,10 @@ How it works:
 - Screenshots copy the window's area of the screen. The script turns on DPI awareness first, or the
   area comes out at the wrong size.
 - The close is a real close request, so the game shuts down normally and prints its leak report.
+- The script sets `GE5_NO_DIALOGS=1` for the game. `main` then turns off the Debug runtime's assert
+  and abort windows and the Windows crash window, so a failed assert prints its line to `err.txt`
+  and the game exits with code 3 instead of waiting for a click. A run from Rider leaves it unset
+  and keeps the window, with Retry into the debugger.
 - If the game exits early, the script stops, says before which step, and still prints the summary.
 
 Limits:
