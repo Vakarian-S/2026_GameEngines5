@@ -1,5 +1,7 @@
 # Line pipeline: a second pipeline for debug lines
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Designed 2026-10-22, built 2026-10-23, as step 2 of the plan that ended on 2026-11-03.
 
 ## Sources

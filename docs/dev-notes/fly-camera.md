@@ -1,5 +1,7 @@
 # Fly camera: why it stores angles, not a dual quaternion
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Decided 2026-10-21, while building step 1b. Designed 2026-10-20 and 2026-10-21,
 built 2026-10-22. The rest of step 1b (the `Camera`, the input, the wiring) is at the end, under
 "The rest of step 1b".

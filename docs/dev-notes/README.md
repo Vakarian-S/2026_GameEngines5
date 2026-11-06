@@ -19,7 +19,7 @@ One note per finished feature: what was decided, why, and what it measured. Nobo
 | clear-the-world.md | `World::Clear`, `Archetype::ReleaseChunks`, and R in `PhysicsScene` | 2026-11-05 |
 | intrusive-free-list.md | the free slot list kept in each dead slot's `row`, `CheckFreeList`, and why `totalRows` left `WorldStats` | 2026-11-05 |
 | entity-breakpoints.md | the `DEBUG::DebugWatch` tag, the system filter, and the `[[unlikely]]` that took back a 45% slowdown | 2026-11-05 |
-| tools/ | the long original manuals of the Memory Monitor, the Profiler and the Arena | 2026-10-20 |
+| tools/ | the long original manuals of the Memory Monitor and the Profiler | 2026-10-20 |
 
 ## Plan steps
 

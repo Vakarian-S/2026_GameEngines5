@@ -1,5 +1,7 @@
 # Dangle physics: a picked shape hangs from the mouse
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Built 2026-11-02 (milestone 1, commit `5457cd6`) and 2026-11-03 (milestone 2), as step 4c of the
 physics-scene plan. Course work: Game Physics 3, assignment 3, "Constrained Motion".
 

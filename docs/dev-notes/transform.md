@@ -1,5 +1,7 @@
 # Transform: one component with a quaternion
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Outlined 2026-10-26, designed and built 2026-10-27 (commit `ffeeb1b`), as step 4.0 of the plan that
 ended on 2026-11-03. It came before the physics scene, because a body that rotates about more than
 the up axis needs somewhere to write its orientation.

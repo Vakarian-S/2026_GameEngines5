@@ -1,5 +1,7 @@
 # Physics scene: colliders, their wires, and picking
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Designed 2026-10-27 and built 2026-10-28 (4a, commits `866e096` to `832b8e3` plus the toggles), then
 designed 2026-10-28 and built 2026-10-30 (4b, picking), as step 4 of the plan that ended on
 2026-11-03. Step 4c, the dangle, built on the same scene: see dangle-physics.md. Course work: Game

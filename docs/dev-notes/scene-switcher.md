@@ -1,5 +1,7 @@
 # Scene switcher: scenes load their own assets, and `main` shrinks
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Designed 2026-10-20, built 2026-10-21, as step 1 of the plan that ended on 2026-11-03.
 
 ## Sources

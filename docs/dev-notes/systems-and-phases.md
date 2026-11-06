@@ -1,5 +1,7 @@
 # Systems and phases: a registry runs every loop
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Designed 2026-10-23 and 2026-10-24, built 2026-10-24 to 2026-10-26 in seven builds, as step 3 of the
 plan that ended on 2026-11-03. The rules that still hold are in living/ECS.md, "Systems and phases".
 

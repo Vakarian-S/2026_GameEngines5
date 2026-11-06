@@ -1,5 +1,7 @@
 # Create with components: one call places an entity
 
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Designed 2026-11-04 (commit `c643e0d`) and built 2026-11-05 (commit `66e17cf`), as step 2 of the
 plan that ended on 2026-11-05, which hardened the ECS storage. It came from ROADMAP.md, ECS,
 Hardening, row 2. "Step N" below means a step of that plan; README.md maps each one to its note.

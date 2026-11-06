@@ -1,3 +1,5 @@
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
 Moved unchanged from README.md on 2026-10-20. This is the long original. The short version for reading is in docs/tools.
 
 # MemoryMonitor
