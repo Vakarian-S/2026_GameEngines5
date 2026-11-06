@@ -75,8 +75,11 @@ public:
         log->push_back(GetName());
         lastDeltaTime = context.deltaTime;
         lastHadDrawList = context.drawList != nullptr;
+        currentSystemDuringRun = DEBUG::currentSystem;
     }
 
+    /** The name DEBUG::currentSystem held while this system's last run was going on */
+    const char* currentSystemDuringRun = nullptr;
     /** The deltaTime this system's last run was given */
     float lastDeltaTime = 0.0f;
     /** Whether this system's last run was given a draw list */
@@ -1547,6 +1550,48 @@ int main()
     Check("the free list holds after each of 300 mixed creates and destroys", freeListHeldEveryChange);
     Check("every handle still held is live",
           std::ranges::all_of(mixedLive, [&listWorld](const Entity e) { return listWorld.DoesEntityExist(e); }));
+
+    std::cout << "\n-- debug watch --\n";
+
+    World watchWorld;
+    const Entity plain = watchWorld.CreateEntity(Position{1.0f, 0.0f, 0.0f});
+    const Entity watchedEntity = watchWorld.CreateEntity(Position{2.0f, 0.0f, 0.0f});
+    watchWorld.AddComponent<DEBUG::DebugWatch>(watchedEntity);
+
+    Check("the tag moves the entity to its own archetype",
+          watchWorld.HasComponent<DEBUG::DebugWatch>(watchedEntity) && !watchWorld.HasComponent<DEBUG::DebugWatch>(plain));
+
+    /* The same moves a grab and a release make: a component in, then out again. */
+    watchWorld.AddComponent<Velocity>(watchedEntity, {0.0f, 1.0f, 0.0f});
+    Check("the tag survives a component added after it", watchWorld.HasComponent<DEBUG::DebugWatch>(watchedEntity));
+    watchWorld.RemoveComponent<Velocity>(watchedEntity);
+    Check("the tag survives that component's removal", watchWorld.HasComponent<DEBUG::DebugWatch>(watchedEntity));
+    Check("and the data survives both moves", watchWorld.GetComponent<Position>(watchedEntity)->x == 2.0f);
+
+    /* No debugger runs under CTest, so BreakOnWatch must return and the loop must go on. */
+    Query watchQuery(watchWorld, COMPONENTS::MaskOf<Position>(), 0);
+    float watchSum = 0.0f;
+    uint32_t chunksVisited = 0;
+    watchQuery.ForEachChunk([&](const ChunkView chunk)
+    {
+        ++chunksVisited;
+        for (uint32_t i = 0; i < chunk.Count(); ++i) watchSum += chunk.Column<Position>()[i].x;
+    });
+    Check("a query that never names the tag still reaches the watched entity", watchSum == 3.0f);
+    Check("and visits the watched archetype's chunk as well as the plain one", chunksVisited == 2);
+
+    /* BreakOnWatch filters on DEBUG::currentSystem, so RunPhase must name each system while it runs. */
+    Check("no system is named before any phase runs", DEBUG::currentSystem == nullptr);
+    SystemRegistry watchRegistry(watchWorld);
+    std::vector<std::string_view> watchLog;
+    auto namedLogger = std::make_unique<LoggingSystem>("Named", 0, &watchLog);
+    const LoggingSystem* namedSystem = namedLogger.get();
+    watchRegistry.Add(Phase::Update, std::move(namedLogger));
+    watchRegistry.RunPhase(Phase::Update, 0.5f, nullptr);
+    Check("RunPhase names the system it is running",
+          namedSystem->currentSystemDuringRun != nullptr &&
+          std::string_view(namedSystem->currentSystemDuringRun) == "Named");
+    Check("and clears the name once the phase ends", DEBUG::currentSystem == nullptr);
 
     std::cout << "\n-- fixed step --\n";
 

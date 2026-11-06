@@ -15,7 +15,7 @@ Hardening, rows 1, 2, 4, 7 and 12. Rows 3, 5, 6 and 8 to 11 stay in the roadmap.
 | 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | done `5de98168` |
 | 2 | Create with components: one call puts an entity in its final archetype | A spawn makes zero migrations, in the World and through the command buffer | done `66e17cf` |
 | 3 | Clear the World in one call | R in `PhysicsScene` clears and respawns the shapes, a handle from before reads as dead, and the respawn takes no new chunks from the arena | done `e72e731` |
-| 4 | An intrusive free list: a free slot's `row` holds the next free index | `freeSlots` is gone, the slot tests pass unchanged, `CheckFreeList` passes after every test sequence, and the arena's used bytes drop by `maxEntities × 4` | designed |
+| 4 | An intrusive free list: a free slot's `row` holds the next free index | `freeSlots` is gone, the slot tests pass unchanged, `CheckFreeList` passes after every test sequence, and the arena's used bytes drop by `maxEntities × 4` | done `8ba89f3` |
 | 5 | Entity breakpoints: a `DebugWatch` tag, checked inside `ForEachChunk` | Under Rider, every system that reaches the tagged shape stops, the plain exe runs on with the tag in place, and `EcsBench` shows no cost with no tag | designed |
 
 **Stages**, in order. The cell says what the step is ready for, and it changes only when this file
@@ -690,3 +690,78 @@ Checks for the build:
 | 4 | No crash without a debugger | Run the plain exe with cube 2 tagged |
 | 5 | The game recovers after a long pause | Wait a minute in the debugger, then continue |
 | 6 | The check costs nothing with no tag | `EcsBench` at 100,000 rows, with and without the check |
+
+### What the build changed
+
+- **`include/ecs/debug/DebugWatch.h` and `src/ecs/debug/DebugWatch.cpp`,** not `core/debug`. `ecs`
+  never includes `core` (STATE.md, architecture rules 2 and 3). The tag, the flags and
+  `BreakOnWatch` sit in the `DEBUG` namespace, so the tag is `DEBUG::DebugWatch`. Only the `.cpp`
+  includes `<windows.h>`.
+- **A system filter, added during the build.** With no filter, the game stopped in every system on
+  the first frame, rendering included, so a bug could never show before the first stop.
+  `RunPhase` writes the running system's name to `DEBUG::currentSystem` before each `Run` and
+  clears it to `nullptr` after the loop. `BreakOnWatch` returns unless `DEBUG::watchSystem` is
+  `nullptr` or names that system, compared by content with `std::string_view`. A query run outside
+  any system never matches a filter.
+- **Decision 2 changed: the break starts off.** Rider's watch window would not edit the flag, so
+  `watchBreakArmed` defaults to `false`, and the developer turns it on in code. To debug: tag the
+  entity, set `DEBUG::watchBreakArmed = true`, optionally set `DEBUG::watchSystem` to one system's
+  name, run under Rider, and remove the lines afterwards. `MouseConstraint` makes a good filter for
+  a held shape: its query needs `Picked`, so it reaches the shape only while it is held. `Pick`
+  does not: its collider loop visits every pickable shape on every click.
+- **`[[unlikely]]` on the check in `ForEachChunk`.** Without it, the call to `BreakOnWatch` slowed
+  two of the three `EcsBench` systems by about 45%; see the table below. The mask of the tag is
+  built once per call, above the archetype loop.
+
+### What the build checked
+
+**Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` runs 314 checks,
+9 more than step 4, in a "debug watch" section:
+
+- The tag moves the entity to its own archetype, and survives a component added and then removed
+  (check 2), with the data intact.
+- A query that never names the tag still reaches the watched entity and visits both chunks. CTest
+  runs with no debugger, so this also shows `BreakOnWatch` returns and the loop goes on.
+- `RunPhase` names the running system in `DEBUG::currentSystem` and clears it after the phase.
+
+**Under Rider** (checks 1, 3 and 5), run by Vakarian with cube 2 tagged: every stop was cube 2's
+archetype, holding one row; the game ran on after the flag was turned off; and it recovered after a
+long pause. A dump from the stop in `UpdateOrientationSystem` showed `watched = true` on the
+archetype with mask 127 (bit 6 is the tag) and `count = 1`, while the untagged cube sat alone in
+mask 63. Rider's display of the lambda there was wrong: every system's first lambda is named
+`<lambda_1>`, and it showed another system's captures. Setting the flag from the watch window
+later failed, which led to the default change above.
+
+**The plain exe** (check 4), through `scripts\run-game.ps1` with cube 2 tagged, `-Scene 1`: F3,
+R twice, F1, F2, F3. Exit 0 in Debug and Release, no asserts, warnings or errors, 0 fell to the
+heap, 0 leaked blocks in Debug. `PhysicsScene` had 6 archetypes instead of 5, and the report read
+14 entities destroyed after two R presses.
+
+**The cost** (check 6). `EcsBench`, x64 Release, 100,000 rows, arena, 16 KB chunks. Each cell is
+the mean of the average frame time over runs 2 to 4 of four, measured with a scratchpad script
+around `.\bin\x64\Release\EcsBench.exe`:
+
+| build | Movement | ToggleTags | CullAndRespawn |
+|---|---|---|---|
+| step 4, committed | 0.075 ms | 0.112 ms | 0.190 ms |
+| the check, no `[[unlikely]]` | 0.075 ms | 0.161 ms | 0.247 ms |
+| the check with `[[unlikely]]` | 0.074 ms | 0.113 ms | 0.189 ms |
+
+The first "after" run showed no cost: that build happened to get a good code layout. A scratch
+build with `/QIntel-jcc-erratum`, which pads jumps so their alignment stops mattering, showed the
+cost every time. Variants in that build:
+
+- the branch with a cheap write instead of the call: fast, so the call costs, not the check;
+- two loops, one for watched archetypes and one for the rest: still slow;
+- `[[unlikely]]`: fast.
+
+Movement's loop is plain math with no calls, and it never changed. Why the stride loop suffers is a
+guess, not checked in the assembly: its lambda keeps `firstRow` and `current` across chunks, so
+they live across the call.
+
+`[[unlikely]]` on `Archetype::AddRow`'s new-chunk branch was tried too, and gained nothing beyond
+the noise: Spawn measured 2.81 ms and 3.14 ms on two passes of the same build. It was removed.
+
+**The game,** with no tag, Scene0 (1,000 cubes) for 15 seconds, three runs each, Release, step 4's
+committed build against this one: every system within 0.004 ms, and every run exited 0. At 1,000
+rows the systems take a few microseconds, below what this test can separate.

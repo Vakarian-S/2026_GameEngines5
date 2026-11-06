@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "ecs/debug/DebugWatch.h"
 #include "ecs/Component.h"
 #include "ecs/ChunkView.h"
 
@@ -22,10 +23,13 @@ public:
     template <typename Function>
     void ForEachChunk(Function&& function)
     {
+        const ComponentMask debugWatchMask = COMPONENTS::MaskOf<DEBUG::DebugWatch>();
         for (Archetype* archetype : Matches())
         {
+            const bool watched = (archetype->Mask() & debugWatchMask) != 0;
             for (Chunk& chunk : archetype->Chunks())
             {
+                if (watched) [[unlikely]] DEBUG::BreakOnWatch();
                 function(ChunkView{archetype, &chunk});
             }
         }

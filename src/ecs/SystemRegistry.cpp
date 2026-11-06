@@ -6,6 +6,7 @@
 
 #include "ecs/SystemContext.h"
 #include "ecs/World.h"
+#include "ecs/debug/DebugWatch.h"
 #include "utils/Profiler.h"
 
 namespace
@@ -74,8 +75,10 @@ void SystemRegistry::RunPhase(Phase phase, const float deltaTime, const InputSta
     {
         if (!system->enabled) continue;
         PROFILE_SCOPE(system->GetName());
+        DEBUG::currentSystem = system->GetName();
         system->Run(systemContext);
     }
+    DEBUG::currentSystem = nullptr;
     if (commands.Count() > 0)
     {
         PROFILE_SCOPE_ECS(world, kPlaybackNames[static_cast<size_t>(phase)]);

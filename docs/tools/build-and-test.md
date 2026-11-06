@@ -119,7 +119,7 @@ next to the setting.
 Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.
 
 `EcsTests`, `ArenaTests` and `PhysicsTests` are their own programs, registered with CTest next to
-`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 281 checks in
+`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 314 checks in
 every configuration (2026-11-05), 5 of them for `FixedStep`, which is core but needs nothing else. `ArenaTests` runs 73 in Debug and 72 in Release, because the check that reads
 the `0xDD` fill only exists in Debug.
 
