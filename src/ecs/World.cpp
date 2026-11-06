@@ -1,5 +1,6 @@
 ﻿#include "ecs/World.h"
 
+#include <algorithm>
 #include <cstring>
 #include <new>
 
@@ -17,11 +18,9 @@ World::World(const WorldConfig& config)
       maxRows(config.arenaBytes > 0 ? config.maxEntities : 0),
       chunkPool(&memory, config.chunkBytes, frameStats),
       entitySlots(&memory),
-      freeSlots(&memory),
       archetypes(&memory)
 {
     entitySlots.reserve(maxRows > 0 ? maxRows : kHeapReserve);
-    freeSlots.reserve(maxRows > 0 ? maxRows : kHeapReserve);
     if (maxRows > 0) archetypes.reserve(kArchetypeReserve);
 }
 
@@ -38,11 +37,14 @@ World::~World()
 uint32_t World::TakeNextEntitySlot()
 {
     uint32_t index;
-    if (!freeSlots.empty())
+    if (firstFreeEntitySlot != kNoFreeSlot)
     {
-        /* Reuse the most recently freed index. Its version was already bumped by Destroy. */
-        index = freeSlots.back();
-        freeSlots.pop_back();
+        index = firstFreeEntitySlot;
+        assert(entitySlots[index].archetype == kInvalidArchetype && "the free list points at a live slot");
+        assert((entitySlots[index].row == kNoFreeSlot || entitySlots[index].row < entitySlots.size())
+            && "the free list links past the slot table");
+        /* Recycled slots point to the next recyclable slot */
+        firstFreeEntitySlot = entitySlots[index].row;
     }
     else
     {
@@ -59,7 +61,9 @@ Entity World::CreateEntityByComponentIds(const std::span<const ComponentValue> c
     ComponentMask mask = ComponentMask{0};
     for (const ComponentValue& value : componentValues)
     {
-        assert((mask & (ComponentMask{1} << value.id)) == 0 && "CreateEntityByComponentIds got the same component type twice.");
+        assert(
+            (mask & (ComponentMask{1} << value.id)) == 0 &&
+            "CreateEntityByComponentIds got the same component type twice.");
         mask = mask | (ComponentMask{1} << value.id);
     }
     const uint32_t index = TakeNextEntitySlot();
@@ -103,7 +107,9 @@ void World::DestroyEntity(const Entity entity)
     /* The version bump is the invalidation. Every copy of this handle is now stale. */
     entitySlots[entity.index].version++;
     entitySlots[entity.index].archetype = kInvalidArchetype;
-    freeSlots.push_back(entity.index);
+    /* Store the previous first free slot in this one */
+    entitySlots[entity.index].row = firstFreeEntitySlot;
+    firstFreeEntitySlot = entity.index;
     GE5_ECS_COUNT(frameStats, entitiesDestroyed, 1);
 }
 
@@ -161,14 +167,20 @@ WorldStats World::Snapshot() const
     WorldStats stats;
     stats.archetypeCount = static_cast<uint32_t>(archetypes.size());
     stats.slotTableSize = static_cast<uint32_t>(entitySlots.size());
-    stats.liveEntities = static_cast<uint32_t>(entitySlots.size() - freeSlots.size());
+    stats.liveEntities = static_cast<uint32_t>(std::ranges::count_if(entitySlots, [](const EntitySlot& item)
+    {
+        return item.archetype != kInvalidArchetype;
+    }));
 
+    uint32_t totalRows = 0;
     for (const Archetype* archetype : archetypes)
     {
         const uint32_t rows = archetype->Count();
-        stats.totalRows += rows;
+        totalRows += rows;
         if (rows == 0) stats.emptyArchetypes++;
     }
+    /* Every live slot owns exactly one row, so the two counts differ only when the slots and archetypes disagree. */
+    assert(totalRows == stats.liveEntities && "the live slots and the archetype rows disagree");
 
     stats.chunksFree = chunkPool.FreeCount();
     return stats;
@@ -220,14 +232,39 @@ void World::Clear()
         archetype->ReleaseChunks();
     }
 
+    uint32_t destroyed = 0;
     for (uint32_t index = 0; index < entitySlots.size(); ++index)
     {
         EntitySlot& slot = entitySlots[index];
         if (slot.archetype == kInvalidArchetype) continue;
         slot.version++;
         slot.archetype = kInvalidArchetype;
-        freeSlots.push_back(index);
+        /* Store the previous first free slot in this one */
+        slot.row = firstFreeEntitySlot;
+        firstFreeEntitySlot = index;
+        destroyed++;
     }
+    GE5_ECS_COUNT(frameStats, entitiesDestroyed, destroyed);
+}
+
+bool World::CheckFreeList() const
+{
+    const auto slotCount = static_cast<uint32_t>(entitySlots.size());
+    uint32_t linked = 0;
+
+    for (uint32_t index = firstFreeEntitySlot; index != kNoFreeSlot; index = entitySlots[index].row)
+    {
+        /* More links than slots means the chain loops back on itself. */
+        if (index >= slotCount || linked == slotCount) return false;
+        if (entitySlots[index].archetype != kInvalidArchetype) return false;
+        ++linked;
+    }
+
+    const auto freeCount = static_cast<uint32_t>(std::ranges::count_if(entitySlots, [](const EntitySlot& slot)
+    {
+        return slot.archetype == kInvalidArchetype;
+    }));
+    return linked == freeCount;
 }
 
 uint16_t World::ArchetypeIndexFor(const ComponentMask mask)

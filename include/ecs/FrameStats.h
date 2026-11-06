@@ -120,11 +120,6 @@ struct WorldStats
     uint32_t liveEntities = 0;
 
     /**
-     * Total rows across every archetype
-     */
-    uint32_t totalRows = 0;
-
-    /**
      * Entity Slots handed out, live and dead
      */
     uint32_t slotTableSize = 0;

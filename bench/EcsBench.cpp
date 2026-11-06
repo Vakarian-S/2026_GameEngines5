@@ -240,7 +240,6 @@ namespace
             << ", " << (totals.chunksTaken - totals.chunksReturned) << " in use, "
             << snapshot.chunksFree << " free\n";
         std::cout << "  world     " << snapshot.liveEntities << " live, "
-            << snapshot.totalRows << " rows, "
             << snapshot.archetypeCount << " archetypes ("
             << snapshot.emptyArchetypes << " empty), "
             << snapshot.slotTableSize << " slots\n";

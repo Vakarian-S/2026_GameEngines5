@@ -18,7 +18,7 @@ class Archetype;
 /** How much memory a World takes, and from where. */
 struct WorldConfig
 {
-    /** Most entities alive at once. Every archetype reserves this many rows. */
+    /** Most entities alive at once. The slot table reserves this many slots up front. */
     uint32_t maxEntities = 1024;
     /**
      * Bytes in the world's slab, taken from the OS once. Zero means no arena: every container
@@ -39,11 +39,7 @@ struct WorldMemoryStats
 /**
  * Owns every entity in the game.
  *
- * The directory is two vectors. entitySlots is the record for each index ever handed out,
- * and freeSlots holds the indexes of the dead ones, waiting to be reused. They have to stay
- * consistent with each other, which is why they are private and why this is a class rather
- * than a struct.
- *
+ * The directory is in entitySlots, once an entity is deleted these slots can be recycled for future entities
  * Nothing outside ever sees an EntitySlot. Callers hold an Entity, which is two numbers.
  */
 class World
@@ -256,6 +252,13 @@ public:
      * and point to an invalid archetype
      */
     void Clear();
+    
+    /**
+     * Test Function\n
+     * Walks the free list and returns false when it is broken: a link past the slot table, a live slot on
+     * the list, a loop, or a free slot missing from it. The tests call it after every structural change.
+     */
+    bool CheckFreeList() const;
 
 private:
     /* Declared first, so they are built before every container below and destroyed after them. */
@@ -269,11 +272,11 @@ private:
     /** Memory pool of chunks to use for archetypes memory management */
     ChunkPool chunkPool;
 
+    /** The index of the first entitySlot that can be recycled to point to a new entity */
+    uint32_t firstFreeEntitySlot = kNoFreeSlot;
 
     /** One record per index ever handed out. The index into this vector is the entity's index. */
     std::pmr::vector<EntitySlot> entitySlots;
-    /** Indexes of dead slots, newest first. */
-    std::pmr::vector<uint32_t> freeSlots;
 
     /** List of all the archetypes in our world. Each one is built in place inside memory. **/
     std::pmr::vector<Archetype*> archetypes;

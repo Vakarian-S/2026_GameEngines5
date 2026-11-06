@@ -23,6 +23,7 @@ namespace
 
         std::cout << "-- ECS Report --\n"
             << "  entities created    " << totals.entitiesCreated << "\n"
+            << "  entities destroyed  " << totals.entitiesDestroyed << "\n"
             << "  components added    " << totals.componentsAdded << "\n"
             << "  components removed  " << totals.componentsRemoved << "\n"
             << "  migrations          " << totals.migrations << "\n"

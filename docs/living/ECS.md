@@ -51,10 +51,13 @@ and packing `Entity` into one 32-bit integer.
 ## Invariants worth protecting
 
 - **Versions start at 1.** A default `Entity{}` is `{0, 0}` and must never match a live slot.
-- **The version bump happens only in `DestroyEntity`.** Bump it anywhere else and handles stop
-  matching the slots they name.
+- **The version bump happens only when a slot is freed, in `DestroyEntity` and `Clear`.** Bump it
+  anywhere else and handles stop matching the slots they name.
 - **One source of truth for a row.** Nothing anywhere stores a row except the entity's slot.
   `RemoveRow` returns the entity that moved so exactly one slot gets patched.
+- **A free slot's `row` is a link, not a row.** It holds the index of the next free slot, and
+  `kNoFreeSlot` ends the list. Read `row` only after `archetype` says the slot is live.
+  `CheckFreeList` walks the list in the tests.
 - **Adding or removing a component never touches the version.** Same entity, different shape.
 - **`archetypeGeneration` is bumped on the create path only.** Bumping it on lookup would make
   every query rebuild forever.

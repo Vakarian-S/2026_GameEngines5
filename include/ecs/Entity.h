@@ -9,7 +9,8 @@ constexpr uint32_t kPlaceholderBit = 0x80000000;
  */
 struct Entity
 {
-    /* Index of the entity on the */ 
+    /** Index of the Entity Slot in the world that holds this entity */ 
     uint32_t index;
+    /** Current version of the entity, when the entity gets destroyed its version number its increased */
     uint32_t version;
 };

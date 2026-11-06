@@ -7,6 +7,7 @@
  * One program, one test: it counts its own checks and returns non zero if any of them fail.
  */
 
+#include <algorithm>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
@@ -208,6 +209,7 @@ int main()
     /* Destroying a handle that is already dead does nothing rather than corrupting the slot. */
     world.DestroyEntity(a);
     Check("destroying a stale handle is harmless", world.DoesEntityExist(b) && world.DoesEntityExist(c));
+    Check("the free list holds after create, destroy and reuse", world.CheckFreeList());
 
     /*
      * Components.
@@ -442,6 +444,7 @@ int main()
 
     Check("a recycled slot rejoins the empty archetype", archetypeOf(w4) == archetypeOf(w1));
     Check("and takes the free row", row_of(w4) == 1);
+    Check("the free list holds after the row shuffles", stage.CheckFreeList());
 
     /*
      * Adding components to an entity, with their archetypes shifting.
@@ -473,6 +476,7 @@ int main()
 
     Check("a recycled slot starts back in the empty archetype", archetypeOf(m2) == emptyArchetype);
     Check("and has no components", !stage.HasComponent<Position>(m2));
+    Check("the free list holds after a destroy across archetypes", stage.CheckFreeList());
 
     /*
  * Queries. A fresh world, so the archetype count and generation are predictable.
@@ -617,6 +621,7 @@ int main()
 
     Check("Clear drops commands without applying them", cmdWorld.DoesEntityExist(spared));
     Check("Clear empties the buffer", commands.Count() == 0);
+    Check("the free list holds after destroys through the buffer", cmdWorld.CheckFreeList());
 
     std::cout << "\n-- command buffer, remove --\n";
 
@@ -665,6 +670,7 @@ int main()
 
     Check("a removal on an entity destroyed before playback is ignored",
           !removeWorld.DoesEntityExist(goneBeforePlayback));
+    Check("the free list holds after a removal on a destroyed entity", removeWorld.CheckFreeList());
 
     std::cout << "\n-- command buffer, add --\n";
 
@@ -723,6 +729,7 @@ int main()
 
     Check("an add on an entity destroyed before playback is ignored",
           !addWorld.DoesEntityExist(goneBeforeAdd));
+    Check("the free list holds after an add on a destroyed entity", addWorld.CheckFreeList());
 
     additions.AddComponent<Velocity>(mixedB, {5.0f, 5.0f, 5.0f});
     additions.RemoveComponent<Dead>(mixedB);
@@ -794,6 +801,7 @@ int main()
     Check("the untagged entities survived two frames",
           frameWorld.DoesEntityExist(healthy) && frameWorld.DoesEntityExist(wounded));
     Check("the buffer is empty after the second playback", frame.Count() == 0);
+    Check("the free list holds after destroys queued inside a loop", frameWorld.CheckFreeList());
 
     std::cout << "\n-- command buffer, create --\n";
 
@@ -994,6 +1002,7 @@ int main()
     Check("the snapshot loses the live entity", after.liveEntities == 0);
     Check("every archetype is empty once the entity is gone", after.emptyArchetypes == 3);
     Check("the slot table keeps the dead slot", after.slotTableSize == 1);
+    Check("the free list holds the one dead slot", statsWorld.CheckFreeList());
 
     World bufferWorld;
     CommandBuffer statsBuffer;
@@ -1111,6 +1120,14 @@ int main()
     Check("a column starts aligned for its own type",
           reinterpret_cast<std::uintptr_t>(columnBefore) % alignof(Position) == 0);
     Check("the first value survived", arenaWorld.GetComponent<Position>(firstInArena)->y == 2.0f);
+
+    /* PLAN.md step 4 measures this number before and after the free list change. */
+    WorldConfig reserveConfig;
+    reserveConfig.maxEntities = 4096;
+    reserveConfig.arenaBytes = 1024 * 1024;
+    const World reserveWorld(reserveConfig);
+    std::cout << "  a new World with maxEntities 4096 uses " << reserveWorld.MemoryStats().arena.used
+              << " arena bytes\n";
 
     std::cout << "\n-- memory, a world on the heap --\n";
 
@@ -1261,6 +1278,7 @@ int main()
     Check("the old handle reads as gone", !withWorld.DoesEntityExist(wholeEntity));
     Check("the reused slot holds the new component", withWorld.GetComponent<Health>(reused)->current == 7.0f);
     Check("and not the old ones", !withWorld.HasComponent<Position>(reused));
+    Check("the free list holds after a create with components reuses a slot", withWorld.CheckFreeList());
 
     /* ===== By id ===== */
 
@@ -1399,7 +1417,7 @@ int main()
 
     Check("a handle from before the clear reads as gone", !clearWorld.DoesEntityExist(heldHandle));
     Check("and reads no component", clearWorld.GetComponent<Position>(heldHandle) == nullptr);
-    Check("a clear leaves no live entity", snapshotCleared.liveEntities == 0 && snapshotCleared.totalRows == 0);
+    Check("a clear leaves no live entity", snapshotCleared.liveEntities == 0);
     Check("a clear keeps every archetype", snapshotCleared.archetypeCount == snapshotBefore.archetypeCount);
     Check("and empties every one", snapshotCleared.emptyArchetypes == snapshotCleared.archetypeCount);
     Check("a clear does not change the archetype generation", clearWorld.ArchetypeGeneration() == generationBefore);
@@ -1407,6 +1425,9 @@ int main()
     Check("a clear returns every chunk in use", clearWorld.Stats().chunksReturned == chunksBefore);
     Check("and every one waits on the free list", snapshotCleared.chunksFree == snapshotBefore.chunksFree + chunksBefore);
     Check("a clear takes no arena bytes", clearWorld.MemoryStats().arena.used == clearUsedBefore);
+    Check("a clear counts every entity it destroys", clearWorld.Stats().entitiesDestroyed == beforeClear.size());
+    Check("the free list holds every slot after a clear",
+          clearWorld.CheckFreeList() && snapshotCleared.slotTableSize == beforeClear.size());
 
     clearWorld.ResetFrameStats();
     const std::vector<Entity> afterClear = spawnClearLoad();
@@ -1416,6 +1437,9 @@ int main()
     Check("the respawn sends nothing to the heap", clearWorld.MemoryStats().resource.fromHeap == clearHeapBefore);
     Check("the respawn makes no archetype", clearWorld.ArchetypeGeneration() == generationBefore);
     Check("the respawn reuses the slot table", clearWorld.Snapshot().slotTableSize == snapshotBefore.slotTableSize);
+    Check("the free list holds after the respawn takes every slot back", clearWorld.CheckFreeList());
+    Check("the respawn takes the highest index first, as the vector did",
+          afterClear.front().index == snapshotBefore.slotTableSize - 1);
 
     bool versionsAdvanced = true;
     for (const Entity& fresh : afterClear)
@@ -1440,18 +1464,27 @@ int main()
     Check("the respawned rows hold their new values", respawnedSum == 499500.0f);
 
     /* Many rounds, as a player restarting again and again would make. */
+    bool freeListHeldEveryRound = true;
     for (int round = 0; round < 50; ++round)
     {
         clearWorld.Clear();
+        if (!clearWorld.CheckFreeList()) freeListHeldEveryRound = false;
         spawnClearLoad();
+        if (!clearWorld.CheckFreeList()) freeListHeldEveryRound = false;
     }
+    Check("the free list holds after every one of 50 clear and respawn rounds", freeListHeldEveryRound);
     Check("50 more rounds take no new arena bytes", clearWorld.MemoryStats().arena.used == clearUsedBefore);
     Check("50 more rounds send nothing to the heap", clearWorld.MemoryStats().resource.fromHeap == clearHeapBefore);
     Check("50 more rounds keep the free chunk count", clearWorld.Snapshot().chunksFree == snapshotBefore.chunksFree);
 
     /* A second clear in a row must not free any slot twice, or two entities would share an index. */
+    clearWorld.ResetFrameStats();
     clearWorld.Clear();
+    const uint64_t destroyedByFirstClear = clearWorld.Stats().entitiesDestroyed;
     clearWorld.Clear();
+    Check("a second clear in a row destroys nothing more",
+          clearWorld.Stats().entitiesDestroyed == destroyedByFirstClear);
+    Check("the free list holds after two clears in a row", clearWorld.CheckFreeList());
     const std::vector<Entity> afterDoubleClear = spawnClearLoad();
 
     std::vector<bool> indexSeen(clearWorld.Snapshot().slotTableSize, false);
@@ -1468,6 +1501,52 @@ int main()
     emptyClearWorld.Clear();
     Check("clearing an empty world is harmless", emptyClearWorld.Snapshot().liveEntities == 0 &&
           emptyClearWorld.DoesEntityExist(emptyClearWorld.CreateEntity()));
+    Check("the free list holds after clearing an empty world", emptyClearWorld.CheckFreeList());
+
+    std::cout << "\n-- free list --\n";
+
+    World listWorld;
+    std::vector<Entity> listed;
+    for (int i = 0; i < 4; ++i) listed.push_back(listWorld.CreateEntity());
+    Check("a world that never destroyed has an empty free list", listWorld.CheckFreeList());
+
+    listWorld.DestroyEntity(listed[1]);
+    listWorld.DestroyEntity(listed[3]);
+    listWorld.DestroyEntity(listed[0]);
+    Check("the free list holds three dead slots", listWorld.CheckFreeList());
+
+    const Entity reuseFirst = listWorld.CreateEntity();
+    const Entity reuseSecond = listWorld.CreateEntity();
+    const Entity reuseThird = listWorld.CreateEntity();
+    Check("the slot freed last comes back first",
+          reuseFirst.index == 0 && reuseSecond.index == 3 && reuseThird.index == 1);
+    Check("an empty free list grows the table again", listWorld.CreateEntity().index == 4);
+    Check("the free list holds once every dead slot is reused", listWorld.CheckFreeList());
+
+    /* Destroys and creates mixed across two archetypes, checked after every change. */
+    std::vector<Entity> mixedLive;
+    bool freeListHeldEveryChange = true;
+    for (int i = 0; i < 300; ++i)
+    {
+        if (i % 3 == 2 && !mixedLive.empty())
+        {
+            const size_t victim = (static_cast<size_t>(i) * 7) % mixedLive.size();
+            listWorld.DestroyEntity(mixedLive[victim]);
+            mixedLive.erase(mixedLive.begin() + static_cast<std::ptrdiff_t>(victim));
+        }
+        else if (i % 2 == 0)
+        {
+            mixedLive.push_back(listWorld.CreateEntity(Position{static_cast<float>(i), 0.0f, 0.0f}));
+        }
+        else
+        {
+            mixedLive.push_back(listWorld.CreateEntity(Health{1.0f, 1.0f}));
+        }
+        if (!listWorld.CheckFreeList()) freeListHeldEveryChange = false;
+    }
+    Check("the free list holds after each of 300 mixed creates and destroys", freeListHeldEveryChange);
+    Check("every handle still held is live",
+          std::ranges::all_of(mixedLive, [&listWorld](const Entity e) { return listWorld.DoesEntityExist(e); }));
 
     std::cout << "\n-- fixed step --\n";
 

@@ -14,7 +14,7 @@ Hardening, rows 1, 2, 4, 7 and 12. Rows 3, 5, 6 and 8 to 11 stay in the roadmap.
 |---|---|---|---|
 | 1 | Chunks: an archetype stores its rows in fixed-size chunks, taken from a pool as rows arrive | Scene3 runs past wave 15 without filling its arena, and `EcsBench` holds under a nanosecond per entity at 100,000 rows | done `5de98168` |
 | 2 | Create with components: one call puts an entity in its final archetype | A spawn makes zero migrations, in the World and through the command buffer | done `66e17cf` |
-| 3 | Clear the World in one call | R in `PhysicsScene` clears and respawns the shapes, a handle from before reads as dead, and the respawn takes no new chunks from the arena | designed |
+| 3 | Clear the World in one call | R in `PhysicsScene` clears and respawns the shapes, a handle from before reads as dead, and the respawn takes no new chunks from the arena | done `e72e731` |
 | 4 | An intrusive free list: a free slot's `row` holds the next free index | `freeSlots` is gone, the slot tests pass unchanged, `CheckFreeList` passes after every test sequence, and the arena's used bytes drop by `maxEntities × 4` | designed |
 | 5 | Entity breakpoints: a `DebugWatch` tag, checked inside `ForEachChunk` | Under Rider, every system that reaches the tagged shape stops, the plain exe runs on with the tag in place, and `EcsBench` shows no cost with no tag | designed |
 
@@ -543,6 +543,44 @@ if (firstFree != kNoFreeSlot)
   `DestroyEntity`.
 - The memory-manager dev-note and `docs/tools/arena.md` name the free list as a vector; check them
   at commit time.
+
+### What the build checked
+
+**Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` runs 305 checks,
+24 more than step 3:
+
+- `CheckFreeList` passes after every sequence that destroys: the slot tests, the row shuffles, the
+  destroys through the command buffer and inside a loop, a create with components that reuses a
+  slot, each clear and respawn, all 50 extra rounds, two clears in a row, and an empty world's clear.
+- A new "free list" section: slots freed in the order 1, 3, 0 come back as 0, 3, 1. An empty list
+  grows the table again. 300 mixed creates and destroys across two archetypes keep the list whole
+  after every change.
+- A clear counts every entity it destroys, 1,010, and a second clear in a row counts none.
+- A respawn after a clear takes the highest index first, the same order the vector gave.
+- The slot tests from before pass unchanged.
+
+**The arena.** A new World with `maxEntities = 4096` and a 1 MB slab, printed by `EcsTests`
+("a new World with maxEntities 4096 uses … arena bytes"), from `scripts\run-tests.bat <platform>
+<config>`:
+
+| config | before | after | drop |
+|---|---|---|---|
+| x64 Debug | 66,096 | 49,696 | 16,400 |
+| x64 Release | 66,048 | 49,664 | 16,384 |
+| Win32 Debug | 65,816 | 49,424 | 16,392 |
+| Win32 Release | 65,792 | 49,408 | 16,384 |
+
+Release drops exactly `4096 × 4`. Debug drops 16 bytes more on x64 and 8 on Win32, a guess: the
+Debug runtime gives every vector a small bookkeeping block, and `freeSlots` took its own with it.
+
+**The game,** in Debug, through `scripts\run-game.ps1`:
+
+| run | steps | result |
+|---|---|---|
+| Every scene, R in `PhysicsScene` | `-Scene 1`: F1, F2, F3, then R three times, all three times over | exit 0, no asserts, warnings or errors, 10 scenes closed, 0 fell to the heap in every world and the frame arena, 0 leaked blocks. The last `PhysicsScene` report: 28 created, 20 chunks taken and 15 returned, 0 migrations, 7 live |
+
+The ECS report does not print `entitiesDestroyed`, so the game run cannot show the clear's count;
+the tests check it.
 
 ## 5. Entity breakpoints
 
