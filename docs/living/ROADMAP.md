@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated:** 2026-11-03.
+**Last updated:** 2026-11-05.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
@@ -47,19 +47,14 @@ the physics scenes hold a few hundred entities, created once.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | A column becomes a list of fixed-size blocks, allocated as rows arrive, instead of one reserved run | Every archetype reserves `maxEntities` rows. Scene3 filled its 32 MB slab on wave 15 and Debug closed, and 36 of its 41 archetypes were empty. The space prototype paid 3.65 MB for 4,064 reserved rows across 14 archetypes, 11 of them holding nothing. Blocks also settle the world-size guess: `arenaBytes` stops having to cover the worst case, so the number becomes a hint rather than a contract. The block size is a guess: 16 KB is what DOTS and Mass use, so measure 4, 16 and 64 KB. The baseline to beat is under a nanosecond per entity at 100,000 rows, already bandwidth bound. With blocks, adding a row never moves an existing block, so column pointers survive additions and only removes and migrations make them stale | to-do |
-| 2 | Create with components: one call places an entity in its final archetype | Each spawn made about 9 migrations: 686,534 in 90 seconds, and `Playback` was the most expensive system. The space prototype paid the same 8 per entity through plain `AddComponent`, so the fix belongs in the World and not only in playback. To weigh in its design: a create that places every column at once may leave some columns without a value, and zero bytes are not a valid default for every type (a `Transform` would get scale 0 and the zero quaternion). The candidate fix, from step 4.0: `Register<T>()` stores a copy of `T{}`'s bytes in `ComponentInfo`, and any path with no value copies those instead of leaving zeros. Loading from a file needs the same | to-do |
-| 3 | Handles inside component data resolved at playback, or a create that returns the real handle | The command buffer resolves placeholders only in a command's target, never inside a component's bytes. So today an entity that holds another entity's handle must be built straight into the World in `OnCreate`. Easier after 2 | to-do |
-| 4 | A call that clears the World | A restart destroys every entity one at a time | to-do |
+| 3 | Handles inside component data resolved at playback, or a create that returns the real handle | The command buffer resolves placeholders only in a command's target, never inside a component's bytes. So today an entity that holds another entity's handle must be built straight into the World in `OnCreate`. Create with components is built (dev-notes/create-with-components.md), so a create already carries every value in one command | to-do |
 | 5 | A store on the World for world-unique data, keyed by type, that `SystemContext` reads from | Wanted since step 3, so that `ecs` names no render type. `deltaTime`, the draw list, the debug lines and the camera are each one per world, and each one is a hardcoded field on a struct every system includes. Bevy calls these resources, Unity uses singleton entities. Keyed by type, not one shared struct | to-do |
 | 6 | Run conditions: `Add` takes an optional function that reads world data and answers run or skip. `RunPhase` asks it before each run. The C and M toggles become a `DebugView { showWires, showMeshes }` in the store from 5, written by an ordinary system in Update | Step 4a switches systems with a flag on `System` that only `SystemRegistry::SetEnabled` flips. That works for two toggles, but the on/off state hides in the registry. As data in the world, it can be printed, saved and shown like any component, and one condition (a `GamePaused`, say) can gate many systems at once. Bevy's `run_if` and Unity's `RequireForUpdate` work this way. The flag's `continue` in `RunPhase` stays; only the question changes. Needs 5 | to-do |
-| 7 | Entity breakpoints: a `DebugWatch` tag plus a flag per block | Data moves between archetypes, so a normal data breakpoint is useless (house rule 11). A flag per block makes the check one branch per block, not one per row. Needs 1 | to-do |
 | 8 | Stable type identity: identify a type by a hash of its compile-time name, keep the dense id for runtime, and register in the exe only | `IdOf<T>` is a header static, so each DLL gets its own counter, and the same mask means different things across the boundary. Needed by the first DLL, save or network packet | to-do |
 | 9 | Faster migrations: a column lookup table per archetype (`FindColumn` becomes an array read), walking only the shared bits of the two masks in `MoveEntity`, and an archetype edge cache (the archetype reached by adding component X) | Only when the counters show migration cost. Measured 2026-09-30 with `EcsBench`: 0.114 to 0.124 microseconds per migration from 1,000 to 100,000 entities, and 24,000 migrations fit in a 4.2 ms frame. Missing 60 fps would take about 130,000 migrations in one frame (dev-notes/profiling.md) | to-do |
 | 10 | Enableable components: one bit per entity per component, toggled with no structural change, honoured by queries | The answer if archetype churn ever dominates. Adding a tag is a full row copy here, against a push into one pool in EnTT. The counters say when | to-do |
 | 11 | Writes to other entities sorted by target first | A damage system that reads a contact and writes `Health` on another entity chases a pointer per write. Sorting the events by target is the usual answer. Only once it shows in a profile | to-do |
-| 12 | An intrusive free list: a free slot's unused `row` field holds the next free index | Removes `freeSlots`. Never urgent | to-do |
-| 13 | A chunk size per archetype, overriding the World's `chunkBytes` | Only once the 4, 16 and 64 KB benchmark from row 1 shows that different archetypes want different sizes: a wide row fits few entities in a small chunk, and a tiny row wastes a large one. Unreal Mass has this as `ChunkMemorySize` in `FMassArchetypeCreationParams`, where 0 means the default | to-do |
+| 13 | A chunk size per archetype, overriding the World's `chunkBytes` | Only once the 4, 16 and 64 KB benchmark (dev-notes/ecs-chunks.md) shows that different archetypes want different sizes: a wide row fits few entities in a small chunk, and a tiny row wastes a large one. Unreal Mass has this as `ChunkMemorySize` in `FMassArchetypeCreationParams`, where 0 means the default | to-do |
 
 **Row 9, a further option: power-of-two rows per chunk.** Round `rowsPerChunk` down with
 `std::bit_floor`, and the row-to-chunk lookup becomes `row >> rowShift` and `row & rowMask` instead of a
@@ -72,10 +67,9 @@ and live in a sparse set. Adding and removing it then moves nothing, but iterati
 suggests it for per-frame markers and short status effects; here that means `Picked`, `Falling` and
 `DebugWatch`. Same trigger as row 10: the counters show archetype churn. Weigh both when it fires.
 
-Order: 1 first. It is the prerequisite under three later items - cheap change tracking, useful culling
-granularity, and one instanced draw per archetype - because each of those wants to cover a block of
-rows rather than 4,000 rows spread over 440 metres. 2 and the shared fragments under Rendering both add
-archetypes, so they follow it. 6 needs the store from 5.
+Order: 6 needs the store from 5. Rows 1, 2, 4, 7 and 12 were built by the ECS hardening plan that
+ended on 2026-11-05 (dev-notes/README.md, "Plan steps"); the numbers of the rows left keep their
+old values, so references to them still hold.
 
 ## Physics
 
