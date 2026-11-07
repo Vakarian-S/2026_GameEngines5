@@ -8,6 +8,7 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
 
+#include "core/PresentMode.h"
 #include "scenes/PhysicsScene.h"
 #include "scenes/Scene0.h"
 #include "scenes/Scene1.h"
@@ -25,6 +26,9 @@ namespace
         {.name = "Scene1", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene1>(); }},
         {.name = "Physics Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PhysicsScene>(); }},
     };
+
+    /** The present mode the game starts in. Falls back to FIFO when the GPU lacks it */
+    constexpr auto kStartPresentMode = PresentMode::Fifo;
 
     /**
      * Reads the starting scene from the command line.
@@ -55,7 +59,7 @@ namespace
 
 Application::Application(const int argc, char* argv[]) :
     window("GameEngines5", 1280, 720),
-    renderer(window.GetSDLWindow()),
+    renderer(window.GetSDLWindow(), kStartPresentMode),
     sceneManager(kScenes, renderer.GetResourceStore()),
     frameArena(kFrameArenaBytes),
     frameMemory(frameArena)
@@ -66,7 +70,15 @@ Application::Application(const int argc, char* argv[]) :
      * and slot lives inside it, so the lines printed here are the slab and whatever the
      * scene itself allocates outside the World.
      */
-    MemoryMonitor::SetLogging(true);
+    MemoryMonitor::SetLogging(false);
+    std::cout << "present modes:";
+    for (const PresentMode mode : {
+             PresentMode::Fifo, PresentMode::FifoRelaxed, PresentMode::Mailbox, PresentMode::Immediate
+         })
+    {
+        if (renderer.SupportsPresentMode(mode)) std::cout << " " << PresentModeName(mode);
+    }
+    std::cout << ". Using " << PresentModeName(renderer.GetPresentMode()) << "\n";
     sceneManager.Start(sceneIndex);
     MemoryMonitor::SetLogging(false);
     timer.Start();
@@ -74,8 +86,14 @@ Application::Application(const int argc, char* argv[]) :
 
 void Application::Run()
 {
+    int frameCounter = 0;
+    float minFrameMs = 1000.0f;
+    float maxFrameMs = 0.0f;
+    int longestFrameNumber = 0;
+    int outOfRangeCount = 0;
     while (true)
     {
+        frameCounter++;
         Profiler::BeginFrame();
         /* Everything the last frame put in the frame arena is gone from here on. */
         frameArena.Reset();
@@ -103,7 +121,7 @@ void Application::Run()
             std::copy_n(keyboard, std::min(keyCount, static_cast<int>(SDL_SCANCODE_COUNT)), inputState.held.begin());
             float mouseX = 0.0f;
             float mouseY = 0.0f;
-            const SDL_MouseButtonFlags mouseButtons  = SDL_GetMouseState(&mouseX, &mouseY);
+            const SDL_MouseButtonFlags mouseButtons = SDL_GetMouseState(&mouseX, &mouseY);
             /* SDL numbers its buttons from 1, so index 0 stays unused */
             for (std::size_t button = 1; button < inputState.mouseHeld.size(); ++button)
             {
@@ -123,13 +141,25 @@ void Application::Run()
             fixedStep.Reset();
             timer.Start();
         }
-        
+
         SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
         const Camera* camera = &sceneManager.GetCurrentScene().GetCamera();
 
         if (window.ShouldClose()) break;
 
         timer.UpdateFrameTicks();
+        if (frameCounter > 60)
+        {
+            const float frameMs = timer.GetDeltaTime() * 1000.0f;
+            minFrameMs = std::min(minFrameMs, frameMs);
+            if (frameMs > maxFrameMs)
+            {
+                maxFrameMs = frameMs;
+                longestFrameNumber = frameCounter;
+            }
+            /* Counts the frames that miss the 3.9 to 4.4 ms window the plan expects at 240 Hz */
+            if (frameMs < 3.9f || frameMs > 4.4f) ++outOfRangeCount;
+        }
         {
             PROFILE_SCOPE("Scene::Update");
             sceneManager.GetCurrentScene().Update(timer.GetDeltaTime(), inputState);
@@ -182,10 +212,6 @@ void Application::Run()
                 << " bytes. Raise kFrameArenaBytes\n";
         }
 
-        {
-            PROFILE_SCOPE("Wait");
-            SDL_Delay(timer.GetSleepTime(60));
-        }
         Profiler::EndFrame();
 
         /* Over budget, so dump the frame while its numbers are still in the table. */
@@ -199,6 +225,11 @@ void Application::Run()
         << "  frame high water    " << frameStats.highWater << " bytes\n"
         << "  frame resets        " << frameStats.resets
         << " (" << frameMemory.Stats().fromHeap << " fell to the heap)\n";
+
+    std::cout << std::fixed << std::setprecision(3)
+        << "frame ms: min " << minFrameMs << ", max " << maxFrameMs
+        << " at frame " << longestFrameNumber << " of " << frameCounter
+        << ", outside 3.9-4.4: " << outOfRangeCount << "\n";
 }
 
 void Application::HandleEvent(const SDL_Event& event)
@@ -227,5 +258,37 @@ void Application::HandleEvent(const SDL_Event& event)
         showWorldReference = !showWorldReference;
         return;
     }
+    /* Ctrl+P Changes Present Mode */
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_P && (event.key.mod
+        & SDL_KMOD_CTRL) != 0)
+    {
+        const PresentMode next = NextPresentMode(renderer.GetPresentMode());
+        renderer.SetPresentMode(next);
+        std::cout << "present mode: " << PresentModeName(next) << "\n";
+        return;
+    }
+
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.mod & SDL_KMOD_ALT) != 0 && (event.key.
+        scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_KP_ENTER))
+    {
+        const bool on = !window.IsFullscreen();
+        window.SetFullscreen(on);
+        std::cout << "Fullscreen: " << (on ? "on" : "off") << "\n";
+        return;
+    }
+
+    if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) renderer.RequestSwapchainRebuild();
     sceneManager.GetCurrentScene().HandleEvents(event);
+}
+
+PresentMode Application::NextPresentMode(const PresentMode current) const
+{
+    constexpr int count = static_cast<int>(PresentMode::Count);
+    const int start = static_cast<int>(current);
+    for (int step = 1; step <= count; ++step)
+    {
+        const auto candidate = static_cast<PresentMode>((start + step) % count);
+        if (renderer.SupportsPresentMode(candidate)) return candidate;
+    }
+    return current;
 }

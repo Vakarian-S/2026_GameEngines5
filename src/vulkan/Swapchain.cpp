@@ -7,7 +7,9 @@
 #include <stdexcept>
 #include <iostream>
 
-Swapchain::Swapchain(const GPUContext& gpuContext_, SDL_Window* window_) : gpuContext(gpuContext_), window(window_)
+Swapchain::Swapchain(const GPUContext& gpuContext_, SDL_Window* window_,
+                     const VkPresentModeKHR wantedPresentMode_) :
+    gpuContext(gpuContext_), window(window_), wantedPresentMode(wantedPresentMode_)
 {
     Create();
 }
@@ -22,7 +24,8 @@ void Swapchain::Create()
     const SwapChainSupportDetails swapChainSupportDetails = gpuContext.QuerySwapChainSupport(
         gpuContext.GetPhysicalDevice());
     const auto surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupportDetails.formats);
-    const auto presentMode = ChooseSwapPresentMode(swapChainSupportDetails.presentModes);
+    supportedPresentModes = swapChainSupportDetails.presentModes;
+    usedPresentMode = ChooseSwapPresentMode(supportedPresentModes, wantedPresentMode);
     const auto swapExtent = ChooseSwapExtent(swapChainSupportDetails.capabilities, window);
     QueueFamilyIndices queueFamilyIndices = gpuContext.GetQueueFamilyIndices();
 
@@ -97,7 +100,7 @@ void Swapchain::Create()
          *  is composited together with other surfaces on certain window systems. */
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         /* Is the presentation mode the swapchain will use. A swapchain’s present mode determines how incoming present requests will be processed and queued internally. */
-        .presentMode = presentMode,
+        .presentMode = usedPresentMode,
         /* specifies whether the Vulkan implementation is allowed to discard rendering operations that affect regions of the surface that are not visible. */
         .clipped = true
     };
@@ -191,7 +194,7 @@ void Swapchain::Create()
     {
         throw std::runtime_error("failed to bind the depth image memory!");
     }
-    
+
     /* Same as the color views */
     VkImageViewCreateInfo imageViewCreateInfo{};
     imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -243,12 +246,14 @@ void Swapchain::Destroy()
     }
 }
 
-VkPresentModeKHR Swapchain::ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
+VkPresentModeKHR Swapchain::ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes,
+                                                  const VkPresentModeKHR wantedPresentMode)
 {
-    for (const auto& mode : availablePresentModes)
+    for (const VkPresentModeKHR mode : availablePresentModes)
     {
-        if (mode == VK_PRESENT_MODE_MAILBOX_KHR) return mode;
+        if (mode == wantedPresentMode) return mode;
     }
+    /* Vulkan guarantees FIFO, so a saved mode from another GPU still starts */
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 

@@ -1,7 +1,9 @@
 ﻿#pragma once
 
+#include <cstdint>
+
 /**
- * Frame timing for the main loop.
+ * Frame timing for the main loop in nanoseconds.
  *
  * Two readings, taken one frame apart. Whatever drives the loop owns one of these and asks it
  * for the delta each frame.
@@ -33,20 +35,7 @@ public:
      */
     float GetDeltaTime() const;
 
-    /**
-     * How long to wait to hold a frame rate, measured from the last reading to right now.
-     * @param fps_ frames per second to aim for
-     * @return milliseconds to sleep, or zero when the frame already ran long
-     */
-    unsigned int GetSleepTime(unsigned int fps_) const;
-
-    /**
-    * Seconds elapsed at the last reading. Constant for the whole frame.
-    * @return seconds since Start
-    */
-    float GetCurrentTicks() const;
-
 private:
-    unsigned int previousTicks;
-    unsigned int currentTicks;
+    std::uint64_t previousTicks;
+    std::uint64_t currentTicks;
 };

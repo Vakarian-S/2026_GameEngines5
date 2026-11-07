@@ -39,6 +39,8 @@ bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
         .albedo = skullTexture, .shininess = 4.0f, .specularStrength = 0.1f
     });
     SpawnShapes();
+    
+    /* ========== Systems ========== */
     systems.Add(Phase::Update, std::make_unique<PickSystem>(world));
     systems.Add(Phase::Fixed, std::make_unique<ApplyForcesSystem>(world));
     systems.Add(Phase::Fixed, std::make_unique<MouseConstraintSystem>(world));
@@ -101,7 +103,7 @@ void PhysicsScene::SpawnShapes()
                 cubeCollider, 1.0f, 1.0f)
         }
     );
-
+    
     world.CreateEntity(
         Transform{
             .position = MATH::Vec3(6.f, 0.5f, 0.f),
@@ -117,7 +119,7 @@ void PhysicsScene::SpawnShapes()
             .inertiaTensor = PHYSICS::InertiaTensor(cubeCollider, 1.0f, 1.0f)
         }
     );
-
+    
     constexpr PHYSICS::SphereCollider sphereCollider{.radius = 1.3f};
     world.CreateEntity(
         Transform{.position = MATH::Vec3(-6.f, 1.3f, 0.f)},
@@ -130,7 +132,7 @@ void PhysicsScene::SpawnShapes()
             .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, 1.f)
         }
     );
-
+    
     constexpr PHYSICS::CapsuleCollider capsuleCollider{0.6f, 0.7f};
     world.CreateEntity(
         Transform{.position = MATH::Vec3(-2.f, 1.3f, 0.f)},
@@ -143,7 +145,7 @@ void PhysicsScene::SpawnShapes()
             .inertiaTensor = PHYSICS::InertiaTensor(capsuleCollider, 1.f, 1.f)
         }
     );
-
+    
     constexpr PHYSICS::CylinderCollider cylinderCollider{0.7f, 1.3f};
     world.CreateEntity(
         Transform{.position = MATH::Vec3(2.f, 1.3f, 0.f)},
@@ -156,7 +158,7 @@ void PhysicsScene::SpawnShapes()
             .inertiaTensor = PHYSICS::InertiaTensor(cylinderCollider, 1.f, 1.f)
         }
     );
-
+    
     world.CreateEntity(
         Transform{.position = MATH::Vec3(11.f, 2.6f, 0.f), .scale = 2.0f},
         sphereCollider,

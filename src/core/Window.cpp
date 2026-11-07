@@ -1,5 +1,6 @@
 #include "core/Window.h"
 
+#include <iostream>
 #include <stdexcept>
 #include <string>
 
@@ -49,4 +50,17 @@ bool Window::NextEvent(SDL_Event& out) noexcept
     if (out.type == SDL_EVENT_KEY_DOWN && out.key.key == SDLK_ESCAPE) shouldClose = true;
 
     return true;
+}
+
+bool Window::IsFullscreen() const
+{
+    return SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN;
+}
+
+void Window::SetFullscreen(const bool sdlFullScreen) const
+{
+    if (!SDL_SetWindowFullscreen(window, sdlFullScreen))
+    {
+        std::cerr << "[WARNING] Failed to change fullscreen mode: " << SDL_GetError() << '\n';
+    }
 }

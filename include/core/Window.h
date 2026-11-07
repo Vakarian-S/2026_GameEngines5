@@ -50,6 +50,15 @@ public:
     /** @return SDL's Window, which the Vulkan surface will need */
     SDL_Window* GetSDLWindow() const noexcept { return window; }
 
+    /** @return value of the window flag for SDL_WINDOW_FULLSCREEN */
+    bool IsFullscreen() const;
+
+    /**
+     * Request that the window's fullscreen state be changed.
+     * @param sdlFullScreen true for fullscreen mode, false for windowed mode.
+     */
+    void SetFullscreen(bool sdlFullScreen) const;
+
 private:
     SDL_Window* window = nullptr;
     bool shouldClose = false;

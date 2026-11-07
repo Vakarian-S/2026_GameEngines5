@@ -60,4 +60,11 @@ private:
     * @param event the event SDL returned
     */
     void HandleEvent(const SDL_Event& event);
+
+    /**
+     * Return the next available Present Mode for graphics
+     * @param current Current Present Mode
+     * @return The next available present mode, or the same mode provided if no other candidates are available
+     */
+    PresentMode NextPresentMode(PresentMode current) const;
 };

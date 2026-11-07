@@ -13,8 +13,9 @@ public:
      * Builds the swapchain for one window.
      * @param gpuContext_ the device and surface to build on. It must outlive this object
      * @param window_ the window, asked for its size in pixels on every build
+     * @param wantedPresentMode_ Present mode the renderer wants the swapchain to use, not guaranteed
      */
-    Swapchain(const GPUContext& gpuContext_, SDL_Window* window_);
+    Swapchain(const GPUContext& gpuContext_, SDL_Window* window_, VkPresentModeKHR wantedPresentMode_);
     ~Swapchain();
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
@@ -47,6 +48,18 @@ public:
     /** @return the depth format. The pipeline needs it, so it must match */
     VkFormat GetDepthFormat() const { return depthFormat; }
 
+    /** @return The Present Mode currently supported and used  */
+    VkPresentModeKHR GetUsedPresentMode() const { return usedPresentMode; }
+
+    /**
+     * Sets the swapchain present mode to the given mode if possible
+     * @param mode VkPresentMode to try to use
+     */
+    void SetWantedPresentMode(const VkPresentModeKHR mode) { wantedPresentMode = mode; }
+
+    /** @return The Present modes supported by the GPU */
+    const std::vector<VkPresentModeKHR>& GetSupportedPresentModes() const { return supportedPresentModes; }
+
 
     /**
     * Rebuilds the swapchain at the window's current size. Call it after a resize.
@@ -76,6 +89,13 @@ private:
     /** The size of every image in pixels. */
     VkExtent2D extent{};
 
+    /** Present mode to use on the swap chain */
+    VkPresentModeKHR wantedPresentMode;
+    /** Present Mode currently supported and used */
+    VkPresentModeKHR usedPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+    /** Present modes supported by the GPU */
+    std::vector<VkPresentModeKHR> supportedPresentModes;
+
 
     /* ========== Depth ========== */
     /* Dev Note: We have depth logic in here for convenience, since we can rebuild depth at the same time the swapchain
@@ -101,9 +121,11 @@ private:
      * Iterates through the present modes available and picks the one our program wants, if not, it falls back into
      * FIFO as every GPU has that mode
      * @param availablePresentModes list of availablePresentModes
+     * @param wantedPresentMode present mode that would be ideally used
      * @return Selected Present mode
      */
-    static VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
+    static VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes,
+                                                  VkPresentModeKHR wantedPresentMode);
 
     /**
      * Iterates through the surface formats available and picks the one our program wants we chose

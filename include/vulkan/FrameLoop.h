@@ -83,6 +83,9 @@ public:
     FrameLoop(FrameLoop&&) = delete;
     FrameLoop& operator=(FrameLoop&&) = delete;
 
+    /** Sets a flag that tells the swapchain that needs to rebuild on the next DrawFrame */
+    void RequestSwapchainRebuild() { swapchainNeedsRebuild = true; };
+
 private:
     /** Where the device and the two queues come from. */
     const GPUContext& gpuContext;
@@ -108,7 +111,8 @@ private:
      */
     uint32_t currentFrame = 0;
 
-    /** Set when Vulkan reports that the swapchain no longer fits the window. The next DrawFrame rebuilds it. */
+    /** Lets the Swapchain know that it needs to be rebuilt, set when the swapchain no longer fits the window
+     * or when the renderer requests it. The next DrawFrame rebuilds it. */
     bool swapchainNeedsRebuild = false;
 
     /**
@@ -166,6 +170,7 @@ private:
      * @return false when the window is minimized, so the caller skips the frame
      */
     bool RebuildSwapchain();
+
 
     /**
      * Records this frame's commands into the current slot's command buffer:

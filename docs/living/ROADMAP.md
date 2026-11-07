@@ -146,9 +146,9 @@ scene holds 600 entities or 4,000. The per-span numbers are sound; only the fram
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | The present mode as a setting, defaulting to FIFO when vsync is on | FIFO is the only present mode Vulkan guarantees, and the driver then paces the loop inside `vkAcquireNextImageKHR` with no sleep and a genuinely idle CPU. The swapchain asks for MAILBOX first today, and MAILBOX never blocks: with the sleep gone the prototype reached 6,076 fps. The AMD 610M offers no MAILBOX, so the same binary falls back to FIFO there and behaves differently | to-do |
-| 2 | The frame cap as a value rather than the literal 60, owned beside the window | The displays on this machine run at 239 Hz and 165 Hz, and the engine draws 62.5 frames a second on them | to-do |
-| 3 | A precise sleep for a cap below the refresh rate: `SDL_DelayNS` to about a millisecond short, then a short spin | Vulkan has no present mode for 60 fps on a 239 Hz display, so this case needs a sleep. SDL stays the right layer: sleeping is an OS service, and `SDL_GetTicksNS` gives a monotonic clock | to-do |
+| 1 | The present mode as a setting, defaulting to FIFO when vsync is on | FIFO is the only present mode Vulkan guarantees, and the driver then paces the loop inside `vkAcquireNextImageKHR` with no sleep and a genuinely idle CPU. The swapchain asks for MAILBOX first today, and MAILBOX never blocks: with the sleep gone the prototype reached 6,076 fps. The AMD 610M offers no MAILBOX, so the same binary falls back to FIFO there and behaves differently | in progress |
+| 2 | The frame cap as a value rather than the literal 60, owned beside the window | The displays on this machine run at 239 Hz and 165 Hz, and the engine draws 62.5 frames a second on them | in progress |
+| 3 | A precise sleep for a cap below the refresh rate: `SDL_DelayNS` to about a millisecond short, then a short spin | Vulkan has no present mode for 60 fps on a 239 Hz display, so this case needs a sleep. SDL stays the right layer: sleeping is an OS service, and `SDL_GetTicksNS` gives a monotonic clock | in progress |
 
 ### Basic shapes
 
