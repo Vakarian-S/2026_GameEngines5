@@ -108,31 +108,39 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
 
     /* ============= 5. Submit ============= */
     /* Hands the commands to the graphics queue. The GPU waits for the image, then signals when drawing is done */
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-    const VkSemaphore imageAvailable[] = {imageAvailableSemaphores[currentFrame]};
-    constexpr VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    /* waitSemaphoreCount is the number of semaphores upon which to wait before executing the command buffers for the batch. */
-    submitInfo.waitSemaphoreCount = 1;
-    /* is a pointer to an array of VkSemaphore handles upon which to wait before the command buffers for this batch begin execution. */
-    submitInfo.pWaitSemaphores = imageAvailable;
-    /* pWaitDstStageMask is a pointer to an array of pipeline stages at which each corresponding semaphore wait will occur. */
-    submitInfo.pWaitDstStageMask = waitStages;
+    /* The wait: color output stalls until the swapchain image is free */
+    VkSemaphoreSubmitInfo waitInfo{};
+    waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    /* Semaphore is a VkSemaphore affected by this operation. */
+    waitInfo.semaphore = imageAvailableSemaphores[currentFrame];
+    /* Mask of pipeline stages which limit the first synchronization scope of a semaphore signal operation, or second synchronization scope of a semaphore wait operation */
+    waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-    /* commandBufferCount is the number of command buffers to execute in the batch */
-    submitInfo.commandBufferCount = 1;
-    /* pCommandBuffers is a pointer to an array of VkCommandBuffer handles to execute in the batch. */
-    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    VkCommandBufferSubmitInfo commandBufferInfo{};
+    commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    /* VkCommandBuffer to be submitted for execution. */
+    commandBufferInfo.commandBuffer = commandBuffers[currentFrame];
 
-    const VkSemaphore renderFinished[] = {renderFinishedSemaphores[imageIndex]};
-    /* signalSemaphoreCount is the number of semaphores to be signaled once the commands specified in pCommandBuffers have completed execution. */
-    submitInfo.signalSemaphoreCount = 1;
-    /* pSignalSemaphores is a pointer to an array of VkSemaphore handles which will be signaled when the command buffers for this batch have completed execution */
-    submitInfo.pSignalSemaphores = renderFinished;
+    /* The signal: fires after all commands finish, the same point the old vkQueueSubmit used */
+    VkSemaphoreSubmitInfo signalInfo{};
+    signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signalInfo.semaphore = renderFinishedSemaphores[imageIndex];
+    signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    /* Pointer and count of an array of VkSemaphoreSubmitInfo structures defining semaphore wait operations. */
+    submitInfo.waitSemaphoreInfoCount = 1;
+    submitInfo.pWaitSemaphoreInfos = &waitInfo;
+    /* Pointer and count of command buffers to execute in the batch. */
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &commandBufferInfo;
+    /* Pointer and count of array of VkSemaphoreSubmitInfo describing semaphore signal operations. */
+    submitInfo.signalSemaphoreInfoCount = 1;
+    submitInfo.pSignalSemaphoreInfos = &signalInfo;
 
-    if (vkQueueSubmit(gpuContext.GetGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
+    if (vkQueueSubmit2(gpuContext.GetGraphicsQueue(), 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS)
     {
         throw std::runtime_error("failed to submit draw command buffer!");
     }
@@ -146,7 +154,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
     presentInfo.waitSemaphoreCount = 1;
     /* WaitSemaphores is NULL or a pointer to an array of VkSemaphore objects with waitSemaphoreCount entries,
      * and specifies the semaphores to wait for before issuing the present request.*/
-    presentInfo.pWaitSemaphores = renderFinished;
+    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[imageIndex];
 
     const VkSwapchainKHR swapChains[] = {swapchain.GetSwapchain()};
     /* swapchainCount is the number of swapchains being presented to by this command. */

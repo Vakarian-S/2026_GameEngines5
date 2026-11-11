@@ -52,11 +52,16 @@ void TemporaryCommandBuffers::SubmitAndWait(const VkCommandBuffer commandBuffer)
         throw std::runtime_error("failed to end a temporary command buffer!");
     }
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-    if (vkQueueSubmit(gpuContext.GetGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
+    VkCommandBufferSubmitInfo commandBufferInfo{};
+    commandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    commandBufferInfo.commandBuffer = commandBuffer;
+
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &commandBufferInfo;
+
+    if (vkQueueSubmit2(gpuContext.GetGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS)
     {
         throw std::runtime_error("failed to submit a temporary command buffer!");
     }
