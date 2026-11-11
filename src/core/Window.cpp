@@ -64,3 +64,16 @@ void Window::SetFullscreen(const bool sdlFullScreen) const
         std::cerr << "[WARNING] Failed to change fullscreen mode: " << SDL_GetError() << '\n';
     }
 }
+
+float Window::GetRefreshRate() const
+{
+    const SDL_DisplayMode* displayMode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+    /* SDL may not know the display or its rate. 60 is the safe guess */
+    if (displayMode == nullptr || displayMode->refresh_rate <= 0.0f) return 60.0f;
+    return displayMode->refresh_rate;
+}
+
+void Window::SetTitle(const std::string& title) const
+{
+    SDL_SetWindowTitle(window, title.c_str());
+}

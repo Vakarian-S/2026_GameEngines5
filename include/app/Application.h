@@ -1,5 +1,7 @@
 ﻿#pragma once
 #include "core/FixedStep.h"
+#include "core/FrameCap.h"
+#include "core/FrameTimeStats.h"
 #include "core/InputState.h"
 #include "core/SceneManager.h"
 #include "core/Timer.h"
@@ -40,6 +42,10 @@ private:
     SceneManager sceneManager;
     /** Measures each frame's time step, and how long to sleep to hold 60 frames per second */
     Timer timer;
+    /** Limits the frames per second when set */
+    FrameCap frameCap;
+    /** Sums the frame times once a second, for the window title and the console line */
+    FrameTimeStats frameTimeStats;
     /** Manages the time steps between frames */
     FixedStep fixedStep;
     /** Scratch memory for one frame. Run resets it at the top of every frame */
@@ -67,4 +73,12 @@ private:
      * @return The next available present mode, or the same mode provided if no other candidates are available
      */
     PresentMode NextPresentMode(PresentMode current) const;
+    
+    /* ================== Frame Cap ============== */
+    /** The frame cap steps Ctrl+L cycles through. Two of them depend on the screen's refresh rate */
+    enum class FrameCapStep { Off, Fps30, Fps60, Fps100, HalfRefresh, RefreshMinus3, Count };
+    /** The frame cap step in use */
+    FrameCapStep frameCapStep = FrameCapStep::Off;
+    /** Moves to the next frame cap step, sets the frame cap, and prints it */
+    void CycleFrameCap();
 };

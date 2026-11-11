@@ -59,6 +59,15 @@ public:
      */
     void SetFullscreen(bool sdlFullScreen) const;
 
+    /** @return the refresh rate of the display the window is on, or 60 when SDL doesn't know it */
+    float GetRefreshRate() const;
+
+    /**
+     * Sets the text in the window's title bar.
+     * @param title the text to show
+     */
+    void SetTitle(const std::string& title) const;
+
 private:
     SDL_Window* window = nullptr;
     bool shouldClose = false;

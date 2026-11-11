@@ -35,6 +35,9 @@ public:
      */
     float GetDeltaTime() const;
 
+    /** @return nanoseconds between the timer's last two readings */
+    std::uint64_t GetDeltaNanoseconds() const;
+
 private:
     std::uint64_t previousTicks;
     std::uint64_t currentTicks;

@@ -1,7 +1,9 @@
 ﻿#include "app/Application.h"
 
 #include <charconv>
+#include <iomanip>
 #include <iterator>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -86,14 +88,8 @@ Application::Application(const int argc, char* argv[]) :
 
 void Application::Run()
 {
-    int frameCounter = 0;
-    float minFrameMs = 1000.0f;
-    float maxFrameMs = 0.0f;
-    int longestFrameNumber = 0;
-    int outOfRangeCount = 0;
     while (true)
     {
-        frameCounter++;
         Profiler::BeginFrame();
         /* Everything the last frame put in the frame arena is gone from here on. */
         frameArena.Reset();
@@ -148,17 +144,18 @@ void Application::Run()
         if (window.ShouldClose()) break;
 
         timer.UpdateFrameTicks();
-        if (frameCounter > 60)
+        if (frameTimeStats.AddFrame(timer.GetDeltaNanoseconds()))
         {
-            const float frameMs = timer.GetDeltaTime() * 1000.0f;
-            minFrameMs = std::min(minFrameMs, frameMs);
-            if (frameMs > maxFrameMs)
-            {
-                maxFrameMs = frameMs;
-                longestFrameNumber = frameCounter;
-            }
-            /* Counts the frames that miss the 3.9 to 4.4 ms window the plan expects at 240 Hz */
-            if (frameMs < 3.9f || frameMs > 4.4f) ++outOfRangeCount;
+            const auto& [fps, averageMs, shortestMs, longestMs] = frameTimeStats.GetReport();
+            std::ostringstream line;
+            line << PresentModeName(renderer.GetPresentMode()) << " | cap ";
+            if (frameCap.GetFramesPerSecond() > 0.0) line << std::fixed << std::setprecision(0) << frameCap.GetFramesPerSecond();
+            else line << "off";
+            line << std::fixed << std::setprecision(1) << " | " << fps << " fps | "
+                 << std::setprecision(2) << averageMs << " ms (min " << shortestMs
+                 << ", max " << longestMs << ")";
+            window.SetTitle(line.str());
+            std::cout << line.str() << "\n";
         }
         {
             PROFILE_SCOPE("Scene::Update");
@@ -203,6 +200,11 @@ void Application::Run()
                                sceneManager.GetCurrentScene().GetLighting(), drawList, debugLines);
         }
 
+        {
+            PROFILE_SCOPE("Wait");
+            frameCap.Wait();
+        }
+
         /* Warns once, the first time a frame's scratch memory does not fit, so an overflow is seen when it happens */
         if (!frameArenaWarned && frameMemory.Stats().fromHeap > 0)
         {
@@ -214,8 +216,12 @@ void Application::Run()
 
         Profiler::EndFrame();
 
-        /* Over budget, so dump the frame while its numbers are still in the table. */
-        if (Profiler::LastFrameMilliseconds() > 30.0) Profiler::ReportFrame();
+        /* Over budget, so dump the frame while its numbers are still in the table. With a cap, over budget means 1.5 cap frames, never under 30 ms */
+        const double capFramesPerSecond = frameCap.GetFramesPerSecond();
+        const double dumpThresholdMs = capFramesPerSecond > 0.0
+                                           ? std::max(30.0, 1.5 * 1000.0 / capFramesPerSecond)
+                                           : 30.0;
+        if (Profiler::LastFrameMilliseconds() > dumpThresholdMs) Profiler::ReportFrame();
     }
 
     const ArenaStats frameStats = frameArena.Stats();
@@ -225,11 +231,6 @@ void Application::Run()
         << "  frame high water    " << frameStats.highWater << " bytes\n"
         << "  frame resets        " << frameStats.resets
         << " (" << frameMemory.Stats().fromHeap << " fell to the heap)\n";
-
-    std::cout << std::fixed << std::setprecision(3)
-        << "frame ms: min " << minFrameMs << ", max " << maxFrameMs
-        << " at frame " << longestFrameNumber << " of " << frameCounter
-        << ", outside 3.9-4.4: " << outOfRangeCount << "\n";
 }
 
 void Application::HandleEvent(const SDL_Event& event)
@@ -268,6 +269,15 @@ void Application::HandleEvent(const SDL_Event& event)
         return;
     }
 
+    /* Ctrl+L cycles the frame cap */
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_L && (event.key.mod
+        & SDL_KMOD_CTRL) != 0)
+    {
+        CycleFrameCap();
+        return;
+    }
+
+    /* ALT + Enter toggles fullscreen */
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && (event.key.mod & SDL_KMOD_ALT) != 0 && (event.key.
         scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_KP_ENTER))
     {
@@ -291,4 +301,34 @@ PresentMode Application::NextPresentMode(const PresentMode current) const
         if (renderer.SupportsPresentMode(candidate)) return candidate;
     }
     return current;
+}
+
+void Application::CycleFrameCap()
+{
+    constexpr int count = static_cast<int>(FrameCapStep::Count);
+    frameCapStep = static_cast<FrameCapStep>((static_cast<int>(frameCapStep) + 1) % count);
+
+    /* Read at each press, because the window can move between the 240 Hz and 165 Hz screens */
+    const double refreshRate = window.GetRefreshRate();
+    double framesPerSecond = 0.0;
+    switch (frameCapStep)
+    {
+    case FrameCapStep::Fps30: framesPerSecond = 30.0;
+        break;
+    case FrameCapStep::Fps60: framesPerSecond = 60.0;
+        break;
+    case FrameCapStep::Fps100: framesPerSecond = 100.0;
+        break;
+    case FrameCapStep::HalfRefresh: framesPerSecond = refreshRate / 2.0;
+        break;
+    case FrameCapStep::RefreshMinus3: framesPerSecond = refreshRate - 3.0;
+        break;
+    case FrameCapStep::Off:
+    case FrameCapStep::Count:
+        break;
+    }
+    frameCap.SetFramesPerSecond(framesPerSecond);
+
+    if (framesPerSecond > 0.0) std::cout << "frame cap: " << std::fixed << std::setprecision(2) << framesPerSecond << "\n";
+    else std::cout << "frame cap: off\n";
 }

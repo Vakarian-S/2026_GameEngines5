@@ -1,6 +1,6 @@
 # Plan
 
-**Last updated:** 2026-11-06.
+**Last updated:** 2026-11-11.
 
 Frame pacing and the present mode. The display paces the loop, not a hand-written sleep. The player
 picks the present mode and a frame cap, and the engine shows what each choice costs. From the
@@ -11,10 +11,10 @@ ROADMAP.md block "Frame pacing and the present mode", and from the prototype in
 
 | # | step | done when | stage |
 |---|---|---|---|
-| 1 | `Timer` counts nanoseconds | at 240 fps the time step averages about 4.17 ms, and no frame reads a whole millisecond | designed |
-| 2 | The present mode as a setting, with the modes the GPU offers logged at startup. Step 1 already made FIFO the default | the log lists the modes on the 4060 and the 610M | designed |
-| 3 | A key switches the present mode while the game runs, and the swapchain rebuilds | Ctrl+P cycles every mode the GPU offers, with no validation errors | designed |
-| 4 | Alt+Enter switches borderless fullscreen on and off | the window fills the screen and comes back, and the swapchain rebuilds with no validation errors | designed |
+| 1 | `Timer` counts nanoseconds | at 240 fps the time step averages about 4.17 ms, and no frame reads a whole millisecond | done 64964fc |
+| 2 | The present mode as a setting, with the modes the GPU offers logged at startup. Step 1 already made FIFO the default | the log lists the modes on the 4060 and the 610M | done 64964fc |
+| 3 | A key switches the present mode while the game runs, and the swapchain rebuilds | Ctrl+P cycles every mode the GPU offers, with no validation errors | done 64964fc |
+| 4 | Alt+Enter switches borderless fullscreen on and off | the window fills the screen and comes back, and the swapchain rebuilds with no validation errors | done 64964fc |
 | 5 | The frame cap as a value beside the window, with a precise sleep. Step 1 deleted `GetSleepTime` | cap 60 reads 16.67 ms on every frame | designed |
 | 6 | The fps and frame times shown live | the window title and the console show them | designed |
 | 7 | A pacing scene: two rows of Marios that move fast and wrap around, one row moved per frame and one per fixed step | tearing and judder are visible by eye | designed |
@@ -360,9 +360,59 @@ means no cap; and `SDL_Delay(0)` still costs about 0.48 ms. The prototype's cap 
    configurations. Rejected: a unit test of the deadline math, which needs a fake clock passed in, the
    same reason as step 1.
 
+**Changes during the build**
+
+- The spin loop calls `SDL_CPUPauseInstruction()`. Godot's Windows limiter (`OS_Windows::add_frame_delay`,
+  `YieldProcessor()`) and Special K (`framerate.cpp`) put the same pause in their spins.
+- `SDL_DelayPrecise` was tried as a third option beside sleep and spin. SDL's own comment says it never
+  spins, on purpose, and accepts a small error. It lost on steadiness (table below).
+- The profiler's frame dump fired on every frame over a fixed 30 ms, so at cap 30 it printed a table
+  every frame, and the printing landed in the measured frame times. The threshold is now 1.5 cap
+  budgets, never under 30 ms: 50 ms at cap 30, 30 ms with no cap or a cap of 60 and up.
+
 **What the build checked**
 
-Not built yet.
+Laptop panel, 165 Hz, the 4060, windowed, Scene0, Release unless noted. Ctrl+L steps through the caps
+with `hold Ctrl,L 100`. A temporary line prints each second's frame count, shortest and longest frame;
+the second each cap starts in is left out. One run per row.
+
+| run | fps | frame min / max |
+|---|---|---|
+| FIFO, no cap | 165 | 5.6 / 6.6 ms |
+| FIFO, cap 30 (old dump threshold) | 30–31 | 32.68 / 33.99 ms |
+| FIFO, cap 30 (new threshold) | 30–31 | 33.32 / 33.36 ms |
+| FIFO, cap 60 | 60–61 | 16.65 / 16.68 ms; one second 16.52 / 16.81 |
+| FIFO, cap 100 | 100–101 | 9.99 / 10.01 ms |
+| FIFO, cap 82.5 (half of 165) | 83 | 12.11 / 12.13 ms; one second 11.95 / 12.29 |
+| FIFO, cap 162 (refresh − 3) | 153–163 | one steady second at 6.09 / 6.26, the others 0.15 to 23 ms |
+| MAILBOX, cap 60 | 60–61 | 16.23 / 17.10 ms |
+
+The wait, compared at cap 60 in FIFO. `FrameCap.cpp` was changed for each run and restored afterwards
+(same MD5 hash):
+
+| wait | cap 60 |
+|---|---|
+| sleep + 1 ms spin (the plan) | 16.58 / 16.75 ms, most seconds 16.65 / 16.68 |
+| sleep only (`kSpinNanoseconds = 0`) | 15.99 / 17.53 ms |
+| sleep + 2 ms spin | 16.62 / 16.71 ms |
+| `SDL_DelayPrecise` | 16.09 / 17.25 ms; 5 of 6 seconds 16.58 / 16.76 |
+
+- The sleep alone wakes up to about 0.9 ms late, so the 1 ms margin holds. 2 ms buys nothing.
+- The old cap 30 wobble was the dump, not the sleep. The profiler's frame totals, which leave out the
+  printing, never went past 33.32 ms with a spin. A 2 ms spin left the wobble as it was, and the new
+  threshold removed it: 0 tables printed, 33.32 / 33.36 ms.
+- Refresh − 3 stutters on the laptop panel. Whether the panel has VRR on is not known.
+- MAILBOX ran at 165 fps uncapped on the laptop panel, against 5,351.6 fps on the 240 Hz monitor in
+  step 2. A guess, not checked: the laptop panel is wired to the 610M, and the 4060's frames are copied
+  to it.
+- After the refresh − 3 cap, "cap off" FIFO read 0.10 to 18 ms frames, against a steady 5.6 to 6.6 ms
+  at the start of the same run. With the cap off `Wait()` returns at once, so the loop is the same as
+  at the start. Cause not known.
+- A present-mode switch in Release took one frame of about 100 ms (101.42 and 103.05 ms).
+- Debug, caps 30 and 60 and a Ctrl+P: no `[WARNING]`, no `[ERROR]`, no asserts, 0 leaked blocks. Run
+  again after the `vkQueueSubmit2` change (0890c7e): the same.
+- `scripts\run-tests.bat`: all four configurations pass.
+- Not run yet: the 240 Hz monitor at home, for cap 100's judder and refresh − 3.
 
 ## 6. Live fps
 
@@ -371,7 +421,7 @@ console prints the same line once a second.
 
 **Decisions**
 
-1. **A `FrameStats` class in `include/core/`,** owned by `Application`. Its one input is
+1. **A `FrameTimeStats` class in `include/core/`,** owned by `Application`. Its one input is
    `AddFrame(uint64_t nanoseconds)`, fed with the frame time `Timer` measured in step 1. It never reads
    a clock, so a unit test can feed it fixed frame times. Rejected: the prototype's loose fields and
    `UpdateStats` on `Application`, which give `Application` a second job; building it on the profiler,
@@ -386,7 +436,7 @@ console prints the same line once a second.
    printed only every fourth window and missed the longest frame of the other three; setting the title
    every frame, an OS call that would cost more than the frame at 3,000 fps.
 4. **`AddFrame` returns `true` when the summed frame times reach 1 second.** `Application` then reads
-   a `FrameReport` struct (`fps`, `averageMs`, `shortestMs`, `longestMs`), and the counts reset. A new
+   a `FrameTimeReport` struct (`fps`, `averageMs`, `shortestMs`, `longestMs`), and the counts reset. A new
    `Window::SetTitle(const std::string&)` sets the title. Rejected: `Application` calling
    `SDL_SetWindowTitle` through `GetSDLWindow()`, which spreads SDL window calls, as in step 4.
 5. **One line for both the title and the console:**
@@ -398,7 +448,7 @@ console prints the same line once a second.
    `run-game.ps1` run records its frame rate in `out.txt`. Rejected: a toggle key, which nobody needs
    yet; a future ImGui menu is the place for it.
 7. **The check:**
-   1. Unit tests for `FrameStats`:
+   1. Unit tests for `FrameTimeStats`:
       - 240 frames of 4,166,667 ns: `AddFrame` returns `true` on the last one, with fps 240.0,
         average 4.17 ms, and min and max 4.17.
       - One 50 ms frame among short ones: max reads 50.00, and the average stays near the short
@@ -414,9 +464,46 @@ console prints the same line once a second.
    4. A Debug run (no `[WARNING]`, no `[ERROR]`, 0 leaked blocks) and `run-tests.bat` in all four
       configurations.
 
+**Changes during the build**
+
+- The class is `FrameTimeStats` and the struct `FrameTimeReport`. The plan's `FrameStats` already
+  existed in the ECS as a struct in the global namespace, so the ECS one became `WorldFrameStats`
+  (04cd0e8) and this one got a name that says it holds frame times.
+- `Timer` gained `GetDeltaNanoseconds()`, so `AddFrame` gets the exact integer, not a `float`.
+- A first build appended the `double` fields to a `std::string` with `+=`, which takes one `char`
+  (C4244). The title never changed. An `std::ostringstream` builds the line now.
+
 **What the build checked**
 
-Not built yet.
+Unit tests, in `EcsTests` beside `FixedStep` ("frame time stats", 12 checks):
+
+- 239 frames of 4,166,667 ns give no report; the 240th does, with 240 fps, and 4.167 ms for the
+  average, shortest and longest.
+- One 50 ms frame and 228 short ones: longest 50 ms, shortest 4.167 ms, average under 4.5 ms.
+- After a report, 100 frames of 10 ms make the next one: 100 fps, shortest and longest 10 ms, so the
+  last second's 4.17 ms is gone.
+- `scripts\run-tests.bat`: all four configurations pass.
+
+Release, Scene0, the 4060, windowed on the 240 Hz monitor. `run-game.ps1 -Config Release -Steps
+"wait 4000","shot title","hold Ctrl,L 100","wait 4000","hold Ctrl,L 100","wait 4000",
+"hold Alt,Enter 100","wait 3000","hold Alt,Enter 100","wait 2000"`. Lines from `out.txt`, leaving out
+the second each change lands in:
+
+| setting | line |
+|---|---|
+| FIFO, no cap | `FIFO \| cap off \| 239.8 fps \| 4.17 ms (min 0.11, max 11.42)`; 234.5 to 239.8 fps over the run |
+| FIFO, cap 30 | `30.0 fps \| 33.33 ms`, min 32.63 to 33.05, max 33.61 to 33.85 |
+| FIFO, cap 60 | `60.0 fps \| 16.67 ms`, min 16.58 to 16.64, max 16.71 to 16.81 |
+| FIFO, cap 60, fullscreen | the lines keep coming: `60.0 fps \| 16.67 ms (min 16.65, max 16.69)` |
+
+- The `shot` shows the line in the title bar: `FIFO | cap off | 234.5 fps | 4.26 ms (min 0.12, max 13.26)`.
+- Cap 30 and 60 read 30.0 and 60.0 fps, but each second's min and max sit up to 0.7 ms off 33.33 and
+  16.67, not the plan's "min and max at 33.33 and 16.67". On the laptop panel in step 5, cap 30 held
+  33.32 / 33.36 once the dump stopped. One run here; the cause is not known.
+- The second a fullscreen switch lands in reads a 51 ms frame: the swapchain rebuild.
+- Debug, Ctrl+L, Ctrl+P and F2: no `[WARNING]`, no `[ERROR]`, no asserts, 0 leaked blocks. The second
+  with the scene switch reads `min 0.00`, the frame right after `timer.Start()`, as expected.
+- The temporary prints from steps 1 and 5 are gone from `Application.cpp`.
 
 ## 7. Pacing scene
 

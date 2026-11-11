@@ -177,7 +177,12 @@ screen, instead of asking Vakarian to test it.
 | `resize W H` | moves the window to 50, 50 and sizes it W by H |
 | `minimize`, `maximize`, `restore` | the window states |
 
-Keys are F1 to F4, A to Z, 0 to 9, Shift, Space and Escape.
+Keys are F1 to F4, A to Z, 0 to 9, Shift, Ctrl, Alt, Enter, Space and Escape. A combination is a
+hold with the modifier first: `hold Ctrl,P 100`, `hold Alt,Enter 100`.
+
+To run on the AMD 610M, set `$env:VK_LOADER_DRIVERS_SELECT = "*amd*"` before the script and remove
+it after. The Vulkan loader then hides the NVIDIA driver, and the engine takes the first GPU that
+fits. In Debug the loader prints one `[WARNING]` for the hidden driver.
 
 The summary gives the exit code, the counts of `[WARNING]` and `[ERROR]` lines and failed asserts
 (with the first five), how many scenes closed, the leaked blocks, and each "fell to the heap" count. A

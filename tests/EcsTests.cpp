@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "core/FixedStep.h"
+#include "core/FrameTimeStats.h"
 #include "ecs/Archetype.h"
 #include "ecs/ChunkPool.h"
 #include "ecs/CommandBuffer.h"
@@ -1623,6 +1624,45 @@ int main()
     fixedStep.Reset();
     fixedStep.Add(0.016f);
     Check("a reset drops the time left over", countSteps() == 0);
+
+    std::cout << "\n-- frame time stats --\n";
+
+    /* One 240 Hz frame in nanoseconds: 240 of them make 1 second and 80 ns */
+    constexpr std::uint64_t frame240Hz = 4'166'667;
+    const auto near = [](const double value, const double expected) { return value > expected - 0.001 && value < expected + 0.001; };
+
+    FrameTimeStats steadyStats;
+    bool reportBeforeLast = false;
+    for (int i = 0; i < 239; ++i) reportBeforeLast = steadyStats.AddFrame(frame240Hz) || reportBeforeLast;
+    Check("239 frames at 240 Hz are under 1 s, so no report", !reportBeforeLast);
+    Check("the 240th frame reaches 1 s and finishes a report", steadyStats.AddFrame(frame240Hz));
+    const FrameTimeReport& steady = steadyStats.GetReport();
+    Check("240 frames at 240 Hz read 240 fps", near(steady.fps, 240.0));
+    Check("the average reads 4.167 ms", near(steady.averageMs, 4.166667));
+    Check("the shortest and longest both read 4.167 ms", near(steady.shortestMs, 4.166667) && near(steady.longestMs, 4.166667));
+
+    FrameTimeStats spikeStats;
+    spikeStats.AddFrame(50'000'000);
+    bool spikeReport = false;
+    for (int i = 0; i < 228 && !spikeReport; ++i) spikeReport = spikeStats.AddFrame(frame240Hz);
+    const FrameTimeReport& spike = spikeStats.GetReport();
+    Check("a 50 ms frame and 228 short ones finish a report", spikeReport);
+    Check("the longest reads the 50 ms spike", near(spike.longestMs, 50.0));
+    Check("the shortest reads the short frames", near(spike.shortestMs, 4.166667));
+    Check("the average stays near the short frames, under 4.5 ms", spike.averageMs < 4.5);
+
+    /* steadyStats just finished a report, so this second starts from zero */
+    bool tenMsReport = false;
+    int tenMsFrames = 0;
+    while (!tenMsReport && tenMsFrames < 1000)
+    {
+        tenMsReport = steadyStats.AddFrame(10'000'000);
+        ++tenMsFrames;
+    }
+    const FrameTimeReport& afterReset = steadyStats.GetReport();
+    Check("after a report, 100 frames of 10 ms make the next one", tenMsReport && tenMsFrames == 100);
+    Check("the next report reads 100 fps", near(afterReset.fps, 100.0));
+    Check("the next report's shortest and longest forget the last second", near(afterReset.shortestMs, 10.0) && near(afterReset.longestMs, 10.0));
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

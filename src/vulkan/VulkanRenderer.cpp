@@ -41,7 +41,6 @@ namespace
         case VK_PRESENT_MODE_FIFO_RELAXED_KHR: return PresentMode::FifoRelaxed;
         case VK_PRESENT_MODE_MAILBOX_KHR: return PresentMode::Mailbox;
         case VK_PRESENT_MODE_IMMEDIATE_KHR: return PresentMode::Immediate;
-        case PresentMode::Count: return PresentMode::Fifo;
         /* Non supported */
         case VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR:
         case VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR:
@@ -53,7 +52,7 @@ namespace
     }
 }
 
-VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, const PresentMode startPresentMode) :
+VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentMode) :
     gpuContext(sdlWindow_),
     descriptors(gpuContext),
     materialDescriptors(gpuContext),

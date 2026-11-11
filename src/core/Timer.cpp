@@ -23,3 +23,8 @@ float Timer::GetDeltaTime() const
     const uint64_t delta = currentTicks - previousTicks;
     return static_cast<float>(delta) / 1'000'000'000.0f;
 }
+
+std::uint64_t Timer::GetDeltaNanoseconds() const
+{
+    return currentTicks - previousTicks;
+}

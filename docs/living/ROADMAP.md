@@ -269,8 +269,6 @@ Small changes that can land between any two steps.
 | 1 | A colour in `MaterialDesc` | A material's colour comes only from a texture today. Scene3 needed ten PNG files only for colours | to-do |
 | 2 | A light budget in the renderer | The renderer throws past `kMaxLights` today | to-do |
 | 3 | A way to pass settings to a scene | Scene3 read autoplay from an environment variable | to-do |
-| 4 | Fix `Timer::GetSleepTime`'s truncation | `1000 / fps` truncates, so a cap of 60 targets 62.5 fps and any cap above 1000 sleeps not at all | to-do |
-| 5 | Skip `SDL_Delay` when the sleep is zero | `SDL_Delay(0)` still yields to the scheduler: skipping it took a frame from 0.644 ms to 0.165 ms. `GetSleepTime` returns zero whenever a frame overran its budget, so a game that drops below its target pays extra scheduler time exactly when it is already struggling | to-do |
 
 ## Code cleanup
 

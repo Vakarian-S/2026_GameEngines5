@@ -181,9 +181,9 @@ writes wins. "The playback rule" below says what a system sees.
 lambda takes a `const ChunkView`, so the compiler stops a write. It does not check a system's
 declared reads against its code.
 
-**The chunk counters.** `FrameStats` counts `chunksTaken` and `chunksReturned`, which are events,
+**The chunk counters.** `WorldFrameStats` counts `chunksTaken` and `chunksReturned`, which are events,
 so they reset every frame like `migrations`. The pool writes them through a reference to the
-World's `FrameStats`. `WorldStats::chunksFree` is a level, so `World::Snapshot` reads it from the
+World's `WorldFrameStats`. `WorldStats::chunksFree` is a level, so `World::Snapshot` reads it from the
 pool.
 
 **The profiler.** `RunPhase` opens one span per system, named after it. A playback gets an ECS
