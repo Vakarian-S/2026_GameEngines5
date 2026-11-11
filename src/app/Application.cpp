@@ -11,6 +11,7 @@
 #include <SDL3/SDL_timer.h>
 
 #include "core/PresentMode.h"
+#include "scenes/PacingScene.h"
 #include "scenes/PhysicsScene.h"
 #include "scenes/Scene0.h"
 #include "scenes/Scene1.h"
@@ -27,6 +28,7 @@ namespace
         {.name = "Scene0", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene0>(); }},
         {.name = "Scene1", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene1>(); }},
         {.name = "Physics Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PhysicsScene>(); }},
+        {.name = "Pacing Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PacingScene>(); }}
     };
 
     /** The present mode the game starts in. Falls back to FIFO when the GPU lacks it */
@@ -149,11 +151,12 @@ void Application::Run()
             const auto& [fps, averageMs, shortestMs, longestMs] = frameTimeStats.GetReport();
             std::ostringstream line;
             line << PresentModeName(renderer.GetPresentMode()) << " | cap ";
-            if (frameCap.GetFramesPerSecond() > 0.0) line << std::fixed << std::setprecision(0) << frameCap.GetFramesPerSecond();
+            if (frameCap.GetFramesPerSecond() > 0.0) line << std::fixed << std::setprecision(0) << frameCap.
+                GetFramesPerSecond();
             else line << "off";
             line << std::fixed << std::setprecision(1) << " | " << fps << " fps | "
-                 << std::setprecision(2) << averageMs << " ms (min " << shortestMs
-                 << ", max " << longestMs << ")";
+                << std::setprecision(2) << averageMs << " ms (min " << shortestMs
+                << ", max " << longestMs << ")";
             window.SetTitle(line.str());
             std::cout << line.str() << "\n";
         }
@@ -329,6 +332,7 @@ void Application::CycleFrameCap()
     }
     frameCap.SetFramesPerSecond(framesPerSecond);
 
-    if (framesPerSecond > 0.0) std::cout << "frame cap: " << std::fixed << std::setprecision(2) << framesPerSecond << "\n";
+    if (framesPerSecond > 0.0) std::cout << "frame cap: " << std::fixed << std::setprecision(2) << framesPerSecond <<
+        "\n";
     else std::cout << "frame cap: off\n";
 }

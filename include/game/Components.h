@@ -9,3 +9,13 @@ struct Hit
 struct Damageable
 {
 };
+
+/** Marks an entity in the pacing scene's top row, which moves once per frame */
+struct FrameStepRow
+{
+};
+
+/** Marks an entity in the pacing scene's bottom row, which moves once per fixed step*/
+struct FixedStepRow
+{
+};
