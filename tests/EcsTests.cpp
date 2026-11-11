@@ -271,7 +271,7 @@ int main()
     std::cout << "\n-- archetypes --\n";
 
     /* Declared before the archetype, so the archetype gives its chunks back before the pool dies. */
-    FrameStats archetypeStats;
+    WorldFrameStats archetypeStats;
     ChunkPool archetypePool(std::pmr::new_delete_resource(), 16 * 1024, archetypeStats);
     Archetype archetype(COMPONENTS::MaskOf<Position, Velocity, Dead>(), std::pmr::new_delete_resource(),
                         &archetypePool);
@@ -1021,7 +1021,7 @@ int main()
     CountingResource chunkMemory;
     {
         constexpr uint32_t kTestChunkBytes = 1024;
-        FrameStats poolStats;
+        WorldFrameStats poolStats;
         ChunkPool pool(&chunkMemory, kTestChunkBytes, poolStats);
 
         Check("the pool reports its chunk size", pool.ChunkBytes() == kTestChunkBytes);
@@ -1074,7 +1074,7 @@ int main()
     Check("the next create reuses the free chunk", chunkStatsWorld.Snapshot().chunksFree == 0 &&
           chunkStatsWorld.Stats().chunksTaken == 3);
 
-    const FrameStats chunkFrame = chunkStatsWorld.Stats();
+    const WorldFrameStats chunkFrame = chunkStatsWorld.Stats();
     chunkStatsWorld.ResetFrameStats();
     Check("a reset clears the chunk counters",
           chunkStatsWorld.Stats().chunksTaken == 0 && chunkStatsWorld.Stats().chunksReturned == 0);
@@ -1082,7 +1082,7 @@ int main()
           chunkStatsWorld.Totals().chunksReturned == chunkFrame.chunksReturned);
 
     chunkStatsWorld.DestroyEntity(secondUser);
-    const FrameStats destroyBefore = chunkStatsWorld.Stats();
+    const WorldFrameStats destroyBefore = chunkStatsWorld.Stats();
     chunkStatsWorld.DestroyEntity(chunkUser);
     Check("StatsSince carries the chunk counters",
           StatsSince(destroyBefore, chunkStatsWorld.Stats()).chunksReturned == 1);

@@ -4,7 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "FrameStats.h"
+#include "WorldFrameStats.h"
 
 /**
  * Hands out fixed-size chunks to archetypes. Reuses returned chunks before asking the resource for
@@ -18,7 +18,7 @@ public:
      * @param chunkBytes_ bytes in every chunk, at least one pointer
      * @param stats_ the World's frame counters, where takes and returns are counted
      */
-    explicit ChunkPool(std::pmr::memory_resource* memory_, uint32_t chunkBytes_, FrameStats& stats_);
+    explicit ChunkPool(std::pmr::memory_resource* memory_, uint32_t chunkBytes_, WorldFrameStats& stats_);
     ~ChunkPool();
 
     /* Two pools sharing one free list would hand out the same chunk twice. */
@@ -54,7 +54,7 @@ private:
     std::byte* listHead = nullptr;
 
     /** The World's frame counters, where takes and returns are counted */
-    FrameStats& stats;
+    WorldFrameStats& stats;
     /** How many chunks are currently free */
     std::uint32_t chunksFree = 0;
 };

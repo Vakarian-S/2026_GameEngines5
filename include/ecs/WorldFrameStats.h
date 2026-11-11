@@ -19,45 +19,27 @@
 /**
  * Structural Changes in one frame. World clears these when a frame starts
  */
-struct FrameStats
+struct WorldFrameStats
 {
-    /**
-     * Entities Made with CreateEntity
-     */
+    /** Entities Made with CreateEntity */
     uint64_t entitiesCreated = 0;
-    /**
-     * Entities destroyed with DestroyEntity
-     */
+    /** Entities destroyed with DestroyEntity */
     uint64_t entitiesDestroyed = 0;
-    /**
-     * Components added with AddComponent
-     */
+    /** Components added with AddComponent */
     uint64_t componentsAdded = 0;
-
-    /**
-     * Componentes removed with RemoveComponent
-     */
+    /** Componentes removed with RemoveComponent */
     uint64_t componentsRemoved = 0;
-
-    /**
-     * Entities moved from one archetype to another
-     */
+    /** Entities moved from one archetype to another */
     uint64_t migrations = 0;
-
-    /**
-     * Bytes copied by the archetypes moved
-     */
+    /** Bytes copied by the archetypes moved */
     uint64_t bytesCopied = 0;
-
-    /**
-     * Archetypes created by adding new components to entities
-     */
+    /** Archetypes created by adding new components to entities */
     uint64_t archetypesCreated = 0;
-    
     /** How many chunks were taken */
     uint64_t  chunksTaken = 0;
     /** How many chunks were returned */
     uint64_t  chunksReturned = 0;
+    
 };
 
 /**
@@ -66,9 +48,9 @@ struct FrameStats
  * @param after World::Stats() read after the work
  * @return the counters the work added, field by field
  */
-inline FrameStats StatsSince(const FrameStats& before, const FrameStats& after)
+inline WorldFrameStats StatsSince(const WorldFrameStats& before, const WorldFrameStats& after)
 {
-    FrameStats gained;
+    WorldFrameStats gained;
     gained.componentsAdded = after.componentsAdded - before.componentsAdded;
     gained.componentsRemoved = after.componentsRemoved - before.componentsRemoved;
     gained.entitiesCreated = after.entitiesCreated - before.entitiesCreated;
@@ -86,7 +68,7 @@ inline FrameStats StatsSince(const FrameStats& before, const FrameStats& after)
  * @param totals running total to add to
  * @param frame the frame to add
  */
-inline void AddStats(FrameStats& totals, const FrameStats& frame)
+inline void AddStats(WorldFrameStats& totals, const WorldFrameStats& frame)
 {
     totals.entitiesCreated += frame.entitiesCreated;
     totals.entitiesDestroyed += frame.entitiesDestroyed;
@@ -104,28 +86,14 @@ inline void AddStats(FrameStats& totals, const FrameStats& frame)
  */
 struct WorldStats
 {
-    /**
-     * Amount of Archetypes that exist
-     */
+    /** Amount of Archetypes that exist */
     uint32_t archetypeCount = 0;
-
-    /**
-     * Archetypes that holds no rows
-     */
+    /** Archetypes that holds no rows */
     uint32_t emptyArchetypes = 0;
-
-    /**
-     * Entities currently alive
-     */
+    /** Entities currently alive */
     uint32_t liveEntities = 0;
-
-    /**
-     * Entity Slots handed out, live and dead
-     */
+    /** Entity Slots handed out, live and dead */
     uint32_t slotTableSize = 0;
-    
-    /**
-    * Chunks waiting on the World's ChunkPool free list
-    */
+    /** Chunks waiting on the World's ChunkPool free list */
     uint32_t chunksFree = 0;
 };

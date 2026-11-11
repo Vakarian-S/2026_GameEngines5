@@ -1,6 +1,6 @@
 ﻿#include "core/SceneManager.h"
 
-#include "ecs/FrameStats.h"
+#include "ecs/WorldFrameStats.h"
 #include "ecs/World.h"
 
 #include <iostream>
@@ -18,7 +18,7 @@ namespace
     */
     void PrintEcsReport(const World& world)
     {
-        const FrameStats& totals = world.Totals();
+        const WorldFrameStats& totals = world.Totals();
         const WorldStats snapshot = world.Snapshot();
 
         std::cout << "-- ECS Report --\n"

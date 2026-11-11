@@ -9,7 +9,7 @@
 #include "Component.h"
 #include "ecs/Entity.h"
 #include "ecs/EntitySlot.h"
-#include "FrameStats.h"
+#include "WorldFrameStats.h"
 #include "utils/Arena.h"
 #include "utils/ArenaResource.h"
 
@@ -214,10 +214,10 @@ public:
     void CollectMatching(ComponentMask all, ComponentMask none, std::vector<Archetype*>& out) const;
 
     /** @return the counters for this frame */
-    const FrameStats& Stats() const { return frameStats; }
+    const WorldFrameStats& Stats() const { return frameStats; }
 
     /** @return the counters added up over every frame so far */
-    const FrameStats& Totals() const { return runTotals; }
+    const WorldFrameStats& Totals() const { return runTotals; }
 
     /** Adds this frame into the run totals, then clears the frame's counters. */
     void ResetFrameStats();
@@ -285,10 +285,10 @@ private:
     uint32_t archetypeGeneration = 0;
 
     /** Structural changes in this frame */
-    FrameStats frameStats;
+    WorldFrameStats frameStats;
 
     /** Structural changes across every frame so far */
-    FrameStats runTotals;
+    WorldFrameStats runTotals;
 
     /** Takes the next available entity slot, reusing a freed slot when possible or creating a new slot in the entity table.
     * @return Index of the entity slot to use.

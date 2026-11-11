@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
-#include "ecs/FrameStats.h"
+#include "ecs/WorldFrameStats.h"
 
 class World;
 
@@ -58,9 +58,9 @@ struct ProfileSpan
     /** Times the span was entered, all frames */
     std::uint64_t totalCalls = 0;
     /** Structural changes this span caused this frame */
-    FrameStats frameStats;
+    WorldFrameStats frameStats;
     /** Structural changes this span caused across every frame */
-    FrameStats totalStats;
+    WorldFrameStats totalStats;
     /** The most migrations this span caused in any one frame */
     std::uint64_t maxFrameMigrations = 0;
 };
@@ -92,7 +92,7 @@ public:
     * @param nanoseconds time to add
     * @param gained structural changes the block caused, from StatsSince
     */
-    static void Record(const char* name, std::uint64_t nanoseconds, const FrameStats& gained);
+    static void Record(const char* name, std::uint64_t nanoseconds, const WorldFrameStats& gained);
 
     /** Prints the frame summary and the span table, biggest total first. */
     static void Report();
@@ -169,7 +169,7 @@ public:
 private:
     const World* world;
     const char* name;
-    FrameStats before;
+    WorldFrameStats before;
     std::chrono::steady_clock::time_point start;
 };
 

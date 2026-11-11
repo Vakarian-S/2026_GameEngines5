@@ -82,7 +82,7 @@ void Profiler::BeginFrame()
     {
         spans[i].frameNanoseconds = 0;
         spans[i].frameCalls = 0;
-        spans[i].frameStats = FrameStats{};
+        spans[i].frameStats = WorldFrameStats{};
     }
 
     frameStart = std::chrono::steady_clock::now();
@@ -121,10 +121,10 @@ void Profiler::EndFrame()
 
 void Profiler::Record(const char* name, const std::uint64_t nanoseconds)
 {
-    Record(name, nanoseconds, FrameStats{});
+    Record(name, nanoseconds, WorldFrameStats{});
 }
 
-void Profiler::Record(const char* name, const std::uint64_t nanoseconds, const FrameStats& gained)
+void Profiler::Record(const char* name, const std::uint64_t nanoseconds, const WorldFrameStats& gained)
 {
     ProfileSpan* span = FindOrAdd(name);
     if (span == nullptr)

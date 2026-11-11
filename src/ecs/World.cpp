@@ -159,7 +159,7 @@ void World::CollectMatching(const ComponentMask all, const ComponentMask none, s
 void World::ResetFrameStats()
 {
     AddStats(runTotals, frameStats);
-    frameStats = FrameStats{};
+    frameStats = WorldFrameStats{};
 }
 
 WorldStats World::Snapshot() const

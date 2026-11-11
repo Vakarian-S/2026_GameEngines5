@@ -224,7 +224,7 @@ namespace
         /* Folds the final frame's counters into the run totals. */
         world.ResetFrameStats();
 
-        const FrameStats& totals = world.Totals();
+        const WorldFrameStats& totals = world.Totals();
         const WorldStats snapshot = world.Snapshot();
 
         std::cout << "\n==== " << count << " entities, " << kFrames << " frames, "

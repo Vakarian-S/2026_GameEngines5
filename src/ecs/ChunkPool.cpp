@@ -3,7 +3,7 @@
 #include <cassert>
 #include <cstring>
 
-ChunkPool::ChunkPool(std::pmr::memory_resource* memory_, const uint32_t chunkBytes_, FrameStats& stats_)
+ChunkPool::ChunkPool(std::pmr::memory_resource* memory_, const uint32_t chunkBytes_, WorldFrameStats& stats_)
     : memory(memory_), chunkBytes(chunkBytes_), listHead(nullptr), stats(stats_)
 {
     assert(chunkBytes >= sizeof(std::byte*) && "ChunkPool: Chunk size must be at least sizeof(std::byte*)");
