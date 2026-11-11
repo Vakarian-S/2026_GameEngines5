@@ -19,11 +19,27 @@ One note per finished feature: what was decided, why, and what it measured. Nobo
 | clear-the-world.md | `World::Clear`, `Archetype::ReleaseChunks`, and R in `PhysicsScene` | 2026-11-05 |
 | intrusive-free-list.md | the free slot list kept in each dead slot's `row`, `CheckFreeList`, and why `totalRows` left `WorldStats` | 2026-11-05 |
 | entity-breakpoints.md | the `DEBUG::DebugWatch` tag, the system filter, and the `[[unlikely]]` that took back a 45% slowdown | 2026-11-05 |
+| frame-cap-and-timer.md | `Timer` in nanoseconds, `FrameCap` with sleep then spin, the wait options measured, and the NVIDIA power-mode finding | 2026-11-11 |
+| present-mode-and-fullscreen.md | `PresentMode` as a setting with a FIFO fallback, Ctrl+P switching through the rebuild path, Alt+Enter borderless fullscreen | 2026-11-11 |
+| live-fps-and-pacing-scene.md | `FrameTimeStats` and the once-a-second title and console line, the `WorldFrameStats` rename, the Pacing Scene and its load steps | 2026-11-11 |
 | tools/ | the long original manuals of the Memory Monitor and the Profiler | 2026-10-20 |
 
 ## Plan steps
 
 Other docs name the steps of a plan ("step 3", "4b"). These tables say where each one is written up.
+
+**The frame pacing plan, ended 2026-11-11.** It came from ROADMAP.md, Rendering, "Frame pacing and
+the present mode". Each note holds its steps' whole plan sections.
+
+| step | feature | note |
+|---|---|---|
+| 1 | `Timer` counts nanoseconds | frame-cap-and-timer.md |
+| 2 | the present mode as a setting | present-mode-and-fullscreen.md |
+| 3 | Ctrl+P switches the mode at runtime | present-mode-and-fullscreen.md |
+| 4 | Alt+Enter fullscreen | present-mode-and-fullscreen.md |
+| 5 | the frame cap with a precise sleep | frame-cap-and-timer.md |
+| 6 | live fps in the title and the console | live-fps-and-pacing-scene.md |
+| 7 | the pacing scene | live-fps-and-pacing-scene.md |
 
 **The ECS hardening plan, ended 2026-11-05.** It came from ROADMAP.md, ECS, Hardening, rows 1, 2,
 4, 7 and 12. Each step's note holds its whole plan section.

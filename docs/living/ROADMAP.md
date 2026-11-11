@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated:** 2026-11-05.
+**Last updated:** 2026-11-11.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
@@ -24,7 +24,6 @@ hold the measurements behind most rows.
   - [Owning the math library](#owning-the-math-library)
 - [Rendering](#rendering)
   - [Frustum culling and transforms](#frustum-culling-and-transforms)
-  - [Frame pacing and the present mode](#frame-pacing-and-the-present-mode)
   - [Basic shapes](#basic-shapes)
   - [Model import settings](#model-import-settings)
 - [Debug tools](#debug-tools)
@@ -89,7 +88,7 @@ From step 3's design of `FixedStep`. Each comes when something needs it.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | `Alpha()`: the leftover time divided by the step, for interpolation | A frame can run 0 or 2 fixed steps, which can stutter. Interpolating draws between the last two steps hides it | to-do |
+| 1 | `Alpha()`: the leftover time divided by the step, for interpolation | A frame can run 0 or 2 fixed steps, which can stutter. Interpolating draws between the last two steps hides it. The Pacing Scene's bottom row shows the problem: at 240 Hz it holds each position for 4 refreshes, and the eye sees it blur (dev-notes/live-fps-and-pacing-scene.md, step 7) | to-do |
 | 2 | Pause and single step: freeze physics and advance one step per key press | For debugging physics frame by frame | to-do |
 | 3 | A step counter | For networking, replays, or comparing two runs | to-do |
 | 4 | A time scale, for slow motion | If it must also slow Update, pause and time scale may need a third class between `Timer` and `FixedStep`, as Bevy's `Time<Virtual>` | to-do |
@@ -137,18 +136,6 @@ split screen, a shadow or minimap view, a camera rendering to a texture. One vie
 views are a column. Unity keeps the camera out of the ECS for this reason, and Bevy puts `Camera`,
 `Frustum` and `VisibleEntities` on one entity so that N views are N entities. Follow cameras, shake
 and splines do not need it, and `FlyCameraController` already shows that.
-
-### Frame pacing and the present mode
-
-From the space flight prototype, 2026-10-26. The loop ends every frame with
-`SDL_Delay(timer.GetSleepTime(60))`, so the profiler's frame total reads about 16.3 ms whether the
-scene holds 600 entities or 4,000. The per-span numbers are sound; only the frame total is blind.
-
-| # | builds | why | status |
-|---|---|---|---|
-| 1 | The present mode as a setting, defaulting to FIFO when vsync is on | FIFO is the only present mode Vulkan guarantees, and the driver then paces the loop inside `vkAcquireNextImageKHR` with no sleep and a genuinely idle CPU. The swapchain asks for MAILBOX first today, and MAILBOX never blocks: with the sleep gone the prototype reached 6,076 fps. The AMD 610M offers no MAILBOX, so the same binary falls back to FIFO there and behaves differently | in progress |
-| 2 | The frame cap as a value rather than the literal 60, owned beside the window | The displays on this machine run at 239 Hz and 165 Hz, and the engine draws 62.5 frames a second on them | in progress |
-| 3 | A precise sleep for a cap below the refresh rate: `SDL_DelayNS` to about a millisecond short, then a short spin | Vulkan has no present mode for 60 fps on a 239 Hz display, so this case needs a sleep. SDL stays the right layer: sleeping is an OS service, and `SDL_GetTicksNS` gives a monotonic clock | in progress |
 
 ### Basic shapes
 
@@ -269,6 +256,8 @@ Small changes that can land between any two steps.
 | 1 | A colour in `MaterialDesc` | A material's colour comes only from a texture today. Scene3 needed ten PNG files only for colours | to-do |
 | 2 | A light budget in the renderer | The renderer throws past `kMaxLights` today | to-do |
 | 3 | A way to pass settings to a scene | Scene3 read autoplay from an environment variable | to-do |
+| 4 | Settle whether borderless fullscreen tears with Vulkan on this machine | In the Pacing Scene, IMMEDIATE never showed a clear tear, even at cap 100 and cap 30 in fullscreen (dev-notes/live-fps-and-pacing-scene.md, step 7). Windows may still compose the image. If so, the IMMEDIATE and FIFO_RELAXED settings show no tearing, and only exclusive fullscreen or a driver setting would | to-do |
+| 5 | An action-mapping layer for the app keys | `Application::HandleEvent` writes every key into `InputState.pressed` before it checks for F1 to F4, G, Ctrl+P, Ctrl+L and Alt+Enter, so systems still see app keys (dev-notes/present-mode-and-fullscreen.md, step 4, decision 5) | to-do |
 
 ## Code cleanup
 

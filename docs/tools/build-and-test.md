@@ -184,6 +184,13 @@ To run on the AMD 610M, set `$env:VK_LOADER_DRIVERS_SELECT = "*amd*"` before the
 it after. The Vulkan loader then hides the NVIDIA driver, and the engine takes the first GPU that
 fits. In Debug the loader prints one `[WARNING]` for the hidden driver.
 
+Frame-time runs on the 4060 need the NVIDIA driver's power saving off. With the default setting, a
+light scene lets the driver drop the GPU to a slow power state and switch states while the game runs,
+and frames miss their refresh (dev-notes/frame-cap-and-timer.md, step 5). For such a run, set NVIDIA Control Panel →
+Manage 3D Settings → Program Settings → `bin\x64\Release\GameEngines5.exe` → Power management mode →
+Prefer maximum performance. Set it back to the default afterwards; the machine keeps the default
+setting between runs.
+
 The summary gives the exit code, the counts of `[WARNING]` and `[ERROR]` lines and failed asserts
 (with the first five), how many scenes closed, the leaked blocks, and each "fell to the heap" count. A
 clean run reads exit code 0, zero of each, 0 leaked blocks and 0 fell to the heap. The full output is
