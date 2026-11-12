@@ -26,6 +26,7 @@ hold the measurements behind most rows.
   - [Frustum culling and transforms](#frustum-culling-and-transforms)
   - [Basic shapes](#basic-shapes)
   - [Model import settings](#model-import-settings)
+  - [After ray query shadows](#after-ray-query-shadows)
 - [Debug tools](#debug-tools)
   - [Persistent debug lines](#persistent-debug-lines)
   - [A shipping build](#a-shipping-build)
@@ -167,6 +168,18 @@ use centred unit meshes.
 | 2 | An import scale: a known unit factor per file (centimetres to metres is 0.01), or fit to a size from the bounding box | Keeps `Transform.scale = 1` meaning "the size the model is meant to be", so collider numbers are plain metres and scale stays free for gameplay. A uniform scale cannot deform the mesh: positions are multiplied by one number, and normals, UVs and indices do not change | to-do |
 | 3 | Recentre: subtract the bounding box centre from every vertex | The engine can measure where the origin sits but cannot know whether it was meant: a character's origin at the feet lets it stand at y = 0, and a door's sits on its hinge. So recentring is a choice made per model, never automatic. Where the origin is meant, the alternative is an offset on the collider, which Unity's colliders have as `center` and step 4a left out | to-do |
 | 4 | The facing fix: turn a model that faces +Z to the engine's -Z at load | Space prototype finding 8. `Mario.obj` faces +Z, and the prototype paid a quaternion multiply per draw for it | to-do |
+
+### After ray query shadows
+
+From the ray query shadow design talk, 2026-11-11. PLAN.md builds ray query shadows and keeps a seam
+open for each row here: `shadowFactor` in the shader, the TLAS split into fill and build, and one
+source of transforms in the `DrawList`.
+
+| # | builds | why | status |
+|---|---|---|---|
+| 1 | Shadow maps as a second body for `shadowFactor`, picked by the shadows switch from PLAN.md step 6 | Ray query needs a GPU with ray tracing support, so players on older cards get no shadows without a fallback. The assignment also names shadow mapping. Shadow maps are not always faster: they pay a depth pass per light, ray query pays per pixel per light, so the timestamps from PLAN.md step 1 decide | to-do |
+| 2 | A GPU scene buffer: one storage buffer with every object's transform and material index, written only where an object changed, read by index in the shaders | Today each `DrawItem` costs one push constant and one draw, and the CPU sends every transform every frame. The buffer allows one draw for many objects and GPU culling, and lets raster, the TLAS and compute read one copy. Only once `Scene0` shows draw call cost. Rendering row 3 of "Frustum culling and transforms" (instanced draws) is a neighbour | to-do |
+| 3 | A compute shader that fills the TLAS instances from the GPU scene buffer | Moves the per-frame instance loop off the CPU, so transforms never travel back through it. The TLAS build reads only the instance buffer, so it does not change. Needs row 2: without it, the CPU uploads the transforms anyway. No source confirmed this as common practice; Unreal has a flag for a GPU copy of instance transforms | to-do |
 
 ## Debug tools
 
