@@ -40,6 +40,8 @@ the weekly usage or 60% of the 5-hour usage.
 
 - Start with the problem, then a table of the steps.
 - One decision per message, with one short reason. Go deeper only when Vakarian asks.
+- Steps are numbered and decisions are lettered: decision a, decision b. A reference names both, as
+  "step 3, decision b", so a decision never reads as a step.
 - When a call leans on what another engine does, check its primary docs first, or say it is from
   memory. Say which earlier session answered the same question, and which question it answered.
 - In idea talks, never steer back to the step. Vakarian says when the talk ends.
