@@ -17,7 +17,8 @@ FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const
     gpuContext(gpuContext_),
     swapchain(swapchain_),
     descriptors(descriptors_),
-    lineBuffers(lineBuffers_)
+    lineBuffers(lineBuffers_),
+    gpuQueries(gpuContext_)
 {
     CreateCommandPool();
     CreateCommandBuffers();
@@ -63,6 +64,12 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
     {
         throw std::runtime_error("Failed to wait for fence!");
     }
+
+    /* Read Query information for this frame */
+#if GE5_PROFILING
+    gpuQueries.ReadResults(currentFrame);
+#endif
+
 
     /* ============= 2. Write This Slot's Buffers ============= */
     /* The fence above proves the GPU finished this slot's last frame, so its buffers are free to overwrite */
@@ -234,7 +241,7 @@ void FrameLoop::CreateSyncObjects()
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
                                     const FramePipelines& pipelines, const ResourceStore& resourceStore,
-                                    const DrawList& drawList, const uint32_t lineVertexCount) const
+                                    const DrawList& drawList, const uint32_t lineVertexCount)
 {
     /* ============= 1. Begin Recording ============= */
     /* Opens this slot's command buffer. Every vkCmd call below adds to it */
@@ -245,6 +252,12 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     {
         throw std::runtime_error("failed to begin recording command buffer!");
     }
+
+    /* Start recording data for the GPU Profiler */
+#if GE5_PROFILING
+    gpuQueries.RecordReset(commandBuffer, currentFrame);
+#endif
+
 
     /* ============= 2. Prepare The Images ============= */
     /* Moves the colour image and the depth image into the layouts that drawing needs */
@@ -348,7 +361,12 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
 
     /* ============= 5. Mesh Pass ============= */
     /* Draws first, so its depth is in the image when the lines test against it */
-    RecordMeshPass(commandBuffer, pipelines.meshPipeline, resourceStore, drawList);
+    /* Scoped by the profiler */
+    {
+        PROFILE_GPU_SCOPE(gpuQueries, commandBuffer, GPUTimerName::MeshPass);
+        RecordMeshPass(commandBuffer, pipelines.meshPipeline, resourceStore, drawList);
+    }
+
 
     /* ============= 6. Line Pass ============= */
     RecordLinePass(commandBuffer, pipelines.linePipeline, lineVertexCount);

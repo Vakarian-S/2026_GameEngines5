@@ -2,6 +2,7 @@
 
 #include "Descriptors.h"
 #include "GPUContext.h"
+#include "GPUQueries.h"
 #include "ResourceStore.h"
 #include "Swapchain.h"
 #include "core/DrawList.h"
@@ -84,44 +85,43 @@ public:
     FrameLoop& operator=(FrameLoop&&) = delete;
 
     /** Sets a flag that tells the swapchain that needs to rebuild on the next DrawFrame */
-    void RequestSwapchainRebuild() { swapchainNeedsRebuild = true; };
+    void RequestSwapchainRebuild() { swapchainNeedsRebuild = true; }
+
+    /**
+     * @return The average time in milliseconds the mesh pass took
+     */
+    double GetMeshPassMilliseconds() { return gpuQueries.TakeAverageMilliseconds(GPUTimerName::MeshPass); }
 
 private:
     /** Where the device and the two queues come from. */
     const GPUContext& gpuContext;
-
     /** The images this loop draws into and presents. */
     Swapchain& swapchain;
-
     /** The camera sets and buffers. DrawFrame writes this slot's camera and binds this slot's set. */
     const Descriptors& descriptors;
-
     /** Line buffers to be used for the debug pipeline */
     const LineBuffers& lineBuffers;
-
     /**
      * The memory that command buffers record into. A buffer reuses this memory every frame, so
      * recording allocates nothing new. Destroying the pool frees its command buffers.
      */
     VkCommandPool commandPool = VK_NULL_HANDLE;
-
+    /** Queries provide a mechanism to return information about the processing of a sequence of Vulkan commands */
+    GPUQueries gpuQueries;
     /**
      * Which frame slot this pass uses. It picks the command buffer, the fence, and the
      * imageAvailable semaphore. It has no link to the swapchain image index.
      */
     uint32_t currentFrame = 0;
-
     /** Lets the Swapchain know that it needs to be rebuilt, set when the swapchain no longer fits the window
      * or when the renderer requests it. The next DrawFrame rebuilds it. */
     bool swapchainNeedsRebuild = false;
-
     /**
      * One list of recorded commands per frame slot. The CPU records into it, and the GPU plays
      * it back after the submit. There are two, because a buffer the GPU is still playing must
      * not be recorded again.
      */
     std::vector<VkCommandBuffer> commandBuffers;
-
     /**
      * "The image is free now." One per frame slot.
      * Signalled by: the acquire, once the screen has let go of the image.
@@ -137,7 +137,6 @@ private:
      * Without it, the screen could show a half-drawn image.
      */
     std::vector<VkSemaphore> renderFinishedSemaphores;
-
     /**
      * "This slot's commands are finished." One per frame slot.
      * In flight means submitted to the GPU and not finished yet.
@@ -146,25 +145,19 @@ private:
      * Without it, the CPU could record over a command buffer the GPU is still reading.
      */
     std::vector<VkFence> inFlightFences;
-
     /** Creates the command pool for the graphics queue family, with single buffer reset allowed. */
     void CreateCommandPool();
-
     /** Allocates one command buffer per frame slot from the pool. */
     void CreateCommandBuffers();
-
     /**
      * Creates the semaphores and the fences. The fences start signalled, so the first wait on
      * each slot returns at once.
      */
     void CreateSyncObjects();
-
     /** Creates one render finished semaphore per swapchain image. */
     void CreateRenderFinishedSemaphores();
-
     /** Destroys every render finished semaphore. */
     void DestroyRenderFinishedSemaphores();
-
     /**
      * Rebuilds the swapchain and the semaphores that belong to its images.
      * @return false when the window is minimized, so the caller skips the frame
@@ -194,7 +187,7 @@ private:
         const ResourceStore& resourceStore,
         const DrawList& drawList,
         uint32_t lineVertexCount
-    ) const;
+    );
 
     /**
     * Records the meshes: binds the mesh pipeline and set 0, then one push and one indexed draw per item.

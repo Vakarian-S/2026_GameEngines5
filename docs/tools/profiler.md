@@ -109,10 +109,6 @@ one table per thread, merged at the end of the frame.
 About 100 nanoseconds per block: two clock reads and a search of the table. Put it around a
 system or a phase, never inside a loop over entities.
 
-### Does it measure the GPU?
-
-No. It reads a CPU clock. GPU time needs timestamp queries inside Vulkan, which are not built.
-
 ## More detail
 
 The long original, with every output and limit: dev-notes/tools/profiler.md. Why it was built and

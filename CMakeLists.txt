@@ -309,13 +309,14 @@ list(APPEND ECS_HEADERS include/utils/Arena.h include/utils/ArenaResource.h)
 list(APPEND ECS_HEADERS include/utils/Profiler.h)
 list(APPEND ECS_SOURCES src/utils/Profiler.cpp)
 
-# FixedStep and FrameTimeStats are core, not ECS, but they need nothing either, so their checks ride along here.
+# FixedStep, FrameTimeStats and TimestampMath are core, not ECS, but they need nothing either, so their checks ride along here.
 add_executable(EcsTests
         tests/EcsTests.cpp
         src/core/FixedStep.cpp
         include/core/FixedStep.h
         src/core/FrameTimeStats.cpp
         include/core/FrameTimeStats.h
+        include/core/TimestampMath.h
         ${ECS_SOURCES}
         ${ECS_HEADERS}
 )

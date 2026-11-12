@@ -42,11 +42,16 @@ public:
 
 
     ResourceStore& GetResourceStore() { return resourceStore; }
-    
+
     /**
      * A change from SetPresentMode shows here from the next frame
      * @return the present mode the swapchain uses now */
     PresentMode GetPresentMode() const;
+
+    /**
+     * @return The average time in milliseconds the mesh pass took
+     */
+    double GetMeshPassMilliseconds() { return frameLoop.GetMeshPassMilliseconds(); }
 
     /**
      * Requests a rebuild from the swapchain and request using the given present mode

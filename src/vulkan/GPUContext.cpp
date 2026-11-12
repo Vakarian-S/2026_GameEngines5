@@ -153,7 +153,19 @@ void GPUContext::PickPhysicalDevice()
     {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
+
     vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
+
+    /* Not all GPUs support timestamp queries, so before using them we need to make sure that they can be used.
+     * This differs slightly from checking other features with a simple VkBool.
+     * Here we need to check if the timestampPeriod limit of the physical device is greater than zero.
+     * If that’s the case, timestamp queries are supported: */
+    timestampPeriod = physicalDeviceProperties.limits.timestampPeriod;
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> families(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, families.data());
+    timestampValidBits = families[queueFamilyIndices.graphicsFamily.value()].timestampValidBits;
     std::cout << "Using device: " << physicalDeviceProperties.deviceName << '\n';
 }
 

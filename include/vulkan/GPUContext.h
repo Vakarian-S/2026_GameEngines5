@@ -102,6 +102,15 @@ public:
 
     /** @return the positions of the graphics and present queue families on the chosen GPU */
     QueueFamilyIndices GetQueueFamilyIndices() const { return queueFamilyIndices; }
+    
+    /** @return true when the graphics queue writes timestamps and the GPU reports a tick length */
+    bool SupportsTimestamps() const { return timestampValidBits != 0 && timestampPeriod != 0.0f; }
+
+    /** @return nanoseconds per timestamp tick on the chosen GPU */
+    float GetTimestampPeriod() const { return timestampPeriod; }
+
+    /** @return how many low bits of a timestamp the graphics queue writes. 0 means no timestamps */
+    uint32_t GetTimestampValidBits() const { return timestampValidBits; }
 
 
     /**
@@ -122,27 +131,24 @@ public:
 private:
     /** The program's connection to the Vulkan library. Every other object here comes from it. */
     VkInstance instance = VK_NULL_HANDLE;
-
     /** The GPU this program chose. Vulkan owns it, so the destructor does not destroy it. */
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-
     /** The program's own session on the chosen GPU. Buffers, images and pipelines are created from it. */
     VkDevice device = VK_NULL_HANDLE;
-
     /** Sends the validation layer's messages to DebugMessengerCallback. Stays null in release builds. */
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
-
     /** The window, as Vulkan sees it. The swapchain presents its images to this. */
     VkSurfaceKHR surface = VK_NULL_HANDLE;
-
     /** The queue families of the chosen GPU. CreateLogicalDevice opens one queue in each. */
     QueueFamilyIndices queueFamilyIndices;
-
     /** Where draw commands are submitted. Vulkan destroys it together with the device. */
     VkQueue graphicsQueue = VK_NULL_HANDLE;
-
     /** Where finished images are handed over to the window. Often the same queue as graphicsQueue. */
     VkQueue presentQueue = VK_NULL_HANDLE;
+    /** Nanoseconds per timestamp tick, from the chosen GPU's limits. */
+    float timestampPeriod = 0.0f;
+    /** How many timestamp bits the graphics queue family writes. 0 means it writes none. */
+    uint32_t timestampValidBits = 0;
 
     /**
      * Creates a VkInstance, the global API connection & layer management

@@ -21,6 +21,7 @@
 
 #include "core/FixedStep.h"
 #include "core/FrameTimeStats.h"
+#include "core/TimestampMath.h"
 #include "ecs/Archetype.h"
 #include "ecs/ChunkPool.h"
 #include "ecs/CommandBuffer.h"
@@ -1663,6 +1664,31 @@ int main()
     Check("after a report, 100 frames of 10 ms make the next one", tenMsReport && tenMsFrames == 100);
     Check("the next report reads 100 fps", near(afterReset.fps, 100.0));
     Check("the next report's shortest and longest forget the last second", near(afterReset.shortestMs, 10.0) && near(afterReset.longestMs, 10.0));
+
+    std::cout << "\n-- GPU timestamp math --\n";
+
+    const std::uint64_t allBits = ~0ull;
+    const std::uint64_t bits36 = TimestampMask(36);
+    Check("64 valid bits keep every bit", TimestampMask(64) == allBits);
+    Check("36 valid bits keep the low 36 bits", bits36 == 0xF'FFFF'FFFFull);
+    Check("1 valid bit keeps only the lowest bit", TimestampMask(1) == 1ull);
+    Check("0 valid bits keep nothing", TimestampMask(0) == 0ull);
+
+    Check("2,000,000 ticks of 1 ns read 2 ms", near(TimestampMilliseconds(1'000, 2'001'000, allBits, 1.0f), 2.0));
+    Check("4,000,000 ticks of 0.5 ns read 2 ms", near(TimestampMilliseconds(0, 4'000'000, allBits, 0.5f), 2.0));
+    Check("the same start and end read 0 ms", TimestampMilliseconds(777, 777, allBits, 1.0f) == 0.0);
+
+    /* 1,000,000 ticks that cross the top of a 36-bit counter: it wraps to 0 halfway */
+    const std::uint64_t start36 = bits36 - 499'999;
+    Check("a 36-bit counter that wraps still reads 1 ms", near(TimestampMilliseconds(start36, 500'000, bits36, 1.0f), 1.0));
+    Check("without the mask the same wrap reads a huge time", TimestampMilliseconds(start36, 500'000, allBits, 1.0f) > 1'000'000.0);
+
+    const std::uint64_t start64 = allBits - 499'999;
+    Check("a 64-bit counter that wraps still reads 1 ms", near(TimestampMilliseconds(start64, 500'000, allBits, 1.0f), 1.0));
+
+    /* A set bit above the 36 real ones, as a GPU that leaves junk there would hand over */
+    const std::uint64_t junkStart = 5 | (1ull << 50);
+    Check("bits above the valid ones are ignored", near(TimestampMilliseconds(junkStart, 1'000'005, bits36, 1.0f), 1.0));
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

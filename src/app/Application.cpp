@@ -151,12 +151,17 @@ void Application::Run()
             const auto& [fps, averageMs, shortestMs, longestMs] = frameTimeStats.GetReport();
             std::ostringstream line;
             line << PresentModeName(renderer.GetPresentMode()) << " | cap ";
-            if (frameCap.GetFramesPerSecond() > 0.0) line << std::fixed << std::setprecision(0) << frameCap.
-                GetFramesPerSecond();
+            if (frameCap.GetFramesPerSecond() > 0.0)
+                line << std::fixed << std::setprecision(0) << frameCap.
+                    GetFramesPerSecond();
             else line << "off";
             line << std::fixed << std::setprecision(1) << " | " << fps << " fps | "
                 << std::setprecision(2) << averageMs << " ms (min " << shortestMs
                 << ", max " << longestMs << ")";
+            /* One read per second: the read clears the average, so a second read would give 0 */
+
+            const double meshPassMs = renderer.GetMeshPassMilliseconds();
+            line << " | mesh pass " << meshPassMs << " ms";
             window.SetTitle(line.str());
             std::cout << line.str() << "\n";
         }
@@ -332,7 +337,8 @@ void Application::CycleFrameCap()
     }
     frameCap.SetFramesPerSecond(framesPerSecond);
 
-    if (framesPerSecond > 0.0) std::cout << "frame cap: " << std::fixed << std::setprecision(2) << framesPerSecond <<
-        "\n";
+    if (framesPerSecond > 0.0)
+        std::cout << "frame cap: " << std::fixed << std::setprecision(2) << framesPerSecond <<
+            "\n";
     else std::cout << "frame cap: off\n";
 }
