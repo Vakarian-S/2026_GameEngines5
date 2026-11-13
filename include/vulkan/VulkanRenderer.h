@@ -53,6 +53,9 @@ public:
      */
     double GetMeshPassMilliseconds() { return frameLoop.GetMeshPassMilliseconds(); }
 
+    /** @return true when GPU times are measured: profiling is on and the GPU writes timestamps */
+    bool MeasuresGPUTime() const { return GE5_PROFILING && gpuContext.SupportsTimestamps(); }
+
     /**
      * Requests a rebuild from the swapchain and request using the given present mode
      * @param presentMode Present mode to use

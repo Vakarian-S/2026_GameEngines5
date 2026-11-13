@@ -18,8 +18,14 @@ constexpr std::array<const char*, 1> kValidationLayers = {
 /**
  * Extensions that our engine uses, in this case SwapChain Extension
  */
-constexpr std::array<const char*, 1> kDeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+constexpr std::array<const char*, 1> kRequiredDeviceExtensions = {
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+};
+
+constexpr std::array<const char*, 3> kRayQueryDeviceExtensions = {
+    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+    VK_KHR_RAY_QUERY_EXTENSION_NAME,
+    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME
 };
 
 GPUContext::GPUContext(SDL_Window* sdlWindow)
@@ -30,7 +36,34 @@ GPUContext::GPUContext(SDL_Window* sdlWindow)
     CreateSurface(sdlWindow);
     PickPhysicalDevice();
     CreateLogicalDevice();
+    LoadAccelerationStructureFunctions();
     std::cout << "Device created" << std::endl;
+}
+
+void GPUContext::LoadAccelerationStructureFunctions()
+{
+    if (!supportsRayQuery) return;
+
+    AccelerationStructureFunctions& functions = accelerationStructureFunctions;
+    functions.createAccelerationStructure = reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(
+        vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR"));
+    functions.destroyAccelerationStructure = reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
+        vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR"));
+    functions.getBuildSizes = reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
+        vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR"));
+    functions.cmdBuildAccelerationStructures = reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
+        vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR"));
+    functions.getDeviceAddress = reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
+        vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR"));
+
+    /* The extension is enabled, so a null pointer means a broken driver. The game still runs, without shadows */
+    if (!functions.createAccelerationStructure || !functions.destroyAccelerationStructure
+        || !functions.getBuildSizes || !functions.cmdBuildAccelerationStructures || !functions.getDeviceAddress)
+    {
+        std::cerr << "[WARNING] ray query functions missing, shadows off\n";
+        functions = {};
+        supportsRayQuery = false;
+    }
 }
 
 void GPUContext::CreateInstance(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo)
@@ -166,7 +199,59 @@ void GPUContext::PickPhysicalDevice()
     std::vector<VkQueueFamilyProperties> families(familyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, families.data());
     timestampValidBits = families[queueFamilyIndices.graphicsFamily.value()].timestampValidBits;
+
+
+    /* ============ Optional features =========== */
+    /* Does this GPU Support Ray Queries? - Extensions */
+    uint32_t extensionCount;
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+
+    std::set<std::string> optionalExtensions(kRayQueryDeviceExtensions.begin(), kRayQueryDeviceExtensions.end());
+
+    bool supportsRayQueryExtension = false;
+    for (const auto& [extensionName, specVersion] : availableExtensions)
+    {
+        optionalExtensions.erase(extensionName);
+        if (optionalExtensions.empty())
+        {
+            supportsRayQueryExtension = true;
+            break;
+        }
+    }
+    if (supportsRayQueryExtension)
+    {
+        /* Does this GPU Support Ray Query? - Features */
+        VkPhysicalDeviceVulkan12Features supportedVulkan12Features{};
+        supportedVulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR supportedDeviceAccelerationStructureFeatures{};
+        supportedDeviceAccelerationStructureFeatures.sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+        supportedDeviceAccelerationStructureFeatures.pNext = &supportedVulkan12Features;
+
+        VkPhysicalDeviceRayQueryFeaturesKHR supportedPhysicalDeviceRayQueryFeatures{};
+        supportedPhysicalDeviceRayQueryFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+        supportedPhysicalDeviceRayQueryFeatures.pNext = &supportedDeviceAccelerationStructureFeatures;
+
+        VkPhysicalDeviceFeatures2 supportedFeatures{};
+        supportedFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        supportedFeatures.pNext = &supportedPhysicalDeviceRayQueryFeatures;
+
+        /* One call fills every struct in the chain */
+        vkGetPhysicalDeviceFeatures2(physicalDevice, &supportedFeatures);
+
+        supportsRayQuery = (
+            supportedVulkan12Features.bufferDeviceAddress == VK_TRUE &&
+            supportedDeviceAccelerationStructureFeatures.accelerationStructure == VK_TRUE &&
+            supportedPhysicalDeviceRayQueryFeatures.rayQuery == VK_TRUE
+        );
+    }
+
     std::cout << "Using device: " << physicalDeviceProperties.deviceName << '\n';
+    std::cout << "Ray query: " << (supportsRayQuery ? "on" : "off") << '\n';
 }
 
 void GPUContext::CreateLogicalDevice()
@@ -181,8 +266,6 @@ void GPUContext::CreateLogicalDevice()
         VkDeviceQueueCreateInfo queueCreateInfo{};
         /* sType is a VkStructureType value identifying this structure. */
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        /* pNext is NULL or a pointer to a structure extending this structure. */
-        /* flags is a bitmask indicating behavior of the queues. */
         /* queueFamilyIndex is an unsigned integer indicating the index of the queue family in which to create the queues on this device. 
          * This index corresponds to the index of an element of the pQueueFamilyProperties array that was returned by vkGetPhysicalDeviceQueueFamilyProperties. */
         queueCreateInfo.queueFamilyIndex = queueFamily;
@@ -195,19 +278,43 @@ void GPUContext::CreateLogicalDevice()
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
-    /* 2 is the latest version */
+    /* Vulkan Device Features: Sample Anisotropy */
     VkPhysicalDeviceFeatures2 deviceFeatures{};
-    VkPhysicalDeviceVulkan13Features deviceVulkan13Features{};
     deviceFeatures.features.samplerAnisotropy = VK_TRUE;
     deviceFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
 
-
-    // Chain Vulkan 1.3 Features into our already existing device features.
+    /* Vulkan 1.3 Features: Dynamic Rendering, Synchronization 2 */
+    VkPhysicalDeviceVulkan13Features deviceVulkan13Features{};
     deviceVulkan13Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     deviceVulkan13Features.dynamicRendering = VK_TRUE;
     deviceVulkan13Features.synchronization2 = VK_TRUE;
     deviceFeatures.pNext = &deviceVulkan13Features;
 
+    /* Vulkan 1.2 Features: Buffer Device Address */
+    VkPhysicalDeviceVulkan12Features deviceVulkan12Features{};
+    deviceVulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    deviceVulkan12Features.bufferDeviceAddress = VK_TRUE;
+
+    /* Acceleration Structure Features: BLAS and TLAS builds */
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR deviceAccelerationStructureFeatures{};
+    deviceAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+    deviceAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
+
+    /* Ray Query Features: rays cast from a shader */
+    VkPhysicalDeviceRayQueryFeaturesKHR deviceRayQueryFeatures{};
+    deviceRayQueryFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+    deviceRayQueryFeatures.rayQuery = VK_TRUE;
+
+    std::vector<const char*> enabledExtensions(kRequiredDeviceExtensions.begin(), kRequiredDeviceExtensions.end());
+    if (supportsRayQuery)
+    {
+        /* The chain only points forward: 1.3, then 1.2, then acceleration structure, then ray query */
+        deviceVulkan13Features.pNext = &deviceVulkan12Features;
+        deviceVulkan12Features.pNext = &deviceAccelerationStructureFeatures;
+        deviceAccelerationStructureFeatures.pNext = &deviceRayQueryFeatures;
+        enabledExtensions.insert(enabledExtensions.end(), kRayQueryDeviceExtensions.begin(),
+                                 kRayQueryDeviceExtensions.end());
+    }
     VkDeviceCreateInfo createInfo{};
     /* sType is a VkStructureType value identifying this structure. */
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -220,19 +327,14 @@ void GPUContext::CreateLogicalDevice()
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
 
-    /* pEnabledFeatures is NULL or a pointer to a VkPhysicalDeviceFeatures structure containing boolean indicators of 
-     * all the features to be enabled. Refer to the Features section for further details.
-     * This field is legacy. See Physical Device Queries: Superseded via version 2. */
-    //createInfo.pEnabledFeatures = &deviceFeatures;
-
     createInfo.pNext = &deviceFeatures;
 
     /* enabledExtensionCount is the number of device extensions to enable. */
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(kDeviceExtensions.size());
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
 
     /* ppEnabledExtensionNames is a pointer to an array of enabledExtensionCount null-terminated UTF-8 strings
      * containing the names of extensions to enable for the created device */
-    createInfo.ppEnabledExtensionNames = kDeviceExtensions.data();
+    createInfo.ppEnabledExtensionNames = enabledExtensions.data();
 
     /* ========== This section is deprecated by Vulkan but its in Scotts' code ======= */
 
@@ -353,7 +455,7 @@ bool GPUContext::IsDeviceSuitable(VkPhysicalDevice candidate) const
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(candidate, nullptr, &extensionCount, availableExtensions.data());
 
-    std::set<std::string> requiredExtensions(kDeviceExtensions.begin(), kDeviceExtensions.end());
+    std::set<std::string> requiredExtensions(kRequiredDeviceExtensions.begin(), kRequiredDeviceExtensions.end());
 
     bool supportsExtensions = false;
     for (const auto& [extensionName, specVersion] : availableExtensions)

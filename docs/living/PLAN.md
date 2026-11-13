@@ -16,7 +16,7 @@ become a flat box.
 
 | # | step | done when | stage |
 |---|---|---|---|
-| 1 | GPU timestamps around the mesh pass | The once-a-second stats line shows the mesh pass GPU time in ms | designed |
+| 1 | GPU timestamps around the mesh pass | The once-a-second stats line shows the mesh pass GPU time in ms | done 1a9c9fa3 |
 | 2 | Ray query support on the device | The device starts with the ray query extensions and `bufferDeviceAddress`, the new functions load, and validation stays clean | designed |
 | 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | designed |
 | 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | designed |

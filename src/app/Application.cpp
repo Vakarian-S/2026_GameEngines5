@@ -160,8 +160,10 @@ void Application::Run()
                 << ", max " << longestMs << ")";
             /* One read per second: the read clears the average, so a second read would give 0 */
 
-            const double meshPassMs = renderer.GetMeshPassMilliseconds();
-            line << " | mesh pass " << meshPassMs << " ms";
+            if (renderer.MeasuresGPUTime())
+            {
+                line << " | mesh pass " << renderer.GetMeshPassMilliseconds() << " ms";
+            }
             window.SetTitle(line.str());
             std::cout << line.str() << "\n";
         }

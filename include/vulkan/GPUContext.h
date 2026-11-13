@@ -57,6 +57,19 @@ struct SwapChainSupportDetails
     std::vector<VkPresentModeKHR> presentModes;
 };
 
+/**
+ * The acceleration structure functions. vulkan-1.lib does not export them, so GPUContext loads them
+ * from the device. All null when the GPU has no ray query support.
+ */
+struct AccelerationStructureFunctions
+{
+    PFN_vkCreateAccelerationStructureKHR createAccelerationStructure = nullptr;
+    PFN_vkDestroyAccelerationStructureKHR destroyAccelerationStructure = nullptr;
+    PFN_vkGetAccelerationStructureBuildSizesKHR getBuildSizes = nullptr;
+    PFN_vkCmdBuildAccelerationStructuresKHR cmdBuildAccelerationStructures = nullptr;
+    PFN_vkGetAccelerationStructureDeviceAddressKHR getDeviceAddress = nullptr;
+};
+
 
 /**
  * Vulkan GPU Context is represented by a combination of three core objects that separate the application runtime, 
@@ -102,7 +115,7 @@ public:
 
     /** @return the positions of the graphics and present queue families on the chosen GPU */
     QueueFamilyIndices GetQueueFamilyIndices() const { return queueFamilyIndices; }
-    
+
     /** @return true when the graphics queue writes timestamps and the GPU reports a tick length */
     bool SupportsTimestamps() const { return timestampValidBits != 0 && timestampPeriod != 0.0f; }
 
@@ -111,6 +124,15 @@ public:
 
     /** @return how many low bits of a timestamp the graphics queue writes. 0 means no timestamps */
     uint32_t GetTimestampValidBits() const { return timestampValidBits; }
+
+    /** @return Does this GPU supports Ray Queries ? */
+    bool SupportsRayQuery() const { return supportsRayQuery; }
+
+    /** @return the acceleration structure functions. All null when SupportsRayQuery is false */
+    const AccelerationStructureFunctions& GetAccelerationStructureFunctions() const
+    {
+        return accelerationStructureFunctions;
+    }
 
 
     /**
@@ -149,15 +171,17 @@ private:
     float timestampPeriod = 0.0f;
     /** How many timestamp bits the graphics queue family writes. 0 means it writes none. */
     uint32_t timestampValidBits = 0;
+    /** Whether this GPU supports ray queries */
+    bool supportsRayQuery = false;
+    /** The acceleration structure functions, loaded after the device exists. All null without ray query. */
+    AccelerationStructureFunctions accelerationStructureFunctions;
+    /** Fills accelerationStructureFunctions from the device. Turns ray query off if any function is missing. */
+    void LoadAccelerationStructureFunctions();
 
-    /**
-     * Creates a VkInstance, the global API connection & layer management
-     */
+    /** Creates a VkInstance, the global API connection & layer management */
     void CreateInstance(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo);
 
-    /**
-     * Creates the Debug Messenger Extension
-     */
+    /** Creates the Debug Messenger Extension */
     void CreateDebugMessenger(const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo);
 
     /**
@@ -166,14 +190,10 @@ private:
      */
     void CreateSurface(SDL_Window* sdlWindow);
 
-    /**
-     * Picks the GPU device to be used
-     */
+    /** Picks the GPU device to be used */
     void PickPhysicalDevice();
 
-    /**
-     * Creates the VkDevice where the commands will execute.
-     */
+    /** Creates the VkDevice where the commands will execute. */
     void CreateLogicalDevice();
 
     /**
