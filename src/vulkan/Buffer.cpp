@@ -7,7 +7,7 @@
 
 
 Buffer::Buffer(const GPUContext& gpuContext_, const VkDeviceSize size_, const VkBufferUsageFlags usage_,
-               const VkMemoryPropertyFlags properties_) : gpuContext(gpuContext_), size(size_) 
+               const VkMemoryPropertyFlags properties_) : gpuContext(gpuContext_), size(size_)
 {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -32,6 +32,14 @@ Buffer::Buffer(const GPUContext& gpuContext_, const VkDeviceSize size_, const Vk
     /*  index identifying a memory type from the memoryTypes array of the VkPhysicalDeviceMemoryProperties structure.*/
     memoryAllocateInfo.memoryTypeIndex = gpuContext.FindMemoryType(memoryRequirements.memoryTypeBits, properties_);
 
+    /* A buffer read by its GPU address needs memory allocated with the device address flag */
+    VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo{};
+    memoryAllocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+    memoryAllocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    if (usage_ & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
+    {
+        memoryAllocateInfo.pNext = &memoryAllocateFlagsInfo;
+    }
     if (vkAllocateMemory(gpuContext.GetDevice(), &memoryAllocateInfo, nullptr, &deviceMemory) != VK_SUCCESS)
     {
         throw std::runtime_error("failed to allocate buffer memory!");
@@ -63,6 +71,14 @@ Buffer::~Buffer()
 {
     vkDestroyBuffer(gpuContext.GetDevice(), buffer, nullptr);
     vkFreeMemory(gpuContext.GetDevice(), deviceMemory, nullptr);
+}
+
+VkDeviceAddress Buffer::GetDeviceAddress() const
+{
+    VkBufferDeviceAddressInfo bufferDeviceAddressInfo{};
+    bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferDeviceAddressInfo.buffer = buffer;
+    return vkGetBufferDeviceAddress(gpuContext.GetDevice(), &bufferDeviceAddressInfo);
 }
 
 void Buffer::Write(const void* data, const VkDeviceSize dataSize) const

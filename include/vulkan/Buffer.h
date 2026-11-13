@@ -53,6 +53,11 @@ public:
     VkDeviceSize GetSize() const { return size; }
 
     /**
+     * Must Be called on a buffer with SHADER_DEVICE_ADDRESS_BIT
+     * @return Device address of this buffer. */
+    VkDeviceAddress GetDeviceAddress() const;
+
+    /**
      * Copies bytes from the CPU into the buffer. The buffer must use host visible memory.
      * @param data the bytes to copy
      * @param dataSize the number of bytes to copy

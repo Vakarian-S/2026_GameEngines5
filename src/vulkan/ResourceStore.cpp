@@ -8,12 +8,32 @@
 
 #include "Vector.h"
 
-Mesh::Mesh(const GPUContext& gpuContext, const TemporaryCommandBuffers& temporaryCommandBuffers,
-           const std::span<const Vertex> vertices, const std::span<const uint32_t> indices) :
-    vertexBuffer(gpuContext, temporaryCommandBuffers, vertices.data(), vertices.size_bytes(),
-                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
-    indexBuffer(gpuContext, temporaryCommandBuffers, indices.data(), indices.size_bytes(),
-                VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+Mesh::Mesh(
+    const GPUContext& gpuContext,
+    const TemporaryCommandBuffers& temporaryCommandBuffers,
+    const std::span<const Vertex> vertices,
+    const std::span<const uint32_t> indices
+) :
+    vertexBuffer(
+        gpuContext,
+        temporaryCommandBuffers,
+        vertices.data(),
+        vertices.size_bytes(),
+        gpuContext.SupportsRayQuery()
+            ? VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+            : VK_BUFFER_USAGE_VERTEX_BUFFER_BIT),
+    indexBuffer(
+        gpuContext,
+        temporaryCommandBuffers,
+        indices.data(),
+        indices.size_bytes(),
+        gpuContext.SupportsRayQuery()
+        ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+        : VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
     indexCount(static_cast<uint32_t>(indices.size()))
 {
 }

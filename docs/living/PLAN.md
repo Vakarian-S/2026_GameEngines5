@@ -17,7 +17,7 @@ become a flat box.
 | # | step | done when | stage |
 |---|---|---|---|
 | 1 | GPU timestamps around the mesh pass | The once-a-second stats line shows the mesh pass GPU time in ms | done 1a9c9fa3 |
-| 2 | Ray query support on the device | The device starts with the ray query extensions and `bufferDeviceAddress`, the new functions load, and validation stays clean | designed |
+| 2 | Ray query support on the device | The device starts with the ray query extensions and `bufferDeviceAddress`, the new functions load, and validation stays clean | done cf3496c4 |
 | 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | designed |
 | 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | designed |
 | 5 | TLAS each frame, split into fill and build | The CPU fills instances from the `DrawList`, the build reads only the instance buffer, and the TLAS is ready before the mesh pass | designed |
@@ -211,6 +211,47 @@ that `vulkan-1.lib` does not export.
 **Context:** the engine already requires Vulkan 1.3 (`apiVersion = VK_API_VERSION_1_3`). Vulkan is
 implemented by the player's driver, so "update your graphics driver" is the fix for a GPU that can run
 1.3, but no update adds ray tracing hardware.
+
+**What the build changed**
+
+- **Two extension lists.** `kRequiredDeviceExtensions` holds the swapchain, and `IsDeviceSuitable`
+  checks only it. `kRayQueryDeviceExtensions` holds the three ray query extensions.
+- **`PickPhysicalDevice` sets `supportsRayQuery`** after the GPU is chosen: first the three extensions,
+  then one `vkGetPhysicalDeviceFeatures2` call on the 1.2, acceleration structure and ray query
+  structs. It prints `Ray query: on` or `off`.
+- **The feature query is kept although the spec makes it redundant.** The spec's "Feature
+  Requirements" section says a GPU with `VK_KHR_acceleration_structure` must support
+  `accelerationStructure` and `bufferDeviceAddress`, and one with `VK_KHR_ray_query` must support
+  `rayQuery`. The query costs one call at startup and guards against a driver that breaks the rule.
+- **`CreateLogicalDevice` builds the three request structs at function scope** and links them after
+  `Vulkan13Features` only when `supportsRayQuery` is true. The same condition appends the three
+  extensions to an `enabledExtensions` vector.
+- **`AccelerationStructureFunctions`** holds five pointers: create, destroy, build sizes, the build
+  command, and the device address. `LoadAccelerationStructureFunctions` runs after
+  `CreateLogicalDevice`. If any pointer comes back null, it prints a warning, clears them all and
+  turns ray query off. `vkGetBufferDeviceAddress` is core 1.2, so `vulkan-1.lib` exports it.
+- **Decision e:** `VulkanRenderer::MeasuresGPUTime` is true when `GE5_PROFILING` is on and the GPU
+  writes timestamps. `Application` prints `mesh pass` only then. This closes step 1's open item.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added: none of
+  this code runs without a GPU.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks, 0 frame-arena heap fallbacks. The log shows `Ray query: on`
+  on the RTX 4060 and no "functions missing" warning. Validation accepted the chain and the
+  extensions. Mesh pass 0.08 to 0.10 ms under FIFO.
+- **Not checked:** the "ray query off" and "no timestamps" paths. Both GPUs on this machine support
+  ray query and timestamps.
+
+**What the build found**
+
+- **The deprecation of host builds does not touch this plan.** Khronos's July 2026 post deprecates
+  CPU-side acceleration structure builds (`accelerationStructureHostCommands`). Steps 4 and 5 build
+  on the GPU, and `vulkaninfo` reports the feature as false on both GPUs here.
+- **About 68 to 84% of Steam players have ray tracing hardware.** From Valve's October 2026 survey,
+  summed by hand: 68.2% of named rows have it, 16.3% do not, 15.6% are unknown rows. The rest get no
+  shadows until shadow maps.
 
 Seam: shadows, ambient occlusion and reflections all reuse this setup.
 
