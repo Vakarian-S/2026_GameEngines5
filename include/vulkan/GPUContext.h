@@ -128,6 +128,11 @@ public:
     /** @return Does this GPU supports Ray Queries ? */
     bool SupportsRayQuery() const { return supportsRayQuery; }
 
+    /**
+     * @return alignment for the scratch memory to be used in acceleration structures, if ray queries are not supported this equals 0
+     */
+    uint32_t GetAccelerationStructureScratchAlignment() const { return accelerationStructureScratchAlignment; }
+
     /** @return the acceleration structure functions. All null when SupportsRayQuery is false */
     const AccelerationStructureFunctions& GetAccelerationStructureFunctions() const
     {
@@ -175,6 +180,8 @@ private:
     bool supportsRayQuery = false;
     /** The acceleration structure functions, loaded after the device exists. All null without ray query. */
     AccelerationStructureFunctions accelerationStructureFunctions;
+    /** Alignment for the scratch memory that will be used on acceleration structures. */
+    uint32_t accelerationStructureScratchAlignment = 0;
     /** Fills accelerationStructureFunctions from the device. Turns ray query off if any function is missing. */
     void LoadAccelerationStructureFunctions();
 

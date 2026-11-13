@@ -22,6 +22,7 @@
 #include "core/FixedStep.h"
 #include "core/FrameTimeStats.h"
 #include "core/TimestampMath.h"
+#include "core/AlignUp.h"
 #include "ecs/Archetype.h"
 #include "ecs/ChunkPool.h"
 #include "ecs/CommandBuffer.h"
@@ -1689,6 +1690,37 @@ int main()
     /* A set bit above the 36 real ones, as a GPU that leaves junk there would hand over */
     const std::uint64_t junkStart = 5 | (1ull << 50);
     Check("bits above the valid ones are ignored", near(TimestampMilliseconds(junkStart, 1'000'005, bits36, 1.0f), 1.0));
+
+    std::cout << "\n-- AlignUp --\n";
+
+    Check("0 stays 0", AlignUp(0, 128) == 0);
+    Check("128 is already aligned to 128 and stays", AlignUp(128, 128) == 128);
+    Check("127 rounds up to 128", AlignUp(127, 128) == 128);
+    Check("129, one past 128, rounds up to 256", AlignUp(129, 128) == 256);
+    Check("1000 rounds up to 1024 at 128", AlignUp(1000, 128) == 1024);
+    Check("1100 rounds up to 1280 at 256", AlignUp(1100, 256) == 1280);
+    Check("an alignment of 1 changes nothing", AlignUp(12345, 1) == 12345);
+
+    /* Every value from 0 to 2000, at the RTX 4060's 128 and the Radeon 610M's 256 */
+    bool alwaysMultiple = true;
+    bool neverBelow = true;
+    bool neverSkipsALine = true;
+    for (const std::uint64_t alignment : {128ull, 256ull})
+    {
+        for (std::uint64_t value = 0; value <= 2000; ++value)
+        {
+            const std::uint64_t aligned = AlignUp(value, alignment);
+            alwaysMultiple = alwaysMultiple && aligned % alignment == 0;
+            neverBelow = neverBelow && aligned >= value;
+            neverSkipsALine = neverSkipsALine && aligned - value < alignment;
+        }
+    }
+    Check("the result is always a multiple of the alignment", alwaysMultiple);
+    Check("the result is never below the value", neverBelow);
+    Check("the result is less than one alignment above the value", neverSkipsALine);
+
+    /* A 64-bit address near the top, as a GPU could hand out */
+    Check("an address near the top of 64 bits rounds up", AlignUp(0xFFFF'FFFF'FFFF'FE01ull, 256) == 0xFFFF'FFFF'FFFF'FF00ull);
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

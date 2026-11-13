@@ -11,6 +11,7 @@
 #include "Texture.h"
 #include "MaterialDescriptors.h"
 #include "Vertex.h"
+#include "AccelerationStructure.h"
 #include "core/Material.h"
 #include "core/ResourceLoader.h"
 
@@ -32,6 +33,9 @@ struct Mesh
     Buffer vertexBuffer;
     Buffer indexBuffer;
     uint32_t indexCount;
+        
+    /** Bottom Level Acceleration Structure for this mesh. Stays null when ray queries are off */
+    std::unique_ptr<AccelerationStructure> blas;
 };
 
 /** One material in GPU memory: the buffer that holds its surface values, and the set that points at that buffer and at its texture. */

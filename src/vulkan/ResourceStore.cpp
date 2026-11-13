@@ -30,12 +30,18 @@ Mesh::Mesh(
         indices.data(),
         indices.size_bytes(),
         gpuContext.SupportsRayQuery()
-        ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
-        : VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
+            ? VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+            VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+            : VK_BUFFER_USAGE_INDEX_BUFFER_BIT),
     indexCount(static_cast<uint32_t>(indices.size()))
 {
+    if (gpuContext.SupportsRayQuery())
+    {
+        blas = BuildBottomLevelAccelerationStructure(gpuContext, temporaryCommandBuffers, vertexBuffer,
+                                                     static_cast<uint_fast8_t>(vertices.size()),
+                                                     indexBuffer, indexCount);
+    }
 }
 
 Material::Material(const GPUContext& gpuContext, const TemporaryCommandBuffers& temporaryCommandBuffers,

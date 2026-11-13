@@ -18,7 +18,7 @@ become a flat box.
 |---|---|---|---|
 | 1 | GPU timestamps around the mesh pass | The once-a-second stats line shows the mesh pass GPU time in ms | done 1a9c9fa3 |
 | 2 | Ray query support on the device | The device starts with the ray query extensions and `bufferDeviceAddress`, the new functions load, and validation stays clean | done cf3496c4 |
-| 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | designed |
+| 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | done 044e1959 |
 | 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | designed |
 | 5 | TLAS each frame, split into fill and build | The CPU fills instances from the `DrawList`, the build reads only the instance buffer, and the TLAS is ready before the mesh pass | designed |
 | 6 | Shadows in the shader | The TLAS is bound in set 0, lighting calls only `shadowFactor`, a shadows on/off switch works, and in `Scene1` a shadow from Mario or a cube lands on Mario or a cube | designed |
@@ -281,6 +281,31 @@ BLAS: `position` is three floats at offset 0, and the stride is `sizeof(Vertex)`
   load, about two per frame), and a stored field would hold a meaningless zero on buffers without the
   flag. Calling it on such a buffer is invalid, and validation reports it. The BLAS address is the
   opposite case: it is read once per instance per frame, so step 4 stores it.
+
+**What the build changed**
+
+- **`Buffer`'s base constructor** declares the `VkMemoryAllocateFlagsInfo` at function scope and links
+  it to the allocate info only when the usage has `SHADER_DEVICE_ADDRESS_BIT`, so it still exists when
+  `vkAllocateMemory` reads it. The upload constructor passes its usage through, so it needs no change.
+- **`Buffer::GetDeviceAddress`** fills a `VkBufferDeviceAddressInfo` and calls
+  `vkGetBufferDeviceAddress`. It has no caller yet; step 4's BLAS build is the first.
+- **`Mesh`'s constructor** picks each buffer's usage with a ternary on `SupportsRayQuery()`.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added: none of
+  this code runs without a GPU.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks, `Ray query: on`. Every mesh buffer took the allocate-flag
+  path, and validation accepted it.
+- **Not checked:** `GetDeviceAddress` itself, which nothing calls yet, and the ray query off path.
+
+**What the build found**
+
+- **A copied ternary hid a wrong flag.** The index buffer's ternary first said `VERTEX_BUFFER_BIT` in
+  both branches. Validation reported it on `vkCmdBindIndexBuffer` (`VUID-vkCmdBindIndexBuffer-buffer-08784`).
+- **`run-tests.bat` does not rebuild the game.** A run of a stale exe showed that bug after the
+  source was fixed. Build with `cmake --build --preset x64-Debug` before `run-game.ps1`.
 
 **Sources:** Khronos sample "Buffer device address"
 (https://docs.vulkan.org/samples/latest/samples/extensions/buffer_device_address/README.html), the

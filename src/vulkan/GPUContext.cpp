@@ -179,28 +179,12 @@ void GPUContext::PickPhysicalDevice()
             break;
         }
     }
-
-    VkPhysicalDeviceProperties physicalDeviceProperties;
-
+    
     if (physicalDevice == VK_NULL_HANDLE)
     {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
-
-    vkGetPhysicalDeviceProperties(physicalDevice, &physicalDeviceProperties);
-
-    /* Not all GPUs support timestamp queries, so before using them we need to make sure that they can be used.
-     * This differs slightly from checking other features with a simple VkBool.
-     * Here we need to check if the timestampPeriod limit of the physical device is greater than zero.
-     * If that’s the case, timestamp queries are supported: */
-    timestampPeriod = physicalDeviceProperties.limits.timestampPeriod;
-    uint32_t familyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, nullptr);
-    std::vector<VkQueueFamilyProperties> families(familyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, families.data());
-    timestampValidBits = families[queueFamilyIndices.graphicsFamily.value()].timestampValidBits;
-
-
+    
     /* ============ Optional features =========== */
     /* Does this GPU Support Ray Queries? - Extensions */
     uint32_t extensionCount;
@@ -221,6 +205,33 @@ void GPUContext::PickPhysicalDevice()
             break;
         }
     }
+    
+    /* ============ Properties =========== */
+    /* One call fills the base properties and, with ray query, the acceleration structure properties */
+    
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR supportedAccelerationStructureProperties{};
+    supportedAccelerationStructureProperties.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+
+    VkPhysicalDeviceProperties2 physicalDeviceProperties2{};
+    physicalDeviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+
+    /* The extension's struct may only be chained when the GPU lists the extension */
+    if (supportsRayQueryExtension)
+    {
+        physicalDeviceProperties2.pNext = &supportedAccelerationStructureProperties;
+    }
+    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties2);
+    const VkPhysicalDeviceProperties& physicalDeviceProperties = physicalDeviceProperties2.properties;
+
+    /* A timestamp period of 0 means the GPU has no timestamps, so GPUQueries records nothing */
+    timestampPeriod = physicalDeviceProperties.limits.timestampPeriod;
+    uint32_t familyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> families(familyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &familyCount, families.data());
+    timestampValidBits = families[queueFamilyIndices.graphicsFamily.value()].timestampValidBits;
+    
     if (supportsRayQueryExtension)
     {
         /* Does this GPU Support Ray Query? - Features */
@@ -249,9 +260,17 @@ void GPUContext::PickPhysicalDevice()
             supportedPhysicalDeviceRayQueryFeatures.rayQuery == VK_TRUE
         );
     }
+    
+    if (supportsRayQuery)
+    {
+        accelerationStructureScratchAlignment = supportedAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
+    }
 
     std::cout << "Using device: " << physicalDeviceProperties.deviceName << '\n';
-    std::cout << "Ray query: " << (supportsRayQuery ? "on" : "off") << '\n';
+    std::cout << "Ray query: " << (supportsRayQuery ? "on" : "off");
+    if (supportsRayQuery) std::cout << ", scratch alignment " << accelerationStructureScratchAlignment;
+    std::cout << '\n';
+    
 }
 
 void GPUContext::CreateLogicalDevice()
