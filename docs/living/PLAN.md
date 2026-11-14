@@ -19,7 +19,7 @@ become a flat box.
 | 1 | GPU timestamps around the mesh pass | The once-a-second stats line shows the mesh pass GPU time in ms | done 1a9c9fa3 |
 | 2 | Ray query support on the device | The device starts with the ray query extensions and `bufferDeviceAddress`, the new functions load, and validation stays clean | done cf3496c4 |
 | 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | done 044e1959 |
-| 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | designed |
+| 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | done a0e4677f |
 | 5 | TLAS each frame, split into fill and build | The CPU fills instances from the `DrawList`, the build reads only the instance buffer, and the TLAS is ready before the mesh pass | designed |
 | 6 | Shadows in the shader | The TLAS is bound in set 0, lighting calls only `shadowFactor`, a shadows on/off switch works, and in `Scene1` a shadow from Mario or a cube lands on Mario or a cube | designed |
 | 7 | Fix artifacts and measure, with a floor in `Scene1`; bonus: non-uniform scale | No self-shadowing acne, shadows on/off GPU times are recorded, and as the bonus the floor is a flat box | designed |
@@ -347,6 +347,49 @@ it. The renderer owns the module; shadow code only reads it. A `Mesh` gets a BLA
   guaranteed to be. So the buffer is the scratch size plus the alignment, and the address is rounded
   up. NVIDIA shares one scratch buffer across batched builds; without batching there is nothing to
   share.
+
+**What the build changed**
+
+- **`AccelerationStructure`** (`include/vulkan/AccelerationStructure.h`, `src/vulkan/AccelerationStructure.cpp`)
+  holds `gpuContext`, `storageBuffer`, `handle` and `deviceAddress`, in that order, so the buffer is
+  built before the create and destroyed after the handle. The storage buffer is device local with
+  `ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | SHADER_DEVICE_ADDRESS_BIT`. The create result is checked.
+- **`BuildBottomLevelAccelerationStructure`** is a free function in the same files and returns
+  `std::unique_ptr<AccelerationStructure>`: triangles, geometry, build info, `getBuildSizes`, create,
+  scratch, range, record, `SubmitAndWait`. The scratch buffer is `buildScratchSize` plus one alignment,
+  with `STORAGE_BUFFER_BIT | SHADER_DEVICE_ADDRESS_BIT`, and dies after the wait.
+- **`GPUContext` reads `minAccelerationStructureScratchOffsetAlignment`** as
+  `accelerationStructureScratchAlignment`. `PickPhysicalDevice` now checks the ray query extensions
+  first, then makes one `vkGetPhysicalDeviceProperties2` call, chaining the acceleration structure
+  properties only when the extensions are listed. `.properties` replaced the old
+  `vkGetPhysicalDeviceProperties` call. The value is read only when `supportsRayQuery` is true, and
+  the start-up line prints it.
+- **`include/core/AlignUp.h`**: one `inline` function, `(value + alignment - 1) & ~(alignment - 1)`,
+  with no Vulkan type, so `EcsTests` builds it on Win32.
+- **`Mesh`** holds `std::unique_ptr<AccelerationStructure> blas`, declared after the buffers, and its
+  constructor body builds it when `SupportsRayQuery()` is true. Null otherwise.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` gained 11 checks in
+  an "AlignUp" section, 348 in all: 0, 127, 128, 129, 1000 at 128, 1100 at 256, an alignment of 1;
+  every value from 0 to 2000 at 128 and 256 is a multiple, never below the value, and less than one
+  alignment above it; an address near the top of 64 bits.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks, `Ray query: on, scratch alignment 128`. Validation accepted
+  the size query, the scratch alignment, each build and each destroy. The Scene1 screenshot draws as
+  before; mesh pass 0.06 to 0.07 ms.
+- **Not checked:** how many BLASes were built (nothing prints per build), whether the trees are right
+  (nothing reads them until steps 5 and 6), and the ray query off path. A value within one alignment
+  of the top of 64 bits wraps `AlignUp` to 0; GPU addresses do not go there, so it has no test.
+
+**What the build found**
+
+- **A signature mismatch links nowhere.** The definition first said `static`, `Buffer&` and
+  `std::int32_t indexCount` while the header said `const Buffer&` and `std::uint32_t`. The linker
+  reported `LNK2019` and listed the definition as a near match.
+- **Batching and compaction became ROADMAP.md, Rendering, "After ray query shadows", row 4,** with
+  the trigger: load time rising with mesh count, streaming, or BLAS memory.
 
 **Sources:** Khronos tutorial, "Acceleration structures"
 (https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/02_Acceleration_structures.html) and

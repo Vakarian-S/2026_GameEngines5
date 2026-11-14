@@ -10,6 +10,7 @@
 enum class GPUTimerName : uint8_t
 {
     MeshPass,
+    TlasBuild,
     Count
 };
 

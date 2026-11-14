@@ -163,6 +163,7 @@ void Application::Run()
             if (renderer.MeasuresGPUTime())
             {
                 line << " | mesh pass " << renderer.GetMeshPassMilliseconds() << " ms";
+                line << " | tlas build " << renderer.GetTlasBuildMilliseconds() << " ms";
             }
             window.SetTitle(line.str());
             std::cout << line.str() << "\n";

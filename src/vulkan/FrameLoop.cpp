@@ -12,10 +12,13 @@
 #include <stdexcept>
 
 
-FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_, const Descriptors& descriptors_,
+FrameLoop::FrameLoop(const GPUContext& gpuContext_, Swapchain& swapchain_,
+                     TopLevelAccelerationStructures& topLevelAccelerationStructures_,
+                     const Descriptors& descriptors_,
                      const LineBuffers& lineBuffers_) :
     gpuContext(gpuContext_),
     swapchain(swapchain_),
+    topLevelAccelerationStructures(topLevelAccelerationStructures_),
     descriptors(descriptors_),
     lineBuffers(lineBuffers_),
     gpuQueries(gpuContext_)
@@ -76,6 +79,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
     descriptors.WriteCamera(currentFrame, camera);
     descriptors.WriteLights(currentFrame, lights);
     lineBuffers.Write(currentFrame, debugLines);
+    topLevelAccelerationStructures.Fill(currentFrame, drawList, resourceStore);
 
     /* ============= 3. Acquire An Image ============= */
     /* Asks the swapchain for an image to draw into, and handles a swapchain that no longer fits the window */
@@ -258,7 +262,10 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     gpuQueries.RecordReset(commandBuffer, currentFrame);
 #endif
 
-
+    {
+        PROFILE_GPU_SCOPE(gpuQueries, commandBuffer, GPUTimerName::TlasBuild);
+        topLevelAccelerationStructures.RecordBuild(commandBuffer, currentFrame);
+    }
     /* ============= 2. Prepare The Images ============= */
     /* Moves the colour image and the depth image into the layouts that drawing needs */
 

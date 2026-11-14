@@ -5,9 +5,9 @@
 #include "GPUQueries.h"
 #include "ResourceStore.h"
 #include "Swapchain.h"
+#include "TopLevelAccelerationStructures.h"
 #include "core/DrawList.h"
 #include "core/debug/DebugLines.h"
-
 
 class Pipeline;
 class Buffer;
@@ -46,11 +46,14 @@ public:
      * Creates the command pool, the command buffers, and the sync objects.
      * @param gpuContext_ The device and queues to work with. It must outlive this object
      * @param swapchain_ The images to draw into. It must outlive this object
+     * @param topLevelAccelerationStructures_ TLAS used for ray queries.
      * @param descriptors_ The camera sets and buffers, one per frame slot. It must outlive this object
+     * @param lineBuffers_ Line buffers for the debug lines
      */
     FrameLoop(
         const GPUContext& gpuContext_,
         Swapchain& swapchain_,
+        TopLevelAccelerationStructures& topLevelAccelerationStructures_,
         const Descriptors& descriptors_,
         const LineBuffers& lineBuffers_
     );
@@ -87,20 +90,24 @@ public:
     /** Sets a flag that tells the swapchain that needs to rebuild on the next DrawFrame */
     void RequestSwapchainRebuild() { swapchainNeedsRebuild = true; }
 
-    /**
-     * @return The average time in milliseconds the mesh pass took
-     */
+    /** @return The average time in milliseconds the mesh pass took */
     double GetMeshPassMilliseconds() { return gpuQueries.TakeAverageMilliseconds(GPUTimerName::MeshPass); }
+    
+    /** @return The average time in milliseconds the top level acceleration structure took */
+    double GetTlasBuildMilliseconds() { return gpuQueries.TakeAverageMilliseconds(GPUTimerName::TlasBuild); }
 
 private:
     /** Where the device and the two queues come from. */
     const GPUContext& gpuContext;
     /** The images this loop draws into and presents. */
     Swapchain& swapchain;
+    /** Top level acceleration structures for ray queries */
+    TopLevelAccelerationStructures& topLevelAccelerationStructures;
     /** The camera sets and buffers. DrawFrame writes this slot's camera and binds this slot's set. */
     const Descriptors& descriptors;
     /** Line buffers to be used for the debug pipeline */
     const LineBuffers& lineBuffers;
+
     /**
      * The memory that command buffers record into. A buffer reuses this memory every frame, so
      * recording allocates nothing new. Destroying the pool frees its command buffers.

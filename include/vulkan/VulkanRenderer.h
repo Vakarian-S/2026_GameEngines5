@@ -7,6 +7,7 @@
 #include "Swapchain.h"
 #include "TemporaryCommandBuffers.h"
 #include "MaterialDescriptors.h"
+#include "TopLevelAccelerationStructures.h"
 #include "core/DrawList.h"
 #include "core/Light.h"
 #include "vulkan/debug/LineBuffers.h"
@@ -48,10 +49,10 @@ public:
      * @return the present mode the swapchain uses now */
     PresentMode GetPresentMode() const;
 
-    /**
-     * @return The average time in milliseconds the mesh pass took
-     */
+    /** @return The average time in milliseconds the mesh pass took */
     double GetMeshPassMilliseconds() { return frameLoop.GetMeshPassMilliseconds(); }
+    /** @return The average time in milliseconds the top level acceleration structure took */
+    double GetTlasBuildMilliseconds() { return frameLoop.GetTlasBuildMilliseconds(); }
 
     /** @return true when GPU times are measured: profiling is on and the GPU writes timestamps */
     bool MeasuresGPUTime() const { return GE5_PROFILING && gpuContext.SupportsTimestamps(); }
@@ -81,6 +82,9 @@ private:
 
     /** Where the device comes from. */
     GPUContext gpuContext;
+
+    /** Top Level acceleration structures used for ray queries */
+    TopLevelAccelerationStructures topLevelAccelerationStructures;
 
     /** Set 0: the camera, one set and one buffer per frame slot. */
     Descriptors descriptors;

@@ -54,6 +54,7 @@ namespace
 
 VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentMode) :
     gpuContext(sdlWindow_),
+    topLevelAccelerationStructures(gpuContext),
     descriptors(gpuContext),
     materialDescriptors(gpuContext),
     temporaryCommandBuffers(gpuContext),
@@ -69,7 +70,7 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentM
                  swapchain.GetDepthFormat(), LinePipelineSettings(
                      descriptors.GetLayout())),
     lineBuffers(gpuContext),
-    frameLoop(gpuContext, swapchain, descriptors, lineBuffers)
+    frameLoop(gpuContext, swapchain, topLevelAccelerationStructures, descriptors, lineBuffers)
 {
 }
 
