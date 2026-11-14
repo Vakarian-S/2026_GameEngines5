@@ -58,6 +58,15 @@ public:
     bool MeasuresGPUTime() const { return GE5_PROFILING && gpuContext.SupportsTimestamps(); }
 
     /**
+     * @return Whether shadows are enabled or not
+     */
+    bool GetShadowsEnabled() const { return shadowsEnabled; }
+    /**
+     * @param enabled Whether to enable or disable shadows
+     */
+    void SetShadows(const bool enabled) { shadowsEnabled = enabled && gpuContext.SupportsRayQuery(); }
+
+    /**
      * Requests a rebuild from the swapchain and request using the given present mode
      * @param presentMode Present mode to use
      */
@@ -101,6 +110,10 @@ private:
 
     /** Pipeline used to draw the meshes */
     Pipeline meshPipeline;
+    /** Pipeline used to draw the meshes with Ray Query Shadows, null without ray query */
+    std::unique_ptr<Pipeline> rayQueryMeshPipeline;
+    /** Whether shadows are enabled or not */
+    bool shadowsEnabled = true;
     /** Pipeline used to draw the debug lines */
     Pipeline linePipeline;
 

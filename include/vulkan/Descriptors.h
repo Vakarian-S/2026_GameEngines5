@@ -35,7 +35,7 @@ struct GpuLight
 /** Every light this frame, as the fragment shader reads it. The uniform block in phong.frag lists the same fields in the same order. */
 struct LightUniform
 {
-    /** Only the first count entries are read. */   
+    /** Only the first count entries are read. */
     GpuLight lights[kMaxLights];
     /** Light that reaches every surface. Added once, not once per light. w is unused. */
     MATH::Vec4 ambient;
@@ -94,6 +94,13 @@ public:
     */
     void WriteLights(uint32_t frameSlot, const LightUniform& lights) const;
 
+    /**
+     * Points binding 2 of that slot’s set at the TLAS handle
+     * @param frameSlot  which frame slot to write. The GPU must have finished that slot's last frame
+     * @param handle handle of the TLAS to use
+     */
+    void WriteTopLevelAccelerationStructure(uint32_t frameSlot, VkAccelerationStructureKHR handle) const;
+
 private:
     /** What one uniform buffer binding holds. */
     struct UniformBinding
@@ -120,6 +127,8 @@ private:
 
     /** The row of the lights in kUniformBindings, which is also its binding number. */
     static constexpr uint32_t kLightBinding = 1;
+    /** The binding number for our TLAS */
+    static constexpr uint32_t kTopLevelAccelerationStructureBinding = 2;
 
     /** Where the device comes from. */
     const GPUContext& gpuContext;

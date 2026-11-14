@@ -76,10 +76,13 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
 
     /* ============= 2. Write This Slot's Buffers ============= */
     /* The fence above proves the GPU finished this slot's last frame, so its buffers are free to overwrite */
+    topLevelAccelerationStructures.Fill(currentFrame, drawList, resourceStore);
     descriptors.WriteCamera(currentFrame, camera);
     descriptors.WriteLights(currentFrame, lights);
+    descriptors.WriteTopLevelAccelerationStructure(currentFrame, topLevelAccelerationStructures.GetHandle(currentFrame));
     lineBuffers.Write(currentFrame, debugLines);
-    topLevelAccelerationStructures.Fill(currentFrame, drawList, resourceStore);
+    
+    
 
     /* ============= 3. Acquire An Image ============= */
     /* Asks the swapchain for an image to draw into, and handles a swapchain that no longer fits the window */

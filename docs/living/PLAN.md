@@ -20,7 +20,7 @@ become a flat box.
 | 2 | Ray query support on the device | The device starts with the ray query extensions and `bufferDeviceAddress`, the new functions load, and validation stays clean | done cf3496c4 |
 | 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | done 044e1959 |
 | 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | done a0e4677f |
-| 5 | TLAS each frame, split into fill and build | The CPU fills instances from the `DrawList`, the build reads only the instance buffer, and the TLAS is ready before the mesh pass | designed |
+| 5 | TLAS each frame, split into fill and build | The CPU fills instances from the `DrawList`, the build reads only the instance buffer, and the TLAS is ready before the mesh pass | done feab4486 |
 | 6 | Shadows in the shader | The TLAS is bound in set 0, lighting calls only `shadowFactor`, a shadows on/off switch works, and in `Scene1` a shadow from Mario or a cube lands on Mario or a cube | designed |
 | 7 | Fix artifacts and measure, with a floor in `Scene1`; bonus: non-uniform scale | No self-shadowing acne, shadows on/off GPU times are recorded, and as the bonus the floor is a flat box | designed |
 
@@ -451,6 +451,63 @@ each frame, and NVIDIA leaves the per-frame side out.
     when a ray asks for face culling, and the shadow rays do not.
   - An empty `DrawList` still builds, with zero instances. Believed valid but not confirmed;
     validation checks it in the build.
+
+**What the build changed**
+
+- **`TopLevelAccelerationStructures`** (`include/vulkan/`, `src/vulkan/`) is owned by `VulkanRenderer`,
+  declared right after `gpuContext` so step 6 can hand it to `Descriptors`. `FrameLoop` gets a
+  non-const reference, like `LineBuffers`. Owning it in `FrameLoop`, like `GPUQueries`, was dropped:
+  only `FrameLoop` could reach it then.
+- **One `Slot` per frame in flight** holds the TLAS, the instance buffer, the scratch buffer (all
+  `std::unique_ptr`), `capacity` and `instanceCount`. `kStartingCapacity` is 256, small on purpose so
+  Scene0's 1,000 cubes run the growth path on the first frame.
+- **`CreateSlot`** creates a slot's three objects for a capacity: the instance buffer host visible and
+  coherent, the sizes from `getBuildSizes` with instance geometry, top level and `PREFER_FAST_BUILD`,
+  and the scratch buffer one alignment bigger. The size query leaves the instance address at 0.
+- **`Fill`** runs in `DrawFrame`, section 2, after the fence wait. It returns at once without ray
+  query, doubles the capacity and calls `CreateSlot` only when the `DrawList` outgrows it, turns each
+  `DrawItem` into one instance in a reused `instances` vector, sets `instanceCount`, and writes once.
+  It skips the write when empty, because `vkMapMemory` needs a size above 0.
+- **`RecordBuild`** runs in `RecordCommandBuffer` after the query reset, inside
+  `PROFILE_GPU_SCOPE(..., GPUTimerName::TlasBuild)`. It records the build into the frame's command
+  buffer, then one `vkCmdPipelineBarrier2` from the build's write to the fragment shader's read.
+- **`GPUTimerName::TlasBuild`**, with `GetTlasBuildMilliseconds` on `FrameLoop` and `VulkanRenderer`.
+  The stats line prints `tlas build`.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added: the fill
+  and the build need a GPU, and the transform loop is three lines.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks. Validation accepted the growth from 256 to 1,024 and a real
+  build every frame.
+- **PhysicsScene, Debug, M pressed** (`run-game.ps1 -Scene 2`): every mesh hidden, so the `DrawList`
+  is empty and each frame builds a TLAS with 0 instances. Clean, which confirms decision e.
+- **Release, IMMEDIATE, three warm runs per case**, step 4's commit against this one
+  (`scratchpad\fps-compare.ps1`, a worktree at a0e4677f):
+
+  | scene | before | after | TLAS build |
+  |---|---|---|---|
+  | Scene0, 1,000 cubes | 2,901 fps, 0.345 ms | 2,423 fps, 0.413 ms | 0.120 ms |
+  | Scene1 | 3,060 fps, 0.327 ms | 2,872 fps, 0.348 ms | 0.030 ms |
+
+  The mesh pass did not move (0.040 and 0.010 ms). The frame grew less than the build took, a sign
+  that the GPU overlaps it; a guess, not measured.
+- **Not checked:** whether the instances are right (step 6's shadows show it), the fill's CPU cost on
+  its own (no profiler scope around `Fill`), and the ray query off path.
+
+**What the build found**
+
+- **An empty build still costs.** About 0.05 ms under FIFO with 0 instances in PhysicsScene, and
+  0.03 ms under IMMEDIATE for Scene1's handful: the build has a fixed cost.
+- **Under FIFO, the mesh pass reading of 0.22 ms is noise.** Both step 4's commit and this one read
+  0.05 to 0.29 ms in single seconds under FIFO, and 0.038 ms under IMMEDIATE. Read GPU times under
+  IMMEDIATE.
+- **Bugs the review caught before they ran:** `Fill` first called `CreateSlot` every frame, wrote
+  `capacity` instances instead of `instances.size()`, took the `DrawList` and `ResourceStore` by value,
+  and looped forever without ray query (capacity 0 doubles to 0). An empty frame first kept the last
+  frame's `instanceCount`. The barrier was first filled but never recorded; validation could not see
+  that, because nothing reads the TLAS yet.
 
 **Sources:** Khronos tutorial, "TLAS animation"
 (https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/04_TLAS_animation.html); NVIDIA

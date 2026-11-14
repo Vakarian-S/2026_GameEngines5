@@ -41,6 +41,16 @@ public:
      */
     void RecordBuild(VkCommandBuffer commandBuffer, uint32_t slotIndex);
 
+    /**
+     * @param slotIndex frame index to use
+     * @return The handle of the TLAS for this frame, VK_NULL_HANDLE if no ray query available
+     */
+    VkAccelerationStructureKHR GetHandle(const uint32_t slotIndex) const
+    {
+        const std::unique_ptr<AccelerationStructure>& tlas = slots[slotIndex].accelerationStructure;
+        return tlas ? tlas->GetHandle() : VK_NULL_HANDLE;
+    }
+
 private:
     /** Where the device, the functions and the scratch alignment come from. */
     const GPUContext& gpuContext;

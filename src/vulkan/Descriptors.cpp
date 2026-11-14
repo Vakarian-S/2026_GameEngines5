@@ -29,12 +29,33 @@ void Descriptors::WriteLights(uint32_t frameSlot, const LightUniform& lights) co
     uniformBuffers[kLightBinding][frameSlot]->Write(&lights, sizeof(LightUniform));
 }
 
+void Descriptors::WriteTopLevelAccelerationStructure(uint32_t frameSlot, VkAccelerationStructureKHR handle) const
+{
+    if (!gpuContext.SupportsRayQuery()) return;
+    VkWriteDescriptorSetAccelerationStructureKHR descriptorSetAccelerationStructureKhr{};
+    descriptorSetAccelerationStructureKhr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+    descriptorSetAccelerationStructureKhr.accelerationStructureCount = 1;
+    descriptorSetAccelerationStructureKhr.pAccelerationStructures = &handle;
+
+    VkWriteDescriptorSet writeDescriptorSet{};
+    writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSet.dstSet = descriptorSets[frameSlot];
+    writeDescriptorSet.dstBinding = kTopLevelAccelerationStructureBinding;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    writeDescriptorSet.descriptorCount = 1;
+    writeDescriptorSet.pNext = &descriptorSetAccelerationStructureKhr;
+
+    vkUpdateDescriptorSets(gpuContext.GetDevice(), 1,
+                           &writeDescriptorSet, 0, nullptr);
+}
+
 /* ============= 1. Set Layout ============= */
 /* The shape of a set. It says what sits at each binding number, and holds no data */
 void Descriptors::CreateLayout()
 {
     /* One layout binding per row of kUniformBindings. Row i becomes binding i */
-    std::array<VkDescriptorSetLayoutBinding, kUniformBindings.size()> layoutBindings{};
+    /* One extra binding for our TLAS */
+    std::array<VkDescriptorSetLayoutBinding, kUniformBindings.size() + 1> layoutBindings{};
     for (uint32_t binding = 0; binding < kUniformBindings.size(); ++binding)
     {
         /* binding is the number the shader uses: layout (set = 0, binding = N) */
@@ -47,9 +68,16 @@ void Descriptors::CreateLayout()
         layoutBindings[binding].stageFlags = kUniformBindings[binding].stages;
     }
 
+    /* TLAS Setup */
+    layoutBindings[kUniformBindings.size()].binding = kTopLevelAccelerationStructureBinding;
+    layoutBindings[kUniformBindings.size()].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    layoutBindings[kUniformBindings.size()].descriptorCount = 1;
+    layoutBindings[kUniformBindings.size()].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
     descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(
+        gpuContext.SupportsRayQuery() ? layoutBindings.size() : kUniformBindings.size());
     descriptorSetLayoutCreateInfo.pBindings = layoutBindings.data();
 
     if (vkCreateDescriptorSetLayout(gpuContext.GetDevice(), &descriptorSetLayoutCreateInfo, nullptr,
@@ -63,17 +91,21 @@ void Descriptors::CreateLayout()
 /* The memory that sets come from. Its size is fixed here: how many sets, and how many descriptors of each type */
 void Descriptors::CreateDescriptorPool()
 {
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     /* Every set holds one uniform buffer descriptor per binding, and there is one set per frame slot */
-    poolSize.descriptorCount = static_cast<uint32_t>(kUniformBindings.size()) * kMaxFramesInFlight;
+    poolSizes[0].descriptorCount = static_cast<uint32_t>(kUniformBindings.size()) * kMaxFramesInFlight;
+
+    /* TLAS Pool */
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    poolSizes[1].descriptorCount = kMaxFramesInFlight;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     /* maxSets is the number of sets that can be allocated from the pool */
     poolInfo.maxSets = kMaxFramesInFlight;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = gpuContext.SupportsRayQuery() ? 2u : 1u;
+    poolInfo.pPoolSizes = poolSizes.data();
 
     if (vkCreateDescriptorPool(gpuContext.GetDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
     {

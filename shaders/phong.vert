@@ -1,4 +1,4 @@
-    #version 450
+#version 450
 
 /* One corner's position, read from the vertex buffer. The location matches Vertex.h */
 layout (location = 0) in vec3 inPosition;

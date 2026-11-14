@@ -34,6 +34,13 @@ PipelineSettings MeshPipelineSettings(const VkDescriptorSetLayout frameSet, cons
     return pipelineSettings;
 }
 
+PipelineSettings RayQueryMeshPipelineSettings(const VkDescriptorSetLayout frameSet, const VkDescriptorSetLayout materialSet)
+{
+    PipelineSettings pipelineSettings = MeshPipelineSettings(frameSet, materialSet);
+    pipelineSettings.fragmentShader.file = "shaders/phong_ray_query.frag.spv";
+    return pipelineSettings;   
+}
+
 PipelineSettings LinePipelineSettings(const VkDescriptorSetLayout frameSet)
 {
     PipelineSettings pipelineSettings{

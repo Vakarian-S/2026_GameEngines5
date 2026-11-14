@@ -211,13 +211,28 @@ if (GE5_PLATFORM STREQUAL "x64")
         add_custom_command(
                 OUTPUT "${spirv}"
                 COMMAND "${CMAKE_COMMAND}" -E make_directory "${spirv_directory}"
-                COMMAND "${Vulkan_GLSLC_EXECUTABLE}" "${shader}" -o "${spirv}"
+                COMMAND "${Vulkan_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 "${shader}" -o "${spirv}"
                 DEPENDS "${shader}"
                 COMMENT "glslc shaders/${shader_relative}"
                 VERBATIM
         )
         list(APPEND SPIRV_FILES "${spirv}")
     endforeach ()
+
+    # phong.frag is compiled a second time with RAY_QUERY defined, which turns on its ray query
+    # shadow code. A module that declares ray query cannot load on a GPU without it, so the plain
+    # phong.frag.spv above stays for those GPUs. Vulkan 1.3 SPIR-V is 1.6, which ray query needs.
+    set(phong_source "${CMAKE_CURRENT_SOURCE_DIR}/shaders/phong.frag")
+    set(phong_ray_query_spirv "${GE5_OUTPUT_DIR}/shaders/phong_ray_query.frag.spv")
+    add_custom_command(
+            OUTPUT "${phong_ray_query_spirv}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${GE5_OUTPUT_DIR}/shaders"
+            COMMAND "${Vulkan_GLSLC_EXECUTABLE}" --target-env=vulkan1.3 -DRAY_QUERY "${phong_source}" -o "${phong_ray_query_spirv}"
+            DEPENDS "${phong_source}"
+            COMMENT "glslc shaders/phong.frag with RAY_QUERY"
+            VERBATIM
+    )
+    list(APPEND SPIRV_FILES "${phong_ray_query_spirv}")
 
     # SOURCES puts the shaders in the IDE tree, where they can be opened and edited.
     add_custom_target(Shaders DEPENDS ${SPIRV_FILES} SOURCES ${SHADER_SOURCES})

@@ -279,6 +279,14 @@ void Application::HandleEvent(const SDL_Event& event)
         std::cout << "present mode: " << PresentModeName(next) << "\n";
         return;
     }
+    /* Ctrl+K toggles shadows */
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_K && (event.key.mod
+        & SDL_KMOD_CTRL) != 0)
+    {
+        renderer.SetShadows(!renderer.GetShadowsEnabled());
+        std::cout << "shadows enabled: " << (renderer.GetShadowsEnabled() ? "On" : "Off") << "\n";
+        return;
+    }
 
     /* Ctrl+L cycles the frame cap */
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_L && (event.key.mod

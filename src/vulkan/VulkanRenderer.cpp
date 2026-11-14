@@ -72,6 +72,13 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentM
     lineBuffers(gpuContext),
     frameLoop(gpuContext, swapchain, topLevelAccelerationStructures, descriptors, lineBuffers)
 {
+    if (gpuContext.SupportsRayQuery())
+        rayQueryMeshPipeline = std::make_unique<Pipeline>(
+            gpuContext, swapchain.GetImageFormat(),
+            swapchain.GetDepthFormat(),
+            RayQueryMeshPipelineSettings(
+                descriptors.GetLayout(),
+                materialDescriptors.GetLayout()));
 }
 
 void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList,
@@ -112,7 +119,10 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighti
     lightUniform.count = static_cast<uint32_t>(lighting.lights.size());
 
     /* One reference per pipeline. FrameLoop records one pass with each */
-    const FramePipelines pipelines{.meshPipeline = meshPipeline, .linePipeline = linePipeline};
+    const FramePipelines pipelines{
+        .meshPipeline = gpuContext.SupportsRayQuery() && shadowsEnabled ? *rayQueryMeshPipeline : meshPipeline,
+        .linePipeline = linePipeline
+    };
     frameLoop.DrawFrame(kClearColor, pipelines, resourceStore, drawList, debugLines, cameraUniform, lightUniform);
 }
 

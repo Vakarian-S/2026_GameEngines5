@@ -8,16 +8,19 @@ shadows plan needs GPU time to compare shadows on and off, and later shadow maps
 
 ## Before and after
 
-Before, the once-a-second stats line showed only frame times. Now it also shows the GPU time of the
-mesh pass, averaged over the same second:
+Before, the once-a-second stats line showed only frame times. Now it also shows the GPU time of two
+zones, the mesh pass and the TLAS build, each averaged over the same second:
 
 ```text
-IMMEDIATE | cap off | 3204.9 fps | 0.31 ms (min 0.10, max 1.59) | mesh pass 0.04 ms
+IMMEDIATE | cap off | 2494.6 fps | 0.40 ms (min 0.12, max 1.67) | mesh pass 0.04 ms | tlas build 0.12 ms
 ```
 
-Measured on 2026-11-12 in Scene0 (1,000 cubes), x64 Release, RTX 4060, with
-`scripts\run-game.ps1 -Scene 0 -Config Release`: 0.03 to 0.05 ms under IMMEDIATE, and 0.07 to 0.23 ms
-under FIFO. FIFO reads higher because the GPU idles between frames and lowers its clock.
+Measured on 2026-11-13 in Scene0 (1,000 cubes), x64 Release, RTX 4060, with
+`scripts\run-game.ps1 -Scene 0 -Config Release`, three warm runs: the mesh pass 0.038 ms and the TLAS
+build 0.120 ms under IMMEDIATE. Under FIFO a single second of the mesh pass reads anywhere from 0.05
+to 0.29 ms, because the GPU idles between frames and lowers its clock.
+
+A GPU without timestamps, or a build with `GE5_PROFILING` at 0, prints no GPU times.
 
 ## How it works
 
@@ -44,10 +47,15 @@ Each frame, `FrameLoop` does three things with it:
 The braces matter: the end write is recorded where the timer is destroyed, so without them the line
 pass would land inside the window.
 
+| zone | `GPUTimerName` | what it wraps, in `FrameLoop::RecordCommandBuffer` |
+|---|---|---|
+| mesh pass | `MeshPass` | `RecordMeshPass`, inside the rendering block |
+| tlas build | `TlasBuild` | `TopLevelAccelerationStructures::RecordBuild`, after the reset and before the rendering block: the TLAS build and the barrier after it |
+
 `ReadResults` turns each pair into milliseconds with `TimestampMilliseconds`: end minus start, masked
 to the queue's valid bits, times the tick length. `TakeAverageMilliseconds(name)` returns the average
-since its last call and clears it. `Application` calls it through
-`VulkanRenderer::GetMeshPassMilliseconds` once a second.
+since its last call and clears it. Once a second, `Application` checks
+`VulkanRenderer::MeasuresGPUTime`, then calls `GetMeshPassMilliseconds` and `GetTlasBuildMilliseconds`.
 
 **Adding a timer:** add a value to `GPUTimerName` before `Count`, and wrap its commands in
 `PROFILE_GPU_SCOPE`. The pool size, the read and the averages follow from `Count`. Add a getter
@@ -60,9 +68,14 @@ through `FrameLoop` and `VulkanRenderer` only when something prints it.
 - `include/core/TimestampMath.h`: `TimestampMask` and `TimestampMilliseconds`. It has no Vulkan type,
   so `EcsTests` can test it on Win32 too.
 - `include/vulkan/GPUContext.h`, `src/vulkan/GPUContext.cpp`: `SupportsTimestamps`,
-  `GetTimestampPeriod` and `GetTimestampValidBits`, read at the end of `PickPhysicalDevice`.
-- `include/vulkan/FrameLoop.h`, `src/vulkan/FrameLoop.cpp`: owns the `GPUQueries` and makes the read,
-  the reset and the mesh pass scope.
+  `GetTimestampPeriod` and `GetTimestampValidBits`, read in `PickPhysicalDevice` from the
+  `vkGetPhysicalDeviceProperties2` call and the graphics queue family.
+- `include/vulkan/FrameLoop.h`, `src/vulkan/FrameLoop.cpp`: owns the `GPUQueries`, makes the read, the
+  reset and both scopes, and has `GetMeshPassMilliseconds` and `GetTlasBuildMilliseconds`.
+- `include/vulkan/VulkanRenderer.h`: `MeasuresGPUTime` and the two getters, passed on from
+  `FrameLoop` with no Vulkan type.
+- `src/app/Application.cpp`: prints `mesh pass` and `tlas build` on the stats line when
+  `MeasuresGPUTime` is true.
 - `tests/EcsTests.cpp`: the "GPU timestamp math" section, 11 checks.
 
 ## Decisions while building
@@ -80,7 +93,10 @@ through `FrameLoop` and `VulkanRenderer` only when something prints it.
 - **Average only.** The question is whether the GPU got slower, and the average answers it. Min and max
   wait until spikes become a question.
 - **Optional.** A GPU whose graphics queue reports 0 valid bits, or a period of 0, gets no pools, and
-  every method returns at once.
+  every method returns at once. `MeasuresGPUTime` is then false, so the stats line drops the GPU times
+  instead of printing 0.00 ms.
+- **One read per zone per second.** `TakeAverageMilliseconds` clears what it returns, so a second read
+  in the same second gives 0. `Application` reads each getter once.
 
 ## Questions a reader might ask
 
@@ -107,12 +123,20 @@ cap off. Ctrl+P cycles the present mode.
 
 ### Does it time the line pass, the clear or the barriers?
 
-No. Only the commands inside a scope are timed, and only the mesh pass has one.
+No. Only the commands inside a scope are timed: the mesh pass and the TLAS build. The TLAS build zone
+does include the one barrier recorded after the build, because that barrier sits inside its scope.
+
+### Why does the TLAS build cost time with nothing in the scene?
+
+A build has a fixed cost. In PhysicsScene with M pressed, every mesh is hidden and each frame builds a
+TLAS with 0 instances, and the zone still reads about 0.05 ms under FIFO (Debug, 2026-11-13).
 
 ### What does it cost?
 
-Not measured. Per frame it records one reset and two writes, and makes one read on the CPU.
+Not measured. Per frame it records one reset and four writes, two per zone, and makes one read on
+the CPU.
 
 ## More detail
 
-The design and its sources: PLAN.md, step 1 (dev-notes once the plan is archived).
+The design and its sources: PLAN.md, step 1, and step 5 for the TLAS build zone (dev-notes once the
+plan is archived).
