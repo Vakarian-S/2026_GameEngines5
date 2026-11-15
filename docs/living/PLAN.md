@@ -21,8 +21,8 @@ become a flat box.
 | 3 | Mesh buffers ready for acceleration structure builds | Vertex and index buffers carry the build flags, and `Buffer` returns its device address | done 044e1959 |
 | 4 | `AccelerationStructure` module and one BLAS per mesh | Each `Mesh` holds a BLAS built at load, and validation stays clean | done a0e4677f |
 | 5 | TLAS each frame, split into fill and build | The CPU fills instances from the `DrawList`, the build reads only the instance buffer, and the TLAS is ready before the mesh pass | done feab4486 |
-| 6 | Shadows in the shader | The TLAS is bound in set 0, lighting calls only `shadowFactor`, a shadows on/off switch works, and in `Scene1` a shadow from Mario or a cube lands on Mario or a cube | designed |
-| 7 | Fix artifacts and measure, with a floor in `Scene1`; bonus: non-uniform scale | No self-shadowing acne, shadows on/off GPU times are recorded, and as the bonus the floor is a flat box | designed |
+| 6 | Shadows in the shader | The TLAS is bound in set 0, lighting calls only `shadowFactor`, a shadows on/off switch works, and in `Scene1` a shadow from Mario or a cube lands on Mario or a cube | done 6e3ac332 |
+| 7 | Fix artifacts and measure, with a floor in `Scene1`; bonus: non-uniform scale | No self-shadowing acne, shadows on/off GPU times are recorded, and as the bonus the floor is a flat box | done b92aca25 |
 
 **Stages**, in order. The cell says what the step is ready for, and it changes only when this file
 is edited. Prototype, build and recap happen in the code and the chat; WORKFLOW.md describes them.
@@ -568,6 +568,59 @@ the Khronos tutorial "Ray query shadows"
 (https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/03_Ray_query_shadows.html), NVIDIA's
 "16 ray query" sample, and the `VK_KHR_ray_query` reference page.
 
+**What the build changed**
+
+- **`CMakeLists.txt`** passes `--target-env=vulkan1.3` to every shader, so the SPIR-V is 1.6. A second
+  rule after the loop compiles `phong.frag` with `-DRAY_QUERY` into `phong_ray_query.frag.spv`.
+- **`phong.frag`** is `#version 460` for both variants. `#ifdef RAY_QUERY` wraps the
+  `GL_EXT_ray_query` extension and the TLAS at set 0, binding 2. `shadowFactor` keeps one signature;
+  its body has the query under `#ifdef` and `return 1.0` under `#else`, so `main` calls it with no
+  `#ifdef`. `tMin` is 0.01, with no normal offset yet, and the ray runs even where `diffuse` is 0;
+  step 7 changes both.
+- **`Descriptors`** names `kTopLevelAccelerationStructureBinding = 2`. The layout's `bindingCount` and
+  the pool's `poolSizeCount` include the acceleration structure only with ray query.
+  `WriteTopLevelAccelerationStructure` chains a `VkWriteDescriptorSetAccelerationStructureKHR` into one
+  write.
+- **The binding is rewritten every frame,** in `DrawFrame`, section 2, right after `Fill`. `Fill` may
+  recreate the slot's TLAS, so a write only at creation would leave a dead handle after growth.
+  `TopLevelAccelerationStructures::GetHandle` returns `VK_NULL_HANDLE` on an empty slot.
+- **`RayQueryMeshPipelineSettings`** reuses `MeshPipelineSettings` and swaps only the fragment shader.
+  `VulkanRenderer` holds `rayQueryMeshPipeline` as a `std::unique_ptr`, null without ray query, named
+  for the method so a shadow map pipeline can join later.
+- **The switch:** `VulkanRenderer::SetShadows` stores `enabled && SupportsRayQuery()`, and the
+  `FramePipelines` ternary picks the pipeline. Ctrl+K toggles it and prints `shadows enabled: On` or
+  `Off`. Ctrl+L was the first pick; it already cycles the frame cap.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added.
+- **Shaders.** Both variants compile; `phong_ray_query.frag.spv` is 5,324 bytes against 4,532.
+  `spirv-dis` reports SPIR-V 1.6.
+- **Scene1, Debug, light schemes 1 to 5, then Scene0:** exit 0, 0 warnings, 0 errors, 0 asserts,
+  0 leaked blocks: the first run where the shader read the TLAS. In scheme 3, Mario's glove casts a
+  glove-shaped shadow on the right cube; in scheme 5, his cap brim shadows his face. Scene0's cubes
+  shadow the cubes behind them. No acne visible at screenshot size.
+- **Scene0, PhysicsScene with M, Debug:** clean with binding 2 written every frame, after growth, and
+  on an empty frame.
+- **The switch, Scene0, Debug:** mean brightness over the cube block 61.8 with shadows, 76.0 after
+  Ctrl+K, 58.3 after Ctrl+K again (the cubes rotate between shots). Ctrl+L still cycles the frame cap.
+- **Not checked:** a GPU without ray query, where the layout, the pool, the write and `GetHandle`
+  each take their other path. The cost under IMMEDIATE is step 7's job; under FIFO, Scene1's mesh
+  pass read 0.10 to 0.21 ms and Scene0's 0.33 ms.
+
+**What the build found**
+
+- **Hard edges are the design.** One ray per light to a point light makes `shadowFactor` 0 or 1.
+  Soft edges need a light with a size and many rays, usually with a denoiser; the Khronos tutorial's
+  comparison calls this "native" to ray query, meaning it needs no new technique, not that it is
+  cheap.
+- **The shadow terminator shows on Mario.** Shadow edges on the cap brim, the overall hem and the
+  glove's fingers are jagged. Step 7, decision d accepted it until seen; it is now seen.
+- **Review catches:** the pool first wrote through a null `VkDescriptorPoolSize*`, and kept
+  `poolSizeCount` at 1. The binding number first came from `kUniformBindings.size()`, which would move
+  if a uniform binding were added while the shader still reads 2. `GetHandle` first dereferenced an
+  empty slot.
+
 Seam: shadow maps become a second body for `shadowFactor`, and the switch becomes the method choice.
 
 ## 7. Fix artifacts and measure
@@ -644,6 +697,81 @@ design pass before the bonus is built:
 - **Docs:** STATE.md, architecture rule 10, names the uniform-scale dependency and changes with it.
 - **The floor:** the floor cube from decision a becomes a flat box, such as (20, 0.5, 20). A wrong normal matrix
   lights a flattened box wrong, so the floor also tests the change.
+
+**What the build changed**
+
+- **The floor** in `Scene1`: the cube mesh with `floor_grey.png` (4 by 4 pixels of grey 128) and a
+  material with `specularStrength` 0.05. After the bonus it is `scale (20, 0.5, 20)` at `y = -1.5`, so
+  its top sits at -1.25, under Mario's shoes. The two cubes hover 0.5 above it. No collider.
+- **`phong.frag`:** `kShadowRayOffset = 0.01`. The one `shadowFactor` call sits inside
+  `if (diffuse > 0.0)`, and starts at `fragWorldPosition + normalize(fragNormal) * kShadowRayOffset`.
+  `shadowFactor` starts the ray at its `position` parameter. `tMin` stays 0.01.
+- **The bonus, built by Claude at Vakarian's request and checked by him in the diff:**
+  - `Transform.scale` is a `Vec3` that defaults to `(1, 1, 1)`, and `ModelMatrix` scales each axis.
+  - `core/VectorMath.h` gained `MultiplyComponents`, `DivideComponents` and `MinComponent`.
+  - `NormalMatrix(model)` in `core/Components.h` is the cofactor matrix: three cross products of the
+    3x3's columns, sign-flipped when the determinant is negative so normals stay outward. It replaces
+    the plain 3x3 in `FrameLoop`.
+  - `ToLocalRay` and the mouse constraint's arm scale per axis; `PickSystem`'s near-zero checks use
+    `MinComponent`.
+  - The box inertia tensor scales each half size by its own axis. The sphere and capsule read one
+    component through `UniformScale`, which asserts in Debug that all three match. The cylinder asserts
+    only x equals z, then reads x for the radius and y for the height.
+  - STATE.md, architecture rule 10, rewritten.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. `PhysicsTests` gained 16
+  checks, 218 in all: per-component math; a box scaled `(4, 1, 1)` hit at `t = 8`; the box tensor
+  scaled per axis; a can scaled `(2, 3, 2)` matching the bigger can; `NormalMatrix` keeping a normal
+  perpendicular on a squashed, turned surface where the plain 3x3 does not, matching the plain 3x3 under
+  uniform scale, staying outward under a mirror, and working at scale 0.001.
+- **The offset tuning** (`scratchpad\tune\tune-offset.ps1`): five shader variants swapped into the
+  build, from offset 0.01 and `tMin` 0.01 down to offset 0 and `tMin` 0.0001, screenshots of Mario
+  and the floor under schemes 1, 3 and 5. No acne in any. The pixel differences sat in red and green
+  pairs along Mario's outline, which is his turn between runs: variant B, with the same offset as A,
+  changed as much as variant E, with none.
+- **A live tuning build** (a temporary worktree, arrow keys for the offset and `tMin`, Mario held
+  still): Vakarian saw nothing wrong at 0.01, and at 0.02 thinner shadows but cleaner boots.
+- **Shadow cost, Release, IMMEDIATE, three warm runs per case** (`scratchpad\shadow-cost.ps1`):
+
+  | scene | shadows | fps | frame | mesh pass | TLAS build |
+  |---|---|---|---|---|---|
+  | Scene0 | off | 2,636 | 0.380 ms | 0.040 ms | 0.120 ms |
+  | Scene0 | on | 2,362 | 0.423 ms | 0.093 ms | 0.120 ms |
+  | Scene1, with the floor | off | 3,197 | 0.319 ms | 0.020 ms | 0.030 ms |
+  | Scene1 | on | 1,820 | 0.550 ms | 0.276 ms | 0.030 ms |
+
+  The mesh pass read the same to the third decimal in all three warm runs of each case, so the GPU
+  noise floor is below the stats line's precision. Frame time moved 0.26 to 0.35 ms between runs of
+  Scene1 with shadows off.
+- **Debug runs** of Scene1, PhysicsScene, Scene0 and PacingScene: exit 0, 0 warnings, 0 errors,
+  0 asserts, 0 leaked blocks. The flat floor lights as the big cube did. Clicks in PhysicsScene picked
+  the cylinder, a box and the sphere at scale 2.
+- **Not checked:** an unevenly scaled sphere or capsule hitting the assert, since no scene has one.
+
+**What the build found**
+
+- **The offset trade-off is decision d's terminator.** A bigger offset hides the jagged self-shadow on
+  Mario's boots by shrinking every shadow a little. 0.01 stays; the targeted fixes are in decision d's
+  sources.
+- **The ray cost follows lit pixels times lights, not object count.** Scene1's floor fills the screen,
+  so its rays cost 0.26 ms against Scene0's 0.05 ms.
+- **The TLAS build runs with shadows off too,** a possible saving.
+- **The library's `Matrix3` inverse throws in Debug near a zero determinant,** so the course's inverse
+  transpose would crash on a tiny object. The cofactor matrix has no division. Sources: Lengyel,
+  "Transforming Normals" (https://terathon.com/blog/transforming-normals.html), and graphitemaster,
+  "normals_revisited" (https://github.com/graphitemaster/normals_revisited), which disagree on the sign
+  under a mirror.
+- **Scale lives in two places in `PhysicsScene`:** the `Transform` and the `InertiaTensor` argument.
+  Stretching a sphere's `Transform` alone gave a correct mesh, wires and picking, but a round sphere's
+  tensor, and no assert.
+- **Engines tie colliders to the transform, and neither stretches a sphere.** Unreal documents the
+  smallest axis (`USphereComponent::GetShapeScale`); Unity's manual says only that a sphere has one
+  radius, and a forum post claims the largest axis.
+- **Review catches:** the first offset version cast two rays per lit light and read the unnormalized
+  `fragNormal`, which made the floor's offset 0.2. The first `Vec3` scale had no default, which would
+  have made every unscaled object vanish.
 
 ---
 

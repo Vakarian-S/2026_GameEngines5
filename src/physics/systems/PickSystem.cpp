@@ -7,6 +7,7 @@
 #include "core/Camera.h"
 #include "core/Components.h"
 #include "core/InputState.h"
+#include "core/VectorMath.h"
 #include "ecs/Archetype.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/SystemContext.h"
@@ -92,7 +93,7 @@ void PickSystem::Run(const SystemContext& context)
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            if (transforms[row].scale < MATH::kVerySmall) continue;
+            if (MinComponent(transforms[row].scale) < MATH::kVerySmall) continue;
             PHYSICS::Ray localRay = PHYSICS::ToLocalRay(mouseRay, transforms[row]);
             auto rayHit = PHYSICS::Intersect(localRay, colliders[row]);
             if (rayHit.has_value() && rayHit->t < t)
@@ -110,7 +111,7 @@ void PickSystem::Run(const SystemContext& context)
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            if (transforms[row].scale < MATH::kVerySmall) continue;
+            if (MinComponent(transforms[row].scale) < MATH::kVerySmall) continue;
             PHYSICS::Ray localRay = PHYSICS::ToLocalRay(mouseRay, transforms[row]);
             auto rayHit = PHYSICS::Intersect(localRay, colliders[row]);
             if (rayHit.has_value() && rayHit->t < t)
@@ -128,7 +129,7 @@ void PickSystem::Run(const SystemContext& context)
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            if (transforms[row].scale < MATH::kVerySmall) continue;
+            if (MinComponent(transforms[row].scale) < MATH::kVerySmall) continue;
             PHYSICS::Ray localRay = PHYSICS::ToLocalRay(mouseRay, transforms[row]);
             auto rayHit = PHYSICS::Intersect(localRay, colliders[row]);
             if (rayHit.has_value() && rayHit->t < t)
@@ -146,7 +147,7 @@ void PickSystem::Run(const SystemContext& context)
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
-            if (transforms[row].scale < MATH::kVerySmall) continue;
+            if (MinComponent(transforms[row].scale) < MATH::kVerySmall) continue;
             PHYSICS::Ray localRay = PHYSICS::ToLocalRay(mouseRay, transforms[row]);
             auto rayHit = PHYSICS::Intersect(localRay, colliders[row]);
             if (rayHit.has_value() && rayHit->t < t)

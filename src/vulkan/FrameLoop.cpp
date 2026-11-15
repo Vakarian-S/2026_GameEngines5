@@ -2,6 +2,7 @@
 #include "vulkan/Buffer.h"
 #include "vulkan/Pipeline.h"
 #include "MMath.h"
+#include "core/Components.h"
 #include "utils/Profiler.h"
 #include "vulkan/ImageBarrier.h"
 #include "vulkan/debug/LineBuffers.h"
@@ -441,9 +442,8 @@ void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeli
                                     &materialSet, 0, nullptr);
             boundMaterial = item.material.index;
         }
-        /* Scale is uniform, so the model's 3x3 part keeps normals pointing out. phong.frag normalizes them,
-         * so no inverse-transpose is needed, and a tiny scale cannot throw */
-        const MATH::Matrix3 normalMatrix = MATH::Matrix3(item.transform);
+        /* Scale may differ per axis, which tilts normals under the plain 3x3, so they use the cofactor matrix */
+        const MATH::Matrix3 normalMatrix = NormalMatrix(item.transform);
         /* Matrix3 is column-major, so floats 0-2 are column 0, 3-5 column 1 and 6-8 column 2 */
         const ModelMatrixPushConstant pushConstant{
             .modelMatrix = item.transform,

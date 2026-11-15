@@ -6,6 +6,8 @@ layout (set = 0, binding = 2) uniform accelerationStructureEXT topLevelAccelerat
 
 /* Must match kMaxLights in Descriptors.h */
 #define MAX_LIGHTS 4
+/* Offset for the shadow rays in world units along the normal */
+const float kShadowRayOffset = 0.01;
 
 /* The camera, read from set 0, binding 0. Only its position is used here */
 layout (set = 0, binding = 0) uniform Camera {
@@ -55,7 +57,7 @@ float shadowFactor(vec3 position, vec3 lightPosition) {
     rayQueryEXT rayQuery;
     rayQueryInitializeEXT(rayQuery, topLevelAccelerationStructure, gl_RayFlagsTerminateOnFirstHitEXT, 0xFF,
                           position, tMin, direction, tMax);
-    /* Every geometry is opaque and the first hit ends the search, so one call finds any blocker */
+/* Every geometry is opaque and the first hit ends the search, so one call finds any blocker */
     rayQueryProceedEXT(rayQuery);
     if (rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
     {
@@ -81,16 +83,17 @@ void main()
         vec3 toLight = normalize(lighting.lights[i].position.xyz - fragWorldPosition);
         vec3 lightColor = lighting.lights[i].color.rgb;
 
-    /* 0.0 when something blocks this light: its diffuse and specular drop, ambient above stays */
-        float shadow = shadowFactor(fragWorldPosition, lighting.lights[i].position.xyz);
-        
+
+
     /* Diffuse: brightest where the surface faces the light, zero once it faces away */
         float diffuse = max(dot(normal, toLight), 0.0);
-        color += shadow * diffuse * lightColor * surfaceColor;
 
     /* Specular only on the lit side. reflect takes the direction the light travels, so toLight is negated */
         if (diffuse > 0.0)
         {
+        /* 0.0 when something blocks this light: its diffuse and specular drop, ambient above stays */
+            float shadow = shadowFactor(fragWorldPosition + normalize(fragNormal) * kShadowRayOffset, lighting.lights[i].position.xyz);
+            color += shadow * diffuse * lightColor * surfaceColor;
             vec3 reflected = reflect(-toLight, normal);
             float specular = pow(max(dot(reflected, toCamera), 0.0), material.shininess) * material.specularStrength;
         /* The highlight takes the light's colour, not the texture's */

@@ -1,10 +1,13 @@
 ﻿#include "physics/RigidBody.h"
 
 #include <cassert>
+#include <cmath>
 
+#include "ConstantsConversions.h"
 #include "MMath.h"
 #include "QMath.h"
 #include "core/Components.h"
+#include "core/VectorMath.h"
 #include "physics/Components.h"
 
 namespace
@@ -28,6 +31,19 @@ namespace
         tensor[4] = y;
         tensor[8] = z;
         return tensor;
+    }
+
+    /**
+    * Reads the one scale a sphere or capsule allows. Scaled unevenly, either becomes a different shape that its
+    * inertia formula does not describe, so a debug build stops on uneven scale.
+    * @param scale the transform's scale
+    * @return the scale along x, which equals the other two
+    */
+    float UniformScale(const MATH::Vec3& scale)
+    {
+        assert(std::fabs(scale.x - scale.y) < MATH::kVerySmall && std::fabs(scale.x - scale.z) < MATH::kVerySmall
+            && "round colliders need the same scale on every axis");
+        return scale.x;
     }
 }
 
@@ -84,7 +100,7 @@ PHYSICS::BodyVelocity PHYSICS::MouseConstraint(const Transform& transform,
     /* Some Reference https://github.com/erincatto/box2d/blob/v2.4.1/src/dynamics/b2_mouse_joint.cpp */
     const float mass = massProperties.mass;
     /* The arm: from the centre to the clicked point, turned with the body */
-    const MATH::Vec3 r = MATH::QMath::rotate(localPoint * transform.scale, transform.orientation);
+    const MATH::Vec3 r = MATH::QMath::rotate(MultiplyComponents(localPoint, transform.scale), transform.orientation);
 
     /* The tensor is stored in the shape's own axes; R I^-1 R^T turns it into world space */
     const MATH::Matrix3 rotation = MATH::MMath::toMatrix3(transform.orientation);
@@ -119,29 +135,31 @@ PHYSICS::BodyVelocity PHYSICS::MouseConstraint(const Transform& transform,
     };
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const BoxCollider& box, const float mass, const float scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const BoxCollider& box, const float mass, const MATH::Vec3& scale)
 {
     /* 1/12 m (h² + d²) per axis, with full sizes */
     /* m/3 (b² + c²), since each full size is twice the half: (2b)²/12 = b²/3 */
-    const MATH::Vec3 half = box.halfExtents * scale;
+    /* A box scaled per axis is still a box, so each half size takes its own axis's scale */
+    const MATH::Vec3 half = MultiplyComponents(box.halfExtents, scale);
     const float x2 = half.x * half.x;
     const float y2 = half.y * half.y;
     const float z2 = half.z * half.z;
     return Diagonal(mass / 3.0f * (y2 + z2), mass / 3.0f * (x2 + z2), mass / 3.0f * (x2 + y2));
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const SphereCollider& sphere, const float mass, const float scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const SphereCollider& sphere, const float mass, const MATH::Vec3& scale)
 {
-    const float r = sphere.radius * scale;
+    const float r = sphere.radius * UniformScale(scale);
     const float value = 0.4f * mass * r * r;
     return Diagonal(value, value, value);
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const CapsuleCollider& capsule, const float mass, const float scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const CapsuleCollider& capsule, const float mass, const MATH::Vec3& scale)
 {
     /* Read more: https://gamedev.net/tutorials/programming/math-and-physics/capsule-inertia-tensor-r3856 */
-    const float r = capsule.radius * scale;
-    const float h = capsule.halfHeight * scale;
+    const float uniformScale = UniformScale(scale);
+    const float r = capsule.radius * uniformScale;
+    const float h = capsule.halfHeight * uniformScale;
 
     /* Volumes without pi, since it cancels in the split */
     const float tubeVolume = 2.0f * h * r * r;
@@ -156,12 +174,14 @@ MATH::Matrix3 PHYSICS::InertiaTensor(const CapsuleCollider& capsule, const float
     return Diagonal(across, along, across);
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const CylinderCollider& cylinder, const float mass, const float scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const CylinderCollider& cylinder, const float mass, const MATH::Vec3& scale)
 {
     /* Wikipedia: 1/12 m (3r² + h²), with h the full height
      * (3r² + 4h²) / 12, since our h is half: (2h)² = 4h² */
-    const float r = cylinder.radius * scale;
-    const float h = cylinder.halfHeight * scale;
+    /* Stretched along its Y axis it is still a cylinder, so only the two round axes, x and z, must match */
+    assert(std::fabs(scale.x - scale.z) < MATH::kVerySmall && "a cylinder needs the same scale on x and z");
+    const float r = cylinder.radius * scale.x;
+    const float h = cylinder.halfHeight * scale.y;
     const float across = mass * (3.0f * r * r + 4.0f * h * h) / 12.0f;
     return Diagonal(across, 0.5f * mass * r * r, across);
 }

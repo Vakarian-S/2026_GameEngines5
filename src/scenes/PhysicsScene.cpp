@@ -100,14 +100,14 @@ void PhysicsScene::SpawnShapes()
         PHYSICS::MassProperties{
             .mass = 1.0f,
             .inertiaTensor = PHYSICS::InertiaTensor(
-                cubeCollider, 1.0f, 1.0f)
+                cubeCollider, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))
         }
     );
     
     world.CreateEntity(
         Transform{
             .position = MATH::Vec3(6.f, 0.5f, 0.f),
-            .scale = 1.0f,
+            .scale = MATH::Vec3(1.0f, 1.0f, 1.0f),
             .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
         },
         cubeCollider,
@@ -116,7 +116,7 @@ void PhysicsScene::SpawnShapes()
         PHYSICS::AngularVelocity{MATH::Vec3(0.f, 0.5f, 0.f)},
         PHYSICS::MassProperties{
             .mass = 1.0f,
-            .inertiaTensor = PHYSICS::InertiaTensor(cubeCollider, 1.0f, 1.0f)
+            .inertiaTensor = PHYSICS::InertiaTensor(cubeCollider, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))
         }
     );
     
@@ -129,7 +129,7 @@ void PhysicsScene::SpawnShapes()
         PHYSICS::AngularVelocity{},
         PHYSICS::MassProperties{
             .mass = 1.f,
-            .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, 1.f)
+            .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, MATH::Vec3(1.f, 1.f, 1.f))
         }
     );
     
@@ -142,7 +142,7 @@ void PhysicsScene::SpawnShapes()
         PHYSICS::AngularVelocity{},
         PHYSICS::MassProperties{
             .mass = 1.f,
-            .inertiaTensor = PHYSICS::InertiaTensor(capsuleCollider, 1.f, 1.f)
+            .inertiaTensor = PHYSICS::InertiaTensor(capsuleCollider, 1.f, MATH::Vec3(1.f, 1.f, 1.f))
         }
     );
     
@@ -155,19 +155,19 @@ void PhysicsScene::SpawnShapes()
         PHYSICS::AngularVelocity{},
         PHYSICS::MassProperties{
             .mass = 1.f,
-            .inertiaTensor = PHYSICS::InertiaTensor(cylinderCollider, 1.f, 1.f)
+            .inertiaTensor = PHYSICS::InertiaTensor(cylinderCollider, 1.f, MATH::Vec3(1.f, 1.f, 1.f))
         }
     );
     
     world.CreateEntity(
-        Transform{.position = MATH::Vec3(11.f, 2.6f, 0.f), .scale = 2.0f},
+        Transform{.position = MATH::Vec3(11.f, 2.6f, 0.f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f)},
         sphereCollider,
         Renderable{marioMesh, marioMaterial},
         PHYSICS::Velocity{},
         PHYSICS::AngularVelocity{},
         PHYSICS::MassProperties{
             .mass = 1.f,
-            .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, 2.f)
+            .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, MATH::Vec3(2.f, 2.f, 2.f))
         }
     );
     world.CreateEntity(PHYSICS::PickRay{});

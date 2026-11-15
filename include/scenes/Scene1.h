@@ -145,6 +145,7 @@ private:
     MaterialHandle marioMaterial;
     MeshHandle cubeMesh;
     MaterialHandle cubeMaterial;
+    MaterialHandle floorMaterial;
     
     /** Controller to move the camera with user input */
     FlyCameraController flyCameraController;

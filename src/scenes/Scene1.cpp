@@ -26,6 +26,8 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     const TextureHandle marioTexture = resourceLoader.CreateTexture("assets/textures/mario_main.png");
     const TextureHandle skullTexture = resourceLoader.
         CreateTexture("assets/textures/skull_texture.jpg");
+    const TextureHandle floorTexture = resourceLoader.
+        CreateTexture("assets/textures/floor_grey.png");
 
     marioMesh = resourceLoader.CreateMesh("assets/meshes/Mario.obj");
     marioMaterial = resourceLoader.CreateMaterial({
@@ -34,6 +36,10 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     cubeMesh = resourceLoader.CreateCube();
     cubeMaterial = resourceLoader.CreateMaterial({
         .albedo = skullTexture, .shininess = 4.0f, .specularStrength = 0.1f
+    });
+    floorMaterial = resourceLoader.CreateMaterial({
+        .albedo = floorTexture, .shininess = 4.0f, .specularStrength = 0.05f
+
     });
 
     /* Mario stands in the middle and turns half a radian per second, a full turn in about 12.6 seconds */
@@ -52,7 +58,7 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
         world.CreateEntity(
             Transform{
                 .position = MATH::Vec3(x, 0.0f, 0.0f),
-                .scale = 1.0f,
+                .scale = MATH::Vec3(1.0f, 1.0f, 1.0f),
                 .orientation = x > 0.0f
                                    ? MATH::QMath::angleAxisRotation(45.0f, up)
                                    : MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f)) *
@@ -62,6 +68,15 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
             Renderable{cubeMesh, cubeMaterial}
         );
     }
+
+    /* The floor: a flat box 20 wide and 0.5 tall. Its top face sits at y = -1.25, under Mario's shoes */
+    world.CreateEntity(
+        Transform{
+            .position = MATH::Vec3(0.f, -1.5f, 0.0f),
+            .scale = MATH::Vec3(20.0f, 0.5f, 20.0f),
+        },
+        Renderable{cubeMesh, floorMaterial}
+    );
 
     /* In each phase, systems run in the order they are added */
     systems.Add(Phase::Fixed, std::make_unique<UpdateOrientationSystem>(world));

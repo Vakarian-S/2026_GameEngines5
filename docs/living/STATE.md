@@ -62,8 +62,11 @@ What the engine has today, and the architecture rules that hold everywhere. Read
    Update, not Fixed; held state is safe in any phase.
 9. **Math is free functions on plain values.** Systems loop, call and write the result, so the tests run
    the math with no ECS.
-10. **Scale is uniform.** The normal matrix (the model's 3x3 part, no inverse) and the picking math
-    depend on it.
+10. **Scale is per axis, except on round colliders.** `Transform.scale` is a `Vec3`. Normals use
+    `NormalMatrix`, the cofactor of the model's 3x3, and picking, contacts and the box inertia tensor
+    scale each axis on its own. A sphere or capsule needs all three components equal, and a cylinder
+    needs x equal to z: scaled otherwise, each becomes a shape its inertia formula does not describe, and
+    a debug build asserts.
 11. **The ECS house rules** from Unreal Mass: ECS.md, appendix.
 
 ## How to build and test

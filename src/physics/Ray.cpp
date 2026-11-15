@@ -5,6 +5,7 @@
 #include "QMath.h"
 #include "core/Components.h"
 #include "core/Camera.h"
+#include "core/VectorMath.h"
 
 PHYSICS::Ray PHYSICS::ToLocalRay(const Ray& worldRay, const Transform& transform)
 {
@@ -12,10 +13,10 @@ PHYSICS::Ray PHYSICS::ToLocalRay(const Ray& worldRay, const Transform& transform
     const MATH::Quaternion orientation = MATH::QMath::conjugate(transform.orientation);
     MATH::Vec3 position = (worldRay.origin - transform.position);
     position = MATH::QMath::rotate(position, orientation);
-    position /= transform.scale;
+    /* Dividing the origin and the direction by the same per-axis scale keeps every hit's t the same in both spaces */
     return {
-        .origin = position,
-        .direction = MATH::QMath::rotate(worldRay.direction, orientation) / transform.scale
+        .origin = DivideComponents(position, transform.scale),
+        .direction = DivideComponents(MATH::QMath::rotate(worldRay.direction, orientation), transform.scale)
     };
 }
 

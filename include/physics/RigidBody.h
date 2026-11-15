@@ -90,34 +90,34 @@ namespace PHYSICS
     * How hard a shape is to turn about each of its own axes, in kg m^2
     * @param box the shape, at scale 1
     * @param mass the body's mass, in kilograms
-    * @param scale the transform's uniform scale
+    * @param scale the transform's scale, one value per axis
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const BoxCollider& box, float mass, float scale);
+    MATH::Matrix3 InertiaTensor(const BoxCollider& box, float mass, const MATH::Vec3& scale);
     /**
     * How hard a shape is to turn about each of its own axes, in kg m^2
     * @param sphere the shape, at scale 1
     * @param mass the body's mass, in kilograms
-    * @param scale the transform's uniform scale
+    * @param scale the transform's scale. All three components must be equal
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const SphereCollider& sphere, float mass, float scale);
+    MATH::Matrix3 InertiaTensor(const SphereCollider& sphere, float mass, const MATH::Vec3& scale);
 
     /**
     * How hard a shape is to turn about each of its own axes, in kg m^2
     * @param capsule the shape, at scale 1
     * @param mass the body's mass, in kilograms
-    * @param scale the transform's uniform scale
+    * @param scale the transform's scale. All three components must be equal
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const CapsuleCollider& capsule, float mass, float scale);
+    MATH::Matrix3 InertiaTensor(const CapsuleCollider& capsule, float mass, const MATH::Vec3& scale);
 
     /**
     * How hard a shape is to turn about each of its own axes, in kg m^2
     * @param cylinder the shape, at scale 1
     * @param mass the body's mass, in kilograms
-    * @param scale the transform's uniform scale
+    * @param scale the transform's scale. x and z must be equal; y stretches the height
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const CylinderCollider& cylinder, float mass, float scale);
+    MATH::Matrix3 InertiaTensor(const CylinderCollider& cylinder, float mass, const MATH::Vec3& scale);
 }
