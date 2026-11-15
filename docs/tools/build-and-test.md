@@ -1,6 +1,6 @@
 # Build and test
 
-**Last updated:** 2026-11-05.
+**Last updated:** 2026-11-14.
 
 How the repository is laid out, how to build it, how to run its checks, and how to run the game from
 a script. Taking MemoryMonitor into another project is in tools/memory-monitor.md.
@@ -16,7 +16,7 @@ Eight programs and one library.
 | `MemoryMonitorTests` | program | `tests/MemoryMonitorTests.cpp`, the monitor's checks |
 | `EcsTests` | program | `tests/EcsTests.cpp`, the ECS checks |
 | `ArenaTests` | program | `tests/ArenaTests.cpp`, the arena's checks |
-| `PhysicsTests` | program | `tests/PhysicsTests.cpp`, the physics math's checks: the ray, the quadratic solver, the ray-shape tests, and the rigid-body math |
+| `PhysicsTests` | program | `tests/PhysicsTests.cpp`, the physics math's checks: the ray, the quadratic solver, the ray-shape tests, the rigid-body math, and the per-axis scale math |
 | `ArenaDemo` | program | `demo/ArenaDemo.cpp`, the same work on the heap and from an arena |
 | `EcsBench` | program | `bench/EcsBench.cpp`, a load for the profiler |
 | `MathLibrary` | static library | `external/MathLibrary/include/` |
@@ -119,16 +119,19 @@ next to the setting.
 Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.
 
 `EcsTests`, `ArenaTests` and `PhysicsTests` are their own programs, registered with CTest next to
-`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 337 checks in
-every configuration (2026-11-12). Some cover core code that needs nothing else: 5 for `FixedStep`,
-the frame time stats, and 11 for the GPU timestamp math in `core/TimestampMath.h`. `ArenaTests` runs 73 in Debug and 72 in Release, because the check that reads
+`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 348 checks in
+every configuration (2026-11-13). Some cover core code that needs nothing else: 5 for `FixedStep`,
+the frame time stats, 11 for the GPU timestamp math in `core/TimestampMath.h`, and 11 for
+`AlignUp` in `core/AlignUp.h`. `ArenaTests` runs 73 in Debug and 72 in Release, because the check that reads
 the `0xDD` fill only exists in Debug.
 
 `PhysicsTests` compiles the `PHYSICS` math files and links `MathLibrary`, with no ECS, SDL or
-Vulkan, so it builds for Win32 too. It runs 202 checks in every configuration (2026-11-03): the ray,
+Vulkan, so it builds for Win32 too. It runs 218 checks in every configuration (2026-11-14): the ray,
 `SolveQuadratic` (including a touching root that float rounding pushes below 0), ray against
 sphere, box, can and capsule, `ToLocalRay`, `MakePickRay`, and from 4c the forces, drag, position,
-orientation, inertia per shape, grip, the spin limit and `MouseConstraint`. Floats are compared with `Near`, within `1e-4`.
+orientation, inertia per shape, grip, the spin limit and `MouseConstraint`, and from the non-uniform
+scale work the per-component math in `core/VectorMath.h`, a box scaled on one axis, per-axis
+inertia and `NormalMatrix`. Floats are compared with `Near`, within `1e-4`.
 
 Four of the tests start threads: they hammer the counters and the leak list from 4 threads at once, ask for reports while that happens, and race two frees on the same block. They repeat their work 3 times per run. Timing bugs do not show up every run, so it is worth running the tests a few times in a row.
 

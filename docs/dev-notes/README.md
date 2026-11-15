@@ -22,11 +22,28 @@ One note per finished feature: what was decided, why, and what it measured. Nobo
 | frame-cap-and-timer.md | `Timer` in nanoseconds, `FrameCap` with sleep then spin, the wait options measured, and the NVIDIA power-mode finding | 2026-11-11 |
 | present-mode-and-fullscreen.md | `PresentMode` as a setting with a FIFO fallback, Ctrl+P switching through the rebuild path, Alt+Enter borderless fullscreen | 2026-11-11 |
 | live-fps-and-pacing-scene.md | `FrameTimeStats` and the once-a-second title and console line, the `WorldFrameStats` rename, the Pacing Scene and its load steps | 2026-11-11 |
+| gpu-timestamps.md | `GPUQueries`, `ScopedGPUTimer` and `PROFILE_GPU_SCOPE`: GPU time per zone, read after the fence, and why FIFO inflates it | 2026-11-12 |
+| ray-query-shadows.md | ray query support on the device, mesh buffers for builds, one BLAS per mesh, a TLAS per frame slot, `shadowFactor` in two compiled shaders behind Ctrl+K, the floor, the ray offset, and the shadow cost | 2026-11-14 |
+| non-uniform-scale.md | `Transform.scale` as a `Vec3`, the cofactor `NormalMatrix`, per-axis picking and box inertia, and why round colliders stay uniform | 2026-11-14 |
 | tools/ | the long original manuals of the Memory Monitor and the Profiler | 2026-10-20 |
 
 ## Plan steps
 
 Other docs name the steps of a plan ("step 3", "4b"). These tables say where each one is written up.
+
+**The ray query shadows plan, ended 2026-11-14.** No ROADMAP.md block covered it; it came from the
+course assignment and the design talk of 2026-11-11. Each note holds its steps' whole plan sections.
+
+| step | feature | note |
+|---|---|---|
+| 1 | GPU timestamps around the mesh pass | gpu-timestamps.md |
+| 2 | ray query support on the device | ray-query-shadows.md |
+| 3 | mesh buffers ready for acceleration structure builds | ray-query-shadows.md |
+| 4 | `AccelerationStructure` and one BLAS per mesh | ray-query-shadows.md |
+| 5 | a TLAS each frame, split into fill and build | ray-query-shadows.md |
+| 6 | shadows in the shader | ray-query-shadows.md |
+| 7 | fix artifacts and measure, with a floor | ray-query-shadows.md |
+| 7, bonus | non-uniform scale | non-uniform-scale.md |
 
 **The frame pacing plan, ended 2026-11-11.** It came from ROADMAP.md, Rendering, "Frame pacing and
 the present mode". Each note holds its steps' whole plan sections.

@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated:** 2026-11-11.
+**Last updated:** 2026-11-14.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
@@ -19,6 +19,7 @@ hold the measurements behind most rows.
   - [Hardening](#hardening)
 - [Physics](#physics)
   - [Collision](#collision)
+  - [Rigid bodies](#rigid-bodies)
   - [Fixed step additions](#fixed-step-additions)
 - [Math](#math)
   - [Owning the math library](#owning-the-math-library)
@@ -82,6 +83,14 @@ shape from falling forever: F3 restarts the scene instead. Step 4 left collision
 |---|---|---|---|
 | 1 | Shape-against-shape collision: detect contacts between the four colliders, then resolve them | The colliders and their ray tests exist since 4b, and the constraint solver since 4c, so a contact can become one more constraint in Fixed | to-do |
 | 2 | A floor | The cheapest first contact, and it ends the endless fall | to-do |
+
+### Rigid bodies
+
+From the non-uniform scale bonus, 2026-11-14 (dev-notes/non-uniform-scale.md).
+
+| # | builds | why | status |
+|---|---|---|---|
+| 1 | Build the mass properties from the `Transform`, so the scale is written once | Each body states its scale twice, in the `Transform` and in the `InertiaTensor` call, and nothing keeps them equal. Stretching a sphere's `Transform` alone made it spin like the old round sphere, and the uniform-scale assert never saw the stretch. A tensor that differs from the shape on purpose, for feel, would be set by hand afterwards | to-do |
 
 ### Fixed step additions
 
@@ -165,22 +174,28 @@ use centred unit meshes.
 | # | builds | why | status |
 |---|---|---|---|
 | 1 | Import settings passed with the load, such as `CreateMesh("Mario.obj", {.fitSize = 1.0f, .recentre = true})`, and part of `ResourceStore`'s cache key | The store caches meshes by path and shares them between scenes, so a separate `AdjustMesh` call after the load would change the mesh for every scene and miss the copy already on the GPU. With the settings in the key, the same file with and without them becomes two meshes | to-do |
-| 2 | An import scale: a known unit factor per file (centimetres to metres is 0.01), or fit to a size from the bounding box | Keeps `Transform.scale = 1` meaning "the size the model is meant to be", so collider numbers are plain metres and scale stays free for gameplay. A uniform scale cannot deform the mesh: positions are multiplied by one number, and normals, UVs and indices do not change | to-do |
+| 2 | An import scale: a known unit factor per file (centimetres to metres is 0.01), or fit to a size from the bounding box | Keeps `Transform.scale = (1, 1, 1)` meaning "the size the model is meant to be", so collider numbers are plain metres and scale stays free for gameplay. A uniform scale cannot deform the mesh: positions are multiplied by one number, and normals, UVs and indices do not change | to-do |
 | 3 | Recentre: subtract the bounding box centre from every vertex | The engine can measure where the origin sits but cannot know whether it was meant: a character's origin at the feet lets it stand at y = 0, and a door's sits on its hinge. So recentring is a choice made per model, never automatic. Where the origin is meant, the alternative is an offset on the collider, which Unity's colliders have as `center` and step 4a left out | to-do |
 | 4 | The facing fix: turn a model that faces +Z to the engine's -Z at load | Space prototype finding 8. `Mario.obj` faces +Z, and the prototype paid a quaternion multiply per draw for it | to-do |
 
 ### After ray query shadows
 
-From the ray query shadow design talk, 2026-11-11. PLAN.md builds ray query shadows and keeps a seam
-open for each row here: `shadowFactor` in the shader, the TLAS split into fill and build, and one
-source of transforms in the `DrawList`.
+From the ray query shadow design talk, 2026-11-11, and what its plan found (ended 2026-11-14,
+dev-notes/ray-query-shadows.md). The plan kept a seam open for rows 1 to 3: `shadowFactor` in the
+shader, the TLAS split into fill and build, and one source of transforms in the `DrawList`. "Step N"
+means a step of that plan.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | Shadow maps as a second body for `shadowFactor`, picked by the shadows switch from PLAN.md step 6 | Ray query needs a GPU with ray tracing support, so players on older cards get no shadows without a fallback. The assignment also names shadow mapping. Shadow maps are not always faster: they pay a depth pass per light, ray query pays per pixel per light, so the timestamps from PLAN.md step 1 decide | to-do |
+| 1 | Shadow maps as a second body for `shadowFactor`, picked by the shadows switch (Ctrl+K) | Ray query needs a GPU with ray tracing support, so players on older cards get no shadows without a fallback: about 16% or more of Steam players in October 2026. The assignment also names shadow mapping. Shadow maps are not always faster: they pay a depth pass per light, ray query pays per pixel per light (0.26 ms in Scene1 with its floor), so the GPU timers decide | to-do |
 | 2 | A GPU scene buffer: one storage buffer with every object's transform and material index, written only where an object changed, read by index in the shaders | Today each `DrawItem` costs one push constant and one draw, and the CPU sends every transform every frame. The buffer allows one draw for many objects and GPU culling, and lets raster, the TLAS and compute read one copy. Only once `Scene0` shows draw call cost. Rendering row 3 of "Frustum culling and transforms" (instanced draws) is a neighbour | to-do |
 | 3 | A compute shader that fills the TLAS instances from the GPU scene buffer | Moves the per-frame instance loop off the CPU, so transforms never travel back through it. The TLAS build reads only the instance buffer, so it does not change. Needs row 2: without it, the CPU uploads the transforms anyway. No source confirmed this as common practice; Unreal has a flag for a GPU copy of instance transforms | to-do |
-| 4 | Batched BLAS builds with compaction: every mesh's build in one command buffer with one shared scratch buffer, then a compacted copy of each BLAS | PLAN.md step 4 builds one BLAS per mesh with its own submit, wait and scratch buffer. Batching waits once and shares the scratch, which NVIDIA's tutorial does mainly to stay inside a memory budget. Compaction copies each built BLAS into a smaller buffer; NVIDIA claims 20 to 50% savings without measurements, and it fits a batch: build, query the compacted sizes, copy. With a handful of cached meshes neither shows (a guess, not measured). Start when load time rises with mesh count, when streaming arrives, or when BLAS memory becomes a concern | to-do |
+| 4 | Batched BLAS builds with compaction: every mesh's build in one command buffer with one shared scratch buffer, then a compacted copy of each BLAS | Step 4 builds one BLAS per mesh with its own submit, wait and scratch buffer. Batching waits once and shares the scratch, which NVIDIA's tutorial does mainly to stay inside a memory budget. Compaction copies each built BLAS into a smaller buffer; NVIDIA claims 20 to 50% savings without measurements, and it fits a batch: build, query the compacted sizes, copy. With a handful of cached meshes neither shows (a guess, not measured). Start when load time rises with mesh count, when streaming arrives, or when BLAS memory becomes a concern | to-do |
+| 5 | A fix for the shadow terminator: the jagged self-shadow where a low-poly surface turns from the light | Seen on Mario's boots, cap brim and gloves. A bigger ray offset hides it but thins every shadow, which costs small objects most, so the offset stayed 0.01 (step 7). The targeted fixes: Ray Tracing Gems II, chapter 4 ("Hacking the Shadow Terminator", Hanika), and Disney's "Taming the Shadow Terminator"; neither was read in full | to-do |
+| 6 | Skip the TLAS fill and build while shadows are off | Both run every frame whatever the switch says: 0.120 ms of GPU time in Scene0's 1,000 instances (step 7's table). Nothing else reads the TLAS yet, so off can skip it. Ambient occlusion or reflections would read it too | to-do |
+| 7 | TLAS update mode instead of a full rebuild | Step 5, decision b chose a rebuild every frame with `PREFER_FAST_BUILD`, and named update mode as the next move once the build zone shows a real cost. It reads 0.120 ms for 1,000 instances. An update needs the same instance count as the last build, so scene changes still rebuild | to-do |
+| 8 | Soft shadows: a light with a radius, several rays to random points on it, and a denoiser or frame accumulation | One ray to a point light gives only 0 or 1, so edges are hard. The Khronos tutorial calls soft shadows "native" to ray query because no new technique is needed, but the rays multiply and few rays are noisy. Shadow maps soften with PCF or PCSS instead | to-do |
+| 9 | A switch that forces ray query and timestamps off on a GPU that has them | Every ray query and timestamp branch has a path for GPUs without them (no binding 2, no second pipeline, no GPU times), and no run has taken it: both GPUs on this machine support both | to-do |
 
 ## Debug tools
 
@@ -271,7 +286,7 @@ Small changes that can land between any two steps.
 | 2 | A light budget in the renderer | The renderer throws past `kMaxLights` today | to-do |
 | 3 | A way to pass settings to a scene | Scene3 read autoplay from an environment variable | to-do |
 | 4 | Settle whether borderless fullscreen tears with Vulkan on this machine | In the Pacing Scene, IMMEDIATE never showed a clear tear, even at cap 100 and cap 30 in fullscreen (dev-notes/live-fps-and-pacing-scene.md, step 7). Windows may still compose the image. If so, the IMMEDIATE and FIFO_RELAXED settings show no tearing, and only exclusive fullscreen or a driver setting would | to-do |
-| 5 | An action-mapping layer for the app keys | `Application::HandleEvent` writes every key into `InputState.pressed` before it checks for F1 to F4, G, Ctrl+P, Ctrl+L and Alt+Enter, so systems still see app keys (dev-notes/present-mode-and-fullscreen.md, step 4, decision 5) | to-do |
+| 5 | An action-mapping layer for the app keys | `Application::HandleEvent` writes every key into `InputState.pressed` before it checks for F1 to F4, G, Ctrl+P, Ctrl+L, Ctrl+K and Alt+Enter, so systems still see app keys. Ctrl+K (shadows) joined them (dev-notes/present-mode-and-fullscreen.md, step 4, decision 5) | to-do |
 
 ## Code cleanup
 

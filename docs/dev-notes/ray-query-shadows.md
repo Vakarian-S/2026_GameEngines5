@@ -1,0 +1,568 @@
+# Ray query shadows
+
+> **Legacy doc.** Written when this feature was finished, and never updated since. The code may have changed, so parts of it may no longer be accurate.
+
+Designed 2026-11-11 and built 2026-11-12 to 2026-11-14, as steps 2 to 7 of the ray query shadows plan
+(step 2 in commit `cf3496c`, step 3 in `044e195`, step 4 in `a0e4677`, step 5 in `feab448`, step 6
+in `6e3ac33`, step 7 in `bd86c2f`). No ROADMAP.md block covered it; it came from the course
+assignment, which asks for shadows, and the design talk of 2026-11-11. "Step N" below means a step of the ray query shadows plan, which ended on 2026-11-14; README.md maps each one
+to its note. Each section below is the step's whole plan section.
+
+The plan's goal: hard shadows from ray queries. The fragment shader casts one ray from each surface
+point toward each light and darkens that light when something blocks the ray. Ray query was chosen
+over shadow maps, which stay a fallback in ROADMAP.md. Step 1, the GPU timers, is in
+gpu-timestamps.md; step 7's bonus, non-uniform scale, is in non-uniform-scale.md.
+
+## Step 2: Ray query support on the device
+
+**The problem:** `GPUContext` creates the device with one extension (`kDeviceExtensions` holds only the
+swapchain) and a feature chain of the base features plus `Vulkan13Features`. `IsDeviceSuitable`
+rejects any GPU that lacks a required extension or feature, and `PickPhysicalDevice` takes the first
+suitable GPU. Ray query needs three more extensions (`VK_KHR_acceleration_structure`,
+`VK_KHR_ray_query`, `VK_KHR_deferred_host_operations`), more feature structs, and extension functions
+that `vulkan-1.lib` does not export.
+
+**Decisions**
+
+- **a. Ray query is optional.** `IsDeviceSuitable` keeps its current rules. `GPUContext` records whether
+  the chosen GPU supports ray query, and enables the three extensions and their features only when
+  it does. A GPU without ray query still draws the game, without shadows; the shadows switch from
+  step 6 handles "off". Requiring it would refuse to start on GPUs older than ray tracing hardware,
+  and no driver update fixes that.
+- **b. The first suitable GPU stays.** Preferring a GPU with ray query, or a discrete one, is shipping
+  work. On this machine the RTX 4060 is listed first; the AMD Radeon 610M also reports ray query.
+- **c. Three feature structs join the existing `pNext` chain.** `VkPhysicalDeviceVulkan12Features` with
+  `bufferDeviceAddress`, `VkPhysicalDeviceAccelerationStructureFeaturesKHR` with
+  `accelerationStructure`, and `VkPhysicalDeviceRayQueryFeaturesKHR` with `rayQuery`. The same chain
+  asks `vkGetPhysicalDeviceFeatures2` what the GPU supports, then goes to `vkCreateDevice` with the
+  wanted members set. Order in the chain does not matter. With `Vulkan12Features` in the chain, the
+  standalone 1.2 structs such as `VkPhysicalDeviceBufferDeviceAddressFeatures` must not be: the spec
+  allows one of the two. Tutorial code often chains the standalone one, so copying it fails
+  validation. The same rule already applies to `Vulkan13Features` and the standalone
+  `VkPhysicalDeviceDynamicRenderingFeatures`.
+- **d. A small struct of function pointers, owned by `GPUContext`.** After `vkCreateDevice`, and only
+  when ray query is supported, `vkGetDeviceProcAddr` fills it with the ray tracing functions, about
+  six. Otherwise the pointers stay null, and nothing calls them because the shadow code checks the
+  support flag first.
+- **e. Timestamps are optional too.** This is step 1, decision j. If the graphics queue family reports
+  `timestampValidBits = 0` or the device reports `timestampPeriod = 0`, `GPUContext` records "no
+  timestamps", `GPUQueries` records no writes, and the stats line shows no GPU time. A measuring tool
+  never stops the game from starting.
+
+**Rejected**
+
+- **volk**, the MIT library that loads every Vulkan function. It changes where every Vulkan call comes
+  from (`VK_NO_PROTOTYPES`, no `vulkan-1.lib`) to solve a problem the engine does not have: the engine
+  is 64-bit only, so linking `vulkan-1.lib` works. The SDK on this machine does not ship it. Worth it
+  if the extension list grows a lot.
+- **Ray query as a requirement.** See decision a.
+
+**Context:** the engine already requires Vulkan 1.3 (`apiVersion = VK_API_VERSION_1_3`). Vulkan is
+implemented by the player's driver, so "update your graphics driver" is the fix for a GPU that can run
+1.3, but no update adds ray tracing hardware.
+
+**What the build changed**
+
+- **Two extension lists.** `kRequiredDeviceExtensions` holds the swapchain, and `IsDeviceSuitable`
+  checks only it. `kRayQueryDeviceExtensions` holds the three ray query extensions.
+- **`PickPhysicalDevice` sets `supportsRayQuery`** after the GPU is chosen: first the three extensions,
+  then one `vkGetPhysicalDeviceFeatures2` call on the 1.2, acceleration structure and ray query
+  structs. It prints `Ray query: on` or `off`.
+- **The feature query is kept although the spec makes it redundant.** The spec's "Feature
+  Requirements" section says a GPU with `VK_KHR_acceleration_structure` must support
+  `accelerationStructure` and `bufferDeviceAddress`, and one with `VK_KHR_ray_query` must support
+  `rayQuery`. The query costs one call at startup and guards against a driver that breaks the rule.
+- **`CreateLogicalDevice` builds the three request structs at function scope** and links them after
+  `Vulkan13Features` only when `supportsRayQuery` is true. The same condition appends the three
+  extensions to an `enabledExtensions` vector.
+- **`AccelerationStructureFunctions`** holds five pointers: create, destroy, build sizes, the build
+  command, and the device address. `LoadAccelerationStructureFunctions` runs after
+  `CreateLogicalDevice`. If any pointer comes back null, it prints a warning, clears them all and
+  turns ray query off. `vkGetBufferDeviceAddress` is core 1.2, so `vulkan-1.lib` exports it.
+- **Decision e:** `VulkanRenderer::MeasuresGPUTime` is true when `GE5_PROFILING` is on and the GPU
+  writes timestamps. `Application` prints `mesh pass` only then. This closes step 1's open item.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added: none of
+  this code runs without a GPU.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks, 0 frame-arena heap fallbacks. The log shows `Ray query: on`
+  on the RTX 4060 and no "functions missing" warning. Validation accepted the chain and the
+  extensions. Mesh pass 0.08 to 0.10 ms under FIFO.
+- **Not checked:** the "ray query off" and "no timestamps" paths. Both GPUs on this machine support
+  ray query and timestamps.
+
+**What the build found**
+
+- **The deprecation of host builds does not touch this plan.** Khronos's July 2026 post deprecates
+  CPU-side acceleration structure builds (`accelerationStructureHostCommands`). Steps 4 and 5 build
+  on the GPU, and `vulkaninfo` reports the feature as false on both GPUs here.
+- **About 68 to 84% of Steam players have ray tracing hardware.** From Valve's October 2026 survey,
+  summed by hand: 68.2% of named rows have it, 16.3% do not, 15.6% are unknown rows. The rest get no
+  shadows until shadow maps.
+
+Seam: shadows, ambient occlusion and reflections all reuse this setup.
+
+## Step 3: Mesh buffers ready for acceleration structure builds
+
+**The problem:** a BLAS build reads a mesh's vertex and index buffers by GPU address. `Mesh`'s
+constructor in `ResourceStore.cpp` creates them with only `VERTEX_BUFFER_BIT` or `INDEX_BUFFER_BIT`
+(the upload constructor adds `TRANSFER_DST_BIT`), `Buffer` allocates with a plain
+`VkMemoryAllocateInfo`, and `Buffer` cannot return its address. The vertex layout already suits a
+BLAS: `position` is three floats at offset 0, and the stride is `sizeof(Vertex)`.
+
+**Decisions**
+
+- **a. The two new flags only when ray query is supported.** `Mesh` adds
+  `VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT` and
+  `VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR` when `GPUContext` reports ray
+  query support. The build input flag belongs to the acceleration structure extension, which step 2
+  enables only on supported GPUs.
+- **b. `Buffer` sets the memory allocate flag by itself.** When the usage contains
+  `SHADER_DEVICE_ADDRESS_BIT`, the constructor chains a `VkMemoryAllocateFlagsInfo` with
+  `VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT` onto the allocate info. `Buffer` is the one class that sees
+  both the usage and the allocation, so no caller can forget it, and later buffers (the TLAS instance
+  buffer, a GPU scene buffer) get it for free. The Khronos "Buffer device address" sample chains the
+  same struct, and VMA adds the flag automatically from the usage.
+- **c. `Buffer::GetDeviceAddress()` asks each time and stores nothing.** It calls
+  `vkGetBufferDeviceAddress`. A buffer's address never changes, the calls are few (two per mesh at
+  load, about two per frame), and a stored field would hold a meaningless zero on buffers without the
+  flag. Calling it on such a buffer is invalid, and validation reports it. The BLAS address is the
+  opposite case: it is read once per instance per frame, so step 4 stores it.
+
+**What the build changed**
+
+- **`Buffer`'s base constructor** declares the `VkMemoryAllocateFlagsInfo` at function scope and links
+  it to the allocate info only when the usage has `SHADER_DEVICE_ADDRESS_BIT`, so it still exists when
+  `vkAllocateMemory` reads it. The upload constructor passes its usage through, so it needs no change.
+- **`Buffer::GetDeviceAddress`** fills a `VkBufferDeviceAddressInfo` and calls
+  `vkGetBufferDeviceAddress`. It has no caller yet; step 4's BLAS build is the first.
+- **`Mesh`'s constructor** picks each buffer's usage with a ternary on `SupportsRayQuery()`.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added: none of
+  this code runs without a GPU.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks, `Ray query: on`. Every mesh buffer took the allocate-flag
+  path, and validation accepted it.
+- **Not checked:** `GetDeviceAddress` itself, which nothing calls yet, and the ray query off path.
+
+**What the build found**
+
+- **A copied ternary hid a wrong flag.** The index buffer's ternary first said `VERTEX_BUFFER_BIT` in
+  both branches. Validation reported it on `vkCmdBindIndexBuffer` (`VUID-vkCmdBindIndexBuffer-buffer-08784`).
+- **`run-tests.bat` does not rebuild the game.** A run of a stale exe showed that bug after the
+  source was fixed. Build with `cmake --build --preset x64-Debug` before `run-game.ps1`.
+
+**Sources:** Khronos sample "Buffer device address"
+(https://docs.vulkan.org/samples/latest/samples/extensions/buffer_device_address/README.html), the
+`vkGetBufferDeviceAddress` reference page, VMA's "Enabling buffer device address" page.
+
+## Step 4: `AccelerationStructure` module and one BLAS per mesh
+
+**The problem:** each mesh needs its triangles sorted into a BLAS, once, so rays can find them. A
+BLAS is a buffer the driver lays out plus a handle, and a TLAS instance points at it by device
+address. The mesh cache in `ResourceStore` means one BLAS per mesh path, however many entities use
+it. The renderer owns the module; shadow code only reads it. A `Mesh` gets a BLAS only when
+`GPUContext` reports ray query support (step 2, decision a).
+
+**Decisions**
+
+- **a. One `AccelerationStructure` class for BLAS and TLAS.** It holds the storage buffer, the handle,
+  and the device address. The address comes from `vkGetAccelerationStructureDeviceAddressKHR` once at
+  creation and is stored, because the TLAS fill reads it once per instance per frame. NVIDIA's
+  tutorial uses the same shape: one struct with handle, buffer and address for the BLAS list and the
+  TLAS. The Khronos tutorial keeps separate variables, a tutorial shortcut.
+- **b. One build per mesh at load, the Khronos way.** Each BLAS gets its own one-time command buffer
+  from `TemporaryCommandBuffers`, and `SubmitAndWait` returns once the build is done. NVIDIA batches
+  builds, mainly to stay inside a memory budget; with a handful of cached meshes, that buys little.
+  The triangles are described as `VK_FORMAT_R32G32B32_SFLOAT` positions at offset 0 with a stride of
+  `sizeof(Vertex)`, and `VK_INDEX_TYPE_UINT32` indices, as in the Khronos tutorial.
+- **c. `PREFER_FAST_TRACE` on the build, `OPAQUE` on the geometry, no compaction yet.**
+  - `PREFER_FAST_TRACE` (in `VkAccelerationStructureBuildGeometryInfoKHR::flags`) asks the driver for
+    a tight tree that rays cross quickly, at a slower build. A static mesh is built once and traced
+    every frame. It cannot be combined with `PREFER_FAST_BUILD`.
+  - `OPAQUE` (in `VkAccelerationStructureGeometryKHR::flags`) says every triangle is solid, so a ray
+    query commits the hit by itself and the shadow loop in step 6 needs no "does this count?" answer.
+    Both tutorials set it; the Khronos shadow chapter adds non-opaque handling only for transparency.
+  - Compaction copies a built structure into a smaller buffer. NVIDIA recommends it when memory is
+    tight and claims 20 to 50% savings without measurements. It waits until memory is a concern.
+- **d. One scratch buffer per build, destroyed after the build.** The same pattern as the staging
+  buffer in `Buffer`'s upload constructor: `SubmitAndWait` has returned, so the GPU no longer reads
+  it. The scratch address must be a multiple of `minAccelerationStructureScratchOffsetAlignment`
+  (128 on this machine's RTX 4060, 256 on its AMD Radeon 610M), and a fresh buffer's address is not
+  guaranteed to be. So the buffer is the scratch size plus the alignment, and the address is rounded
+  up. NVIDIA shares one scratch buffer across batched builds; without batching there is nothing to
+  share.
+
+**What the build changed**
+
+- **`AccelerationStructure`** (`include/vulkan/AccelerationStructure.h`, `src/vulkan/AccelerationStructure.cpp`)
+  holds `gpuContext`, `storageBuffer`, `handle` and `deviceAddress`, in that order, so the buffer is
+  built before the create and destroyed after the handle. The storage buffer is device local with
+  `ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | SHADER_DEVICE_ADDRESS_BIT`. The create result is checked.
+- **`BuildBottomLevelAccelerationStructure`** is a free function in the same files and returns
+  `std::unique_ptr<AccelerationStructure>`: triangles, geometry, build info, `getBuildSizes`, create,
+  scratch, range, record, `SubmitAndWait`. The scratch buffer is `buildScratchSize` plus one alignment,
+  with `STORAGE_BUFFER_BIT | SHADER_DEVICE_ADDRESS_BIT`, and dies after the wait.
+- **`GPUContext` reads `minAccelerationStructureScratchOffsetAlignment`** as
+  `accelerationStructureScratchAlignment`. `PickPhysicalDevice` now checks the ray query extensions
+  first, then makes one `vkGetPhysicalDeviceProperties2` call, chaining the acceleration structure
+  properties only when the extensions are listed. `.properties` replaced the old
+  `vkGetPhysicalDeviceProperties` call. The value is read only when `supportsRayQuery` is true, and
+  the start-up line prints it.
+- **`include/core/AlignUp.h`**: one `inline` function, `(value + alignment - 1) & ~(alignment - 1)`,
+  with no Vulkan type, so `EcsTests` builds it on Win32.
+- **`Mesh`** holds `std::unique_ptr<AccelerationStructure> blas`, declared after the buffers, and its
+  constructor body builds it when `SupportsRayQuery()` is true. Null otherwise.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` gained 11 checks in
+  an "AlignUp" section, 348 in all: 0, 127, 128, 129, 1000 at 128, 1100 at 256, an alignment of 1;
+  every value from 0 to 2000 at 128 and 256 is a multiple, never below the value, and less than one
+  alignment above it; an address near the top of 64 bits.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks, `Ray query: on, scratch alignment 128`. Validation accepted
+  the size query, the scratch alignment, each build and each destroy. The Scene1 screenshot draws as
+  before; mesh pass 0.06 to 0.07 ms.
+- **Not checked:** how many BLASes were built (nothing prints per build), whether the trees are right
+  (nothing reads them until steps 5 and 6), and the ray query off path. A value within one alignment
+  of the top of 64 bits wraps `AlignUp` to 0; GPU addresses do not go there, so it has no test.
+
+**What the build found**
+
+- **A signature mismatch links nowhere.** The definition first said `static`, `Buffer&` and
+  `std::int32_t indexCount` while the header said `const Buffer&` and `std::uint32_t`. The linker
+  reported `LNK2019` and listed the definition as a near match.
+- **Batching and compaction became ROADMAP.md, Rendering, "After ray query shadows", row 4,** with
+  the trigger: load time rising with mesh count, streaming, or BLAS memory.
+
+**Sources:** Khronos tutorial, "Acceleration structures"
+(https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/02_Acceleration_structures.html) and
+"Ray query shadows"; NVIDIA tutorial, "Acceleration structures"
+(https://nvpro-samples.github.io/vk_raytracing_tutorial_KHR/concepts/acceleration-structures/); Arm's
+ray traversal guide on opaque and non-opaque candidates.
+
+Seam: ambient occlusion and reflections trace into the same structures.
+
+## Step 5: TLAS each frame, split into fill and build
+
+**The problem:** the TLAS is the scene: one instance per drawn object, each saying "this BLAS, at this
+transform". Objects move, so it is rebuilt every frame from the `DrawList`, which already holds every
+drawn object. The fill (CPU writes the instances) and the build (GPU builds the tree from them) are
+separate, so a later compute fill does not change the build. Raster and the TLAS both read
+`DrawItem.transform`, so the two copies of each matrix never disagree. Neither tutorial covers frames
+in flight: Khronos uses one TLAS built in a one-time command buffer that waits, which stalls the CPU
+each frame, and NVIDIA leaves the per-frame side out.
+
+**Decisions**
+
+- **a. One TLAS, instance buffer and scratch buffer per frame slot.** The same pattern as the per-slot
+  uniform buffers in `Descriptors`: each slot's set 0 points at its own TLAS. The CPU writes one
+  slot's instances while the GPU may read the other's, and the slot's fence already guarantees
+  safety. The cost is two TLAS copies, small next to the meshes.
+- **b. A full rebuild every frame, with `PREFER_FAST_BUILD`.** The build mode is rebuild, not update; the
+  flag follows from it, because a tree rebuilt every frame should build fast. Both tutorials prefer
+  update mode (Khronos with `ALLOW_UPDATE`), but an update needs the same instance count as the last
+  build, scenes change counts (`PhysicsScene`'s R respawns, scene switches), and per-slot TLAS
+  complicates it. If the "TLAS build" zone shows a real cost, update mode is the next move.
+- **c. The instance buffer is CPU-writable memory with spare room, and grows when full.** Host visible
+  and coherent, written by the CPU each frame and read by the GPU's build, with
+  `SHADER_DEVICE_ADDRESS` and `ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY` usage (step 3's `Buffer`
+  sets the allocate flag). The TLAS storage is sized for a maximum instance count from
+  `vkGetAccelerationStructureBuildSizesKHR`. When the `DrawList` passes that maximum, the slot
+  recreates its instance buffer, TLAS and scratch buffer at double the count and points its set 0 at
+  the new TLAS. That is safe because the slot's fence has passed. Most frames resize nothing.
+- **d. The build is recorded in the frame's own command buffer, before rendering.** In
+  `RecordCommandBuffer`, before `vkCmdBeginRendering`, inside `PROFILE_GPU_SCOPE(..., "TLAS build")`.
+  One barrier follows it: from `ACCELERATION_STRUCTURE_BUILD` with `ACCELERATION_STRUCTURE_WRITE` to
+  `FRAGMENT_SHADER` with `ACCELERATION_STRUCTURE_READ`, the same pair as Khronos's post-build barrier.
+  Khronos's pre-build barrier guards its single TLAS against the last frame's reads; per-slot TLAS does
+  not need it. The slot's scratch buffer is reused every frame, as in Khronos, with step 4's alignment
+  rounding.
+  - Rejected: Khronos's one-time command buffer and wait, because the CPU stalls every frame. A
+    separate submit with a semaphore, because it adds sync objects for no gain. A separate compute
+    queue, because it is complex and only worth it if the zone says so.
+  - The cost: the build sits on the frame's critical path, and fragment shaders wait for it. The
+    barrier blocks only the fragment stage, so vertex work can start early. The zones time the build
+    and the draws but not the wait between them; if both look cheap but the frame got slower, look
+    there.
+- **e. The fill turns each `DrawItem` into one instance.** Every drawn object becomes one
+  `VkAccelerationStructureInstanceKHR`, so the instance array holds the whole drawn scene. 1,000 cubes
+  in `Scene0` are 1,000 instances pointing at one cube BLAS.
+  - Transform: the column-major `Matrix4` becomes a 3x4 row-major `VkTransformMatrixKHR`; row `r`,
+    column `c` comes from `m[c * 4 + r]`.
+  - BLAS address: the stored `mesh.blas` address, through `ResourceStore::GetMesh(item.mesh)`.
+  - Mask `0xFF` and custom index `0`, as in NVIDIA. Flags `0`: NVIDIA's cull-disable flag matters only
+    when a ray asks for face culling, and the shadow rays do not.
+  - An empty `DrawList` still builds, with zero instances. Believed valid but not confirmed;
+    validation checks it in the build.
+
+**What the build changed**
+
+- **`TopLevelAccelerationStructures`** (`include/vulkan/`, `src/vulkan/`) is owned by `VulkanRenderer`,
+  declared right after `gpuContext` so step 6 can hand it to `Descriptors`. `FrameLoop` gets a
+  non-const reference, like `LineBuffers`. Owning it in `FrameLoop`, like `GPUQueries`, was dropped:
+  only `FrameLoop` could reach it then.
+- **One `Slot` per frame in flight** holds the TLAS, the instance buffer, the scratch buffer (all
+  `std::unique_ptr`), `capacity` and `instanceCount`. `kStartingCapacity` is 256, small on purpose so
+  Scene0's 1,000 cubes run the growth path on the first frame.
+- **`CreateSlot`** creates a slot's three objects for a capacity: the instance buffer host visible and
+  coherent, the sizes from `getBuildSizes` with instance geometry, top level and `PREFER_FAST_BUILD`,
+  and the scratch buffer one alignment bigger. The size query leaves the instance address at 0.
+- **`Fill`** runs in `DrawFrame`, section 2, after the fence wait. It returns at once without ray
+  query, doubles the capacity and calls `CreateSlot` only when the `DrawList` outgrows it, turns each
+  `DrawItem` into one instance in a reused `instances` vector, sets `instanceCount`, and writes once.
+  It skips the write when empty, because `vkMapMemory` needs a size above 0.
+- **`RecordBuild`** runs in `RecordCommandBuffer` after the query reset, inside
+  `PROFILE_GPU_SCOPE(..., GPUTimerName::TlasBuild)`. It records the build into the frame's command
+  buffer, then one `vkCmdPipelineBarrier2` from the build's write to the fragment shader's read.
+- **`GPUTimerName::TlasBuild`**, with `GetTlasBuildMilliseconds` on `FrameLoop` and `VulkanRenderer`.
+  The stats line prints `tlas build`.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added: the fill
+  and the build need a GPU, and the transform loop is three lines.
+- **Scene0, Scene1, Scene0, Debug** (`run-game.ps1 -Scene 0`, F2 and F1): exit 0, 0 warnings,
+  0 errors, 0 asserts, 0 leaked blocks. Validation accepted the growth from 256 to 1,024 and a real
+  build every frame.
+- **PhysicsScene, Debug, M pressed** (`run-game.ps1 -Scene 2`): every mesh hidden, so the `DrawList`
+  is empty and each frame builds a TLAS with 0 instances. Clean, which confirms decision e.
+- **Release, IMMEDIATE, three warm runs per case**, step 4's commit against this one
+  (`scratchpad\fps-compare.ps1`, a worktree at a0e4677f):
+
+  | scene | before | after | TLAS build |
+  |---|---|---|---|
+  | Scene0, 1,000 cubes | 2,901 fps, 0.345 ms | 2,423 fps, 0.413 ms | 0.120 ms |
+  | Scene1 | 3,060 fps, 0.327 ms | 2,872 fps, 0.348 ms | 0.030 ms |
+
+  The mesh pass did not move (0.040 and 0.010 ms). The frame grew less than the build took, a sign
+  that the GPU overlaps it; a guess, not measured.
+- **Not checked:** whether the instances are right (step 6's shadows show it), the fill's CPU cost on
+  its own (no profiler scope around `Fill`), and the ray query off path.
+
+**What the build found**
+
+- **An empty build still costs.** About 0.05 ms under FIFO with 0 instances in PhysicsScene, and
+  0.03 ms under IMMEDIATE for Scene1's handful: the build has a fixed cost.
+- **Under FIFO, the mesh pass reading of 0.22 ms is noise.** Both step 4's commit and this one read
+  0.05 to 0.29 ms in single seconds under FIFO, and 0.038 ms under IMMEDIATE. Read GPU times under
+  IMMEDIATE.
+- **Bugs the review caught before they ran:** `Fill` first called `CreateSlot` every frame, wrote
+  `capacity` instances instead of `instances.size()`, took the `DrawList` and `ResourceStore` by value,
+  and looped forever without ray query (capacity 0 doubles to 0). An empty frame first kept the last
+  frame's `instanceCount`. The barrier was first filled but never recorded; validation could not see
+  that, because nothing reads the TLAS yet.
+
+**Sources:** Khronos tutorial, "TLAS animation"
+(https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/04_TLAS_animation.html); NVIDIA
+tutorial, "Acceleration structures"
+(https://nvpro-samples.github.io/vk_raytracing_tutorial_KHR/concepts/acceleration-structures/).
+
+Seam: a compute shader can take over the fill later, once transforms live in a GPU scene buffer, with
+no change to the build.
+
+## Step 6: Shadows in the shader
+
+**The problem:** `phong.frag` loops over up to 4 point lights and adds diffuse and specular for each,
+plus ambient once. Each light's two terms need a visibility factor from a ray toward the light. None
+of the three sources (the Khronos Vulkan-Samples `ray_queries` sample, the Khronos tutorial, NVIDIA's
+ray query sample) covers GPUs without ray query, so decisions a to c lean on this engine. The Khronos
+sample is the closest match: GLSL, a fragment shader, and a point light.
+
+**Decisions**
+
+- **a. The TLAS is set 0, binding 2, fragment stage.** Set 0 already holds the per-slot camera
+  (binding 0) and lights (binding 1), and step 5 made the TLAS per slot. On a GPU without ray query,
+  set 0 has no binding 2, because the descriptor type needs the extension. Binding numbers may skip,
+  so a later binding 3 is 3 on every GPU. The Khronos sample uses set 0, binding 0.
+- **b. One shader source, compiled twice.** `phong.frag` wraps the ray query code in an `#ifdef`, and
+  CMake compiles it once plain and once with the define, to two SPIR-V files. A module that declares
+  the ray query capability cannot load on a GPU without the feature, so a runtime branch cannot
+  replace the second file. The ray query variant needs `#version 460`, as in the Khronos sample.
+  - Rejected: a separate `phongWithRay.frag`, which copies the lighting and lets the two drift.
+    Two files sharing the lighting through `#include`, because the CMake rule lists only the shader
+    itself as a dependency, so editing the shared file would not recompile.
+  - The cost: a second CMake rule for this file, with its own output name.
+- **c. The switch picks the pipeline.** On supported GPUs the renderer also builds a shadow mesh
+  pipeline from the second SPIR-V file. The switch decides which mesh pipeline is bound, so the shader
+  has no on/off branch. `Application` flips it with an app key and calls the renderer, such as
+  `SetShadows(bool)`; on unsupported GPUs it stays off. Shadow maps later become one more pipeline
+  behind the same switch.
+- **d. The ray, after the Khronos sample.** Origin: the fragment's world position (step 7 adds the
+  offset). Direction: `normalize(lightPosition - position)`, with `tMax` the distance to the light, so
+  the ray ends at the light and objects behind it cast no shadow. `tMin` is a small world distance;
+  step 7 sets it. Flags `gl_RayFlagsTerminateOnFirstHitEXT`, cull mask `0xFF`, and one
+  `rayQueryProceedEXT` call with no loop: with that flag and opaque geometry, one call is enough. A
+  committed intersection means shadow.
+  - Changed from the Khronos sample, found in step 7's design: the sample leaves the direction
+    unnormalized with `tMax = 1.0` and `tMin = 0.01`. Then `t` is a fraction of the distance to the
+    light, so `tMin` skips 1 cm for a light 1 m away but 10 cm for one 10 m away, enough to miss a
+    real blocker. A normalized direction makes every number a world distance at any range.
+- **e. Every light casts a shadow.** One ray per light per pixel, up to 4. Step 7 measures the cost.
+- **f. The shadow darkens that light's diffuse and specular; ambient stays.** `shadowFactor` returns 0 or
+  1 per light, and both terms are multiplied by it. Ambient is the light that reaches every surface.
+  The Khronos sample and tutorial multiply the whole colour by 0.2, which works only for one light.
+- **g. `glslc --target-env=vulkan1.3` for every shader.** `VK_KHR_ray_query` needs `VK_KHR_spirv_1_4` or
+  Vulkan 1.2, and glslc emits SPIR-V 1.0 by default. The engine already requires 1.3, so the plain
+  shaders lose nothing.
+
+**Sources:** the Khronos Vulkan-Samples `ray_queries` shader
+(https://raw.githubusercontent.com/KhronosGroup/Vulkan-Samples/main/shaders/ray_queries/glsl/ray_shadow.frag),
+the Khronos tutorial "Ray query shadows"
+(https://docs.vulkan.org/tutorial/latest/courses/18_Ray_tracing/03_Ray_query_shadows.html), NVIDIA's
+"16 ray query" sample, and the `VK_KHR_ray_query` reference page.
+
+**What the build changed**
+
+- **`CMakeLists.txt`** passes `--target-env=vulkan1.3` to every shader, so the SPIR-V is 1.6. A second
+  rule after the loop compiles `phong.frag` with `-DRAY_QUERY` into `phong_ray_query.frag.spv`.
+- **`phong.frag`** is `#version 460` for both variants. `#ifdef RAY_QUERY` wraps the
+  `GL_EXT_ray_query` extension and the TLAS at set 0, binding 2. `shadowFactor` keeps one signature;
+  its body has the query under `#ifdef` and `return 1.0` under `#else`, so `main` calls it with no
+  `#ifdef`. `tMin` is 0.01, with no normal offset yet, and the ray runs even where `diffuse` is 0;
+  step 7 changes both.
+- **`Descriptors`** names `kTopLevelAccelerationStructureBinding = 2`. The layout's `bindingCount` and
+  the pool's `poolSizeCount` include the acceleration structure only with ray query.
+  `WriteTopLevelAccelerationStructure` chains a `VkWriteDescriptorSetAccelerationStructureKHR` into one
+  write.
+- **The binding is rewritten every frame,** in `DrawFrame`, section 2, right after `Fill`. `Fill` may
+  recreate the slot's TLAS, so a write only at creation would leave a dead handle after growth.
+  `TopLevelAccelerationStructures::GetHandle` returns `VK_NULL_HANDLE` on an empty slot.
+- **`RayQueryMeshPipelineSettings`** reuses `MeshPipelineSettings` and swaps only the fragment shader.
+  `VulkanRenderer` holds `rayQueryMeshPipeline` as a `std::unique_ptr`, null without ray query, named
+  for the method so a shadow map pipeline can join later.
+- **The switch:** `VulkanRenderer::SetShadows` stores `enabled && SupportsRayQuery()`, and the
+  `FramePipelines` ternary picks the pipeline. Ctrl+K toggles it and prints `shadows enabled: On` or
+  `Off`. Ctrl+L was the first pick; it already cycles the frame cap.
+
+**What the build checked**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. No tests were added.
+- **Shaders.** Both variants compile; `phong_ray_query.frag.spv` is 5,324 bytes against 4,532.
+  `spirv-dis` reports SPIR-V 1.6.
+- **Scene1, Debug, light schemes 1 to 5, then Scene0:** exit 0, 0 warnings, 0 errors, 0 asserts,
+  0 leaked blocks: the first run where the shader read the TLAS. In scheme 3, Mario's glove casts a
+  glove-shaped shadow on the right cube; in scheme 5, his cap brim shadows his face. Scene0's cubes
+  shadow the cubes behind them. No acne visible at screenshot size.
+- **Scene0, PhysicsScene with M, Debug:** clean with binding 2 written every frame, after growth, and
+  on an empty frame.
+- **The switch, Scene0, Debug:** mean brightness over the cube block 61.8 with shadows, 76.0 after
+  Ctrl+K, 58.3 after Ctrl+K again (the cubes rotate between shots). Ctrl+L still cycles the frame cap.
+- **Not checked:** a GPU without ray query, where the layout, the pool, the write and `GetHandle`
+  each take their other path. The cost under IMMEDIATE is step 7's job; under FIFO, Scene1's mesh
+  pass read 0.10 to 0.21 ms and Scene0's 0.33 ms.
+
+**What the build found**
+
+- **Hard edges are the design.** One ray per light to a point light makes `shadowFactor` 0 or 1.
+  Soft edges need a light with a size and many rays, usually with a denoiser; the Khronos tutorial's
+  comparison calls this "native" to ray query, meaning it needs no new technique, not that it is
+  cheap.
+- **The shadow terminator shows on Mario.** Shadow edges on the cap brim, the overall hem and the
+  glove's fingers are jagged. Step 7, decision d accepted it until seen; it is now seen.
+- **Review catches:** the pool first wrote through a null `VkDescriptorPoolSize*`, and kept
+  `poolSizeCount` at 1. The binding number first came from `kUniformBindings.size()`, which would move
+  if a uniform binding were added while the shader still reads 2. `GetHandle` first dereferenced an
+  empty slot.
+
+Seam: shadow maps become a second body for `shadowFactor`, and the switch becomes the method choice.
+
+## Step 7: Fix artifacts and measure
+
+**Decided**
+
+- **a. The scene: `Scene1` with a floor cube.** `Scene1` has done its job as a lighting test and becomes
+  the lights and shadows scene, so its lights and objects may move freely for testing. Mario and the
+  cubes already shadow themselves and each other (the cap onto the face, Mario onto a cube), and the
+  five lighting schemes on keys 1 to 5 give several light directions. The floor adds a flat surface
+  that shows each shadow's whole shape and shows peter-panning, a gap between an object's base and
+  where its shadow starts. Scale is uniform (STATE.md, architecture rule 10), so the floor is the
+  existing cube mesh at a large uniform scale, sunk so only its top face shows: scale 20 at y = -10.5
+  puts the top face at y = -0.5, level with the bottoms of the two cubes. Mario's feet may sit at
+  another height; check once it renders. It has no collider. The bonus below flattens it.
+  Self-shadowing on Mario is the best acne test, and the floor is the best peter-panning test.
+  - The floor's material is a plain grey texture, one new small PNG. Shadows read best on a flat
+    neutral colour, and the skull texture would stretch across the face and hide their shapes. A
+    colour in `MaterialDesc` (ROADMAP.md, Miscellaneous, row 1) is the cleaner fix and out of scope.
+- **b. The self-shadowing fix: a fixed offset along the normal, a small `tMin`, and no ray when
+  `diffuse <= 0`.** The ray starts a little off the surface along the interpolated normal, which is
+  close to the geometric normal on these meshes. A side facing away from the light is already dark,
+  so its ray is skipped: that saves rays and removes acne there. Ray Tracing Gems, chapter 6
+  (Wächter and Binder, NVIDIA) argues for offsetting along the normal; the Khronos sample uses `tMin`
+  alone.
+  - Rejected for now: that chapter's robust offset, which NVIDIA's ray query sample uses as
+    `pointOffset`. It moves the point by a few floating-point steps sized to the rounding error of a
+    ray hit computed from the triangle. A rasterized fragment position carries the rasterizer's
+    interpolation error instead, believed larger (not confirmed), so the tiny offset could leave
+    acne. It is the right tool once rays start from ray hits: reflections, or a second AO bounce.
+- **c. The offset is one named constant in the shader, starting at 0.01 world units.** The cube is 1
+  unit. Screenshots per light scheme from `run-game.ps1` tune it: lower it until acne appears, then
+  back off, checking peter-panning on the floor and the cap-to-face contact. No source gives a
+  universal number, because it depends on scene scale.
+- **d. The low-poly edge artifact is accepted until it is seen.** The "shadow terminator": interpolated
+  normals let the shadow edge look jagged where light grazes a low-poly surface. The cube has hard
+  edges; Mario is smooth, so it shows there if anywhere. Ray Tracing Gems II, chapter 4 ("Hacking the
+  Shadow Terminator", Hanika) and Disney's "Taming the Shadow Terminator" cover fixes; neither was
+  read in full.
+- **e. The measuring protocol.**
+  - Scenes: `Scene0` (1,000 instances, the TLAS and ray count test) and `Scene1` with a fixed light
+    scheme and camera.
+  - Runs: Release, three warm runs per case, the mean reported. The ~8% noise floor is a CPU finding;
+    the first job is three shadows-off runs to find the GPU's.
+  - Present mode: cap off, IMMEDIATE or MAILBOX. Under FIFO the GPU idles between frames and may
+    lower its clocks, which would inflate GPU times. Step 1's runs confirmed it: Scene0's mesh pass
+    read 0.07 to 0.23 ms under FIFO and 0.03 to 0.05 ms under IMMEDIATE.
+  - Cases: shadows off against on, comparing the `"Mesh pass"` and `"TLAS build"` zones.
+  - Record: a "What the build checked" list in this section.
+
+**Sources:** Ray Tracing Gems, chapter 6
+(https://research.nvidia.com/publication/2019-03_fast-and-robust-method-avoiding-self-intersection);
+NVIDIA's blog "Solving self-intersection artifacts in DirectX Raytracing"; Ray Tracing Gems II
+contents; Disney's "Taming the Shadow Terminator"; the Khronos `ray_queries` shader.
+
+**What the build changed**
+
+- **The floor** in `Scene1`: the cube mesh with `floor_grey.png` (4 by 4 pixels of grey 128) and a
+  material with `specularStrength` 0.05. After the bonus it is `scale (20, 0.5, 20)` at `y = -1.5`, so
+  its top sits at -1.25, under Mario's shoes. The two cubes hover 0.5 above it. No collider.
+- **`phong.frag`:** `kShadowRayOffset = 0.01`. The one `shadowFactor` call sits inside
+  `if (diffuse > 0.0)`, and starts at `fragWorldPosition + normalize(fragNormal) * kShadowRayOffset`.
+  `shadowFactor` starts the ray at its `position` parameter. `tMin` stays 0.01.
+- **The bonus, non-uniform scale,** is in non-uniform-scale.md. It made the floor a flat box.
+
+**What the build checked**
+
+- **The offset tuning** (`scratchpad\tune\tune-offset.ps1`): five shader variants swapped into the
+  build, from offset 0.01 and `tMin` 0.01 down to offset 0 and `tMin` 0.0001, screenshots of Mario
+  and the floor under schemes 1, 3 and 5. No acne in any. The pixel differences sat in red and green
+  pairs along Mario's outline, which is his turn between runs: variant B, with the same offset as A,
+  changed as much as variant E, with none.
+- **A live tuning build** (a temporary worktree, arrow keys for the offset and `tMin`, Mario held
+  still): Vakarian saw nothing wrong at 0.01, and at 0.02 thinner shadows but cleaner boots.
+- **Shadow cost, Release, IMMEDIATE, three warm runs per case** (`scratchpad\shadow-cost.ps1`):
+
+  | scene | shadows | fps | frame | mesh pass | TLAS build |
+  |---|---|---|---|---|---|
+  | Scene0 | off | 2,636 | 0.380 ms | 0.040 ms | 0.120 ms |
+  | Scene0 | on | 2,362 | 0.423 ms | 0.093 ms | 0.120 ms |
+  | Scene1, with the floor | off | 3,197 | 0.319 ms | 0.020 ms | 0.030 ms |
+  | Scene1 | on | 1,820 | 0.550 ms | 0.276 ms | 0.030 ms |
+
+  The mesh pass read the same to the third decimal in all three warm runs of each case, so the GPU
+  noise floor is below the stats line's precision. Frame time moved 0.26 to 0.35 ms between runs of
+  Scene1 with shadows off.
+
+**What the build found**
+
+- **The offset trade-off is decision d's terminator.** A bigger offset hides the jagged self-shadow on
+  Mario's boots by shrinking every shadow a little. 0.01 stays; ROADMAP.md holds the targeted fix.
+- **The ray cost follows lit pixels times lights, not object count.** Scene1's floor fills the screen,
+  so its rays cost 0.26 ms against Scene0's 0.05 ms.
+- **The TLAS build runs with shadows off too.** ROADMAP.md holds the saving.
+- **Review catches:** the first offset version cast two rays per lit light and read the unnormalized
+  `fragNormal`, which made the floor's offset 0.2.

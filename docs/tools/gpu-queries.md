@@ -138,5 +138,5 @@ the CPU.
 
 ## More detail
 
-The design and its sources: PLAN.md, step 1, and step 5 for the TLAS build zone (dev-notes once the
-plan is archived).
+The design and its sources: dev-notes/gpu-timestamps.md, and dev-notes/ray-query-shadows.md, step 5,
+for the TLAS build zone.
