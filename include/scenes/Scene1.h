@@ -11,8 +11,9 @@
 #include "ecs/World.h"
 
 /**
- * The milestone 8 scene: a lit, turning Mario between two matte cubes. Every entity carries its
- * own mesh and material in a Renderable, so MakeDrawList reads them from the world.
+ * The light and shadow scene: Eirene stands in a ruined temple on a raised base, like a diorama. Only
+ * the back wall, with one window, still stands. The sides are rows of columns, so the side lights cast
+ * column shadows across the floor. Every entity carries its own mesh and material in a Renderable.
  */
 class Scene1 : public Scene
 {
@@ -44,15 +45,15 @@ public:
 private:
    
     
-    /** Most entities alive at once: Mario and two cubes, with room to spare */
-    static constexpr uint32_t kMaxEntities = 16;
-    /** Bytes in Scene1's world slab: one 16 KB chunk per archetype with rows, two today, plus the slots and archetypes */
+    /** Most entities alive at once: Eirene, 8 columns, 4 rubble blocks and 10 base, step, wall and beam boxes, with room to spare */
+    static constexpr uint32_t kMaxEntities = 32;
+    /** Bytes in Scene1's world slab: one 16 KB chunk per archetype with rows, one today, plus the slots and archetypes */
     static constexpr std::size_t kWorldArenaBytes = 64 * 1024;
 
     World world;
     /** Every system this scene runs */
     SystemRegistry systems;
-    /** In front of Mario and a little above, looking at his middle */
+    /** In front of the ruin, looking at Eirene's middle */
     Camera camera;
 
     /** One lighting setup. The number keys switch between them. */
@@ -62,89 +63,86 @@ private:
         const char* name;
         /** Light that reaches every surface. */
         MATH::Vec3 ambient;
-        /** Only the first count entries are used. */
-        std::array<Light, 3> lights;
+        /** Only the first count entries are used. Four is the most the renderer takes */
+        std::array<Light, 4> lights;
         /** How many entries of lights are lit. */
         uint32_t count;
     };
 
+    /** A dim light above the middle of the ruin, in every scheme. It lifts the dark corners and casts a soft shadow under her */
+    static constexpr Light kCeilingLight{.position = MATH::Vec3(0.0f, 3.9f, 0.0f), .color = MATH::Vec3(0.08f, 0.08f, 0.09f)};
+
     /**
-     * The schemes keys 1 to 5 pick. Light colours add up and clip at 1, so each scheme keeps its
-     * total near 1. Lights do not fade with distance, so a position only sets a direction.
+     * The fixed schemes keys 1 to 4 pick. Every coloured light sits outside the ruin: the side lights
+     * shine between the columns, and the back light only through the back window. Light colours add up
+     * and clip at 1. Lights do not fade with distance, but the shadow ray ends at the light.
      */
-    static constexpr std::array<LightingScheme, 5> kSchemes{
+    static constexpr std::array<LightingScheme, 4> kSchemes{
         {
-            /* 1. Film lighting: a warm key light, a dim cool fill on the other side, and a rim light behind that outlines him */
-            {
-                .name = "Studio",
-                .ambient = MATH::Vec3(0.05f, 0.05f, 0.06f),
-                .lights = {
-                    {
-                        {.position = MATH::Vec3(3.0f, 4.0f, 5.0f), .color = MATH::Vec3(0.9f, 0.85f, 0.75f)},
-                        {.position = MATH::Vec3(-4.0f, 1.0f, 3.0f), .color = MATH::Vec3(0.15f, 0.18f, 0.25f)},
-                        {.position = MATH::Vec3(0.0f, 3.0f, -5.0f), .color = MATH::Vec3(0.6f, 0.6f, 0.7f)},
-                    }
-                },
-                .count = 3,
-            },
-            /* 2. A low orange sun on the right and a weak blue sky above, so his shadow side turns blue rather than grey */
+            /* 1. A deep orange, low sun outside the left window, with a purple ambient for the shadow side */
             {
                 .name = "Sunset",
-                .ambient = MATH::Vec3(0.08f, 0.04f, 0.1f),
+                .ambient = MATH::Vec3(0.05f, 0.02f, 0.05f),
                 .lights = {
                     {
-                        {.position = MATH::Vec3(6.0f, 0.5f, 1.0f), .color = MATH::Vec3(1.0f, 0.5f, 0.15f)},
-                        {.position = MATH::Vec3(-2.0f, 6.0f, 2.0f), .color = MATH::Vec3(0.1f, 0.15f, 0.4f)},
+                        {.position = MATH::Vec3(-12.0f, 3.5f, 1.5f), .color = MATH::Vec3(1.0f, 0.42f, 0.08f)},
+                        kCeilingLight,
                     }
                 },
                 .count = 2,
             },
-            /* 3. Magenta from the left and cyan from the right split him down the middle */
+            /* 2. A strong blue moon outside the right window */
             {
-                .name = "Neon",
-                .ambient = MATH::Vec3(0.02f, 0.02f, 0.04f),
+                .name = "Moonlight",
+                .ambient = MATH::Vec3(0.01f, 0.015f, 0.04f),
                 .lights = {
                     {
-                        {.position = MATH::Vec3(-4.0f, 1.0f, 3.0f), .color = MATH::Vec3(0.9f, 0.1f, 0.6f)},
-                        {.position = MATH::Vec3(4.0f, 1.0f, 3.0f), .color = MATH::Vec3(0.1f, 0.8f, 0.9f)},
+                        {.position = MATH::Vec3(12.0f, 3.5f, -1.0f), .color = MATH::Vec3(0.15f, 0.3f, 1.0f)},
+                        kCeilingLight,
                     }
                 },
                 .count = 2,
             },
-            /* 4. Pure red, green and blue from three sides. Where two overlap they add to yellow, cyan or magenta */
+            /* 3. A pale cyan light behind the back window: she shows as a silhouette and her shadow falls toward the camera */
             {
-                .name = "RGB mixing",
-                .ambient = MATH::Vec3(0.03f, 0.03f, 0.03f),
+                .name = "Backlight",
+                .ambient = MATH::Vec3(0.02f, 0.02f, 0.03f),
                 .lights = {
                     {
-                        {.position = MATH::Vec3(-4.0f, 2.0f, 3.0f), .color = MATH::Vec3(1.0f, 0.0f, 0.0f)},
-                        {.position = MATH::Vec3(4.0f, 2.0f, 3.0f), .color = MATH::Vec3(0.0f, 1.0f, 0.0f)},
-                        {.position = MATH::Vec3(0.0f, -3.0f, 3.0f), .color = MATH::Vec3(0.0f, 0.0f, 1.0f)},
+                        {.position = MATH::Vec3(0.0f, 3.0f, -14.0f), .color = MATH::Vec3(0.55f, 0.9f, 1.0f)},
+                        kCeilingLight,
                     }
                 },
-                .count = 3,
+                .count = 2,
             },
-            /* 5. One orange light low in front and almost no ambient: the flashlight under the chin */
+            /* 4. Red through the left window, green through the right, blue through the back. Overlaps mix */
             {
-                .name = "Campfire",
-                .ambient = MATH::Vec3(0.02f, 0.01f, 0.01f),
+                .name = "RGB windows",
+                .ambient = MATH::Vec3(0.02f, 0.02f, 0.02f),
                 .lights = {
                     {
-                        {.position = MATH::Vec3(0.0f, -2.0f, 2.0f), .color = MATH::Vec3(1.0f, 0.45f, 0.1f)},
+                        {.position = MATH::Vec3(-12.0f, 3.5f, 0.0f), .color = MATH::Vec3(1.0f, 0.0f, 0.0f)},
+                        {.position = MATH::Vec3(12.0f, 3.5f, 0.0f), .color = MATH::Vec3(0.0f, 1.0f, 0.0f)},
+                        {.position = MATH::Vec3(0.0f, 3.5f, -14.0f), .color = MATH::Vec3(0.0f, 0.0f, 1.0f)},
+                        kCeilingLight,
                     }
                 },
-                .count = 1,
+                .count = 4,
             },
         }
     };
 
-    /** The position in kSchemes of the scheme in use. Starts on Studio */
+    /** The position in kSchemes of the scheme in use. Starts on Sunset */
     uint32_t activeScheme = 0;
 
-    MeshHandle marioMesh;
-    MaterialHandle marioMaterial;
+    MeshHandle EireneMesh;
+    MeshHandle columnMesh;
     MeshHandle cubeMesh;
-    MaterialHandle cubeMaterial;
+    /** The columns' own marble texture */
+    MaterialHandle columnMaterial;
+    /** Eirene's stone: the floor texture with a little more shine */
+    MaterialHandle statueMaterial;
+    /** The floor, walls and ceiling */
     MaterialHandle floorMaterial;
     
     /** Controller to move the camera with user input */
