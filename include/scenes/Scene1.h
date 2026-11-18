@@ -98,7 +98,7 @@ private:
                     }
                 },
                 .count = 2,
-                .skybox = "assets/skyboxes/overworld/sky16_sunrise1",
+                .skybox = "assets/skyboxes/sunset",
             },
             /* 2. A strong blue moon outside the right window */
             {
@@ -111,9 +111,9 @@ private:
                     }
                 },
                 .count = 2,
-                .skybox = "assets/skyboxes/the_end",
+                .skybox = "assets/skyboxes/night",
             },
-            /* 3. A deep red light behind the back window, to match the nether sky: she shows as a silhouette and her shadow falls toward the camera */
+            /* 3. A deep red light behind the back window, to match the red skies: she shows as a silhouette and her shadow falls toward the camera */
             {
                 .name = "Backlight",
                 .ambient = MATH::Vec3(0.04f, 0.01f, 0.01f),
@@ -124,7 +124,7 @@ private:
                     }
                 },
                 .count = 2,
-                .skybox = "assets/skyboxes/the_nether",
+                .skybox = "assets/skyboxes/red_skies",
             },
             /* 4. Red through the left window, green through the right, blue through the back. Overlaps mix */
             {

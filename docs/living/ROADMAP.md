@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated:** 2026-11-16.
+**Last updated:** 2026-11-17.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
@@ -30,7 +30,7 @@ hold the measurements behind most rows.
   - [Basic shapes](#basic-shapes)
   - [Model import settings](#model-import-settings)
   - [After ray query shadows](#after-ray-query-shadows)
-  - [Skybox](#skybox)
+  - [After the skybox](#after-the-skybox)
   - [ImGui debug UI](#imgui-debug-ui)
   - [Game UI](#game-ui)
 - [Debug tools](#debug-tools)
@@ -200,25 +200,19 @@ means a step of that plan.
 | 6 | Skip the TLAS fill and build while shadows are off | Both run every frame whatever the switch says: 0.120 ms of GPU time in Scene0's 1,000 instances (step 7's table). Nothing else reads the TLAS yet, so off can skip it. Ambient occlusion or reflections would read it too | to-do |
 | 7 | TLAS update mode instead of a full rebuild | Step 5, decision b chose a rebuild every frame with `PREFER_FAST_BUILD`, and named update mode as the next move once the build zone shows a real cost. It reads 0.120 ms for 1,000 instances. An update needs the same instance count as the last build, so scene changes still rebuild | to-do |
 | 8 | Soft shadows: a light with a radius, several rays to random points on it, and a denoiser or frame accumulation | One ray to a point light gives only 0 or 1, so edges are hard. The Khronos tutorial calls soft shadows "native" to ray query because no new technique is needed, but the rays multiply and few rays are noisy. Shadow maps soften with PCF or PCSS instead | to-do |
-| 9 | A switch that forces ray query and timestamps off on a GPU that has them | Every ray query and timestamp branch has a path for GPUs without them (no binding 2, no second pipeline, no GPU times), and no run has taken it: both GPUs on this machine support both | to-do |
+| 9 | A switch that forces ray query and timestamps off on a GPU that has them | Every ray query and timestamp branch has a path for GPUs without them (no binding 2, no second pipeline, no GPU times), and no run has taken it: both GPUs on this machine support both. Since the skybox, set 0 without ray query is bindings 0, 1 and 3, a gap in the binding numbers that no run has built | to-do |
 
-### Skybox
+### After the skybox
+
+From what the skybox plan found (ended 2026-11-17, dev-notes/skybox.md). "Step N" means a step of
+that plan.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | A skybox: a cube map drawn behind the meshes, which turns with the camera and never moves with it | The space behind the meshes shows a flat clear colour | in progress |
-
-From the skybox and ImGui prototype, 2026-11-14 (branch `prototype/ui`, worktree
-`../2026_GameEngines5-ui`), which drew a sky in Scene1 with no validation errors. Estimate: 2 to 3
-sessions. PLAN.md holds the design.
-
-Outline considerations:
-
-- No cube mesh: one triangle over the screen at depth 1.0, its direction from the camera.
-- A 6-layer cube map image from six files, with barriers over all 6 layers.
-- Depth compare `LESS_OR_EQUAL` with depth write off, or the sky loses to the cleared depth.
-- Drawn after the meshes and before the debug lines, which write no depth.
-- Downloaded packs may show up mirrored, so check the facing with a marked test sky.
+| 1 | Mipmaps for `Texture` and `CubeMap`: a level chain built with `vkCmdBlitImage` after the upload, one chain per cube face, and `maxLod` raised to match | Both create `mipLevels = 1`, and their samplers set `maxLod = 0`. When a texel is smaller than a pixel, the GPU picks one texel and skips its neighbours, so fine detail shimmers as the camera turns. Vakarian found the skies low quality; the faces are 2048, about one texel per screen pixel, so missing mipmaps are the likeliest cause, not the size (a guess, not measured). Anisotropy is on but does little without levels | to-do |
+| 2 | Compressed sky faces: BC7 for colour skies, or BC6H for HDR ones, converted when a sky is added | Each 2048 sky takes 6 × 16 MB = 96 MB as `R8G8B8A8_SRGB`, and Scene1 loads three (arithmetic, not a measurement). BC7 holds a texel in 1 byte, a quarter of that. BC6H also removes the banding of 8-bit gradients, such as the sunset haze | to-do |
+| 3 | The sky facing check by script: `run-game.ps1` turns the camera along +X, -X, +Z, -Z, up and down over the marked test sky, and takes a screenshot each time | Step 6, decision b planned it, and it never ran: Vakarian checked the facing by eye. A swapped face or a sign change in `skybox.frag` would then show without anyone looking. `assets/skyboxes/test/` already holds the marked faces | to-do |
+| 4 | Sky source sheets and the test sky out of `assets/` | CMake copies everything under `assets/` next to the executable on each build. `night/` and `red_skies/` each still hold their 6144 × 4096 source sheet, `sky1.png`, which nothing loads, and `test/` loads nowhere in the game | to-do |
 
 ### ImGui debug UI
 

@@ -25,11 +25,25 @@ One note per finished feature: what was decided, why, and what it measured. Nobo
 | gpu-timestamps.md | `GPUQueries`, `ScopedGPUTimer` and `PROFILE_GPU_SCOPE`: GPU time per zone, read after the fence, and why FIFO inflates it | 2026-11-12 |
 | ray-query-shadows.md | ray query support on the device, mesh buffers for builds, one BLAS per mesh, a TLAS per frame slot, `shadowFactor` in two compiled shaders behind Ctrl+K, the floor, the ray offset, and the shadow cost | 2026-11-14 |
 | non-uniform-scale.md | `Transform.scale` as a `Vec3`, the cofactor `NormalMatrix`, per-axis picking and box inertia, and why round colliders stay uniform | 2026-11-14 |
+| skybox.md | the sky pipeline, `skybox.vert` and `skybox.frag` with one screen triangle, `CubeMap`, set 0 binding 3, the sky pass, the z flip, the face sheets, and `Scene::GetSky()` with one sky per Scene1 scheme | 2026-11-17 |
 | tools/ | the long original manuals of the Memory Monitor and the Profiler | 2026-10-20 |
 
 ## Plan steps
 
 Other docs name the steps of a plan ("step 3", "4b"). These tables say where each one is written up.
+
+**The skybox plan, ended 2026-11-17.** It came from ROADMAP.md, Rendering, "Skybox". All seven
+steps are in one note, which holds each step's whole plan section.
+
+| step | feature | note |
+|---|---|---|
+| 1 | a depth compare field, and no vertex binding without attributes | skybox.md |
+| 2 | the sky shaders | skybox.md |
+| 3 | `CubeMap` | skybox.md |
+| 4 | set 0, binding 3, and the sky pipeline | skybox.md |
+| 5 | the sky pass | skybox.md |
+| 6 | the face images | skybox.md |
+| 7 | who picks the sky | skybox.md |
 
 **The ray query shadows plan, ended 2026-11-14.** No ROADMAP.md block covered it; it came from the
 course assignment and the design talk of 2026-11-11. Each note holds its steps' whole plan sections.
