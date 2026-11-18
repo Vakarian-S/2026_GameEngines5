@@ -69,6 +69,9 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentM
     linePipeline(gpuContext, swapchain.GetImageFormat(),
                  swapchain.GetDepthFormat(), LinePipelineSettings(
                      descriptors.GetLayout())),
+    skyPipeline(gpuContext, swapchain.GetImageFormat(), swapchain.GetDepthFormat(), SkyboxPipelineSettings(
+                    descriptors.GetLayout()
+                )),
     lineBuffers(gpuContext),
     frameLoop(gpuContext, swapchain, topLevelAccelerationStructures, descriptors, lineBuffers)
 {
@@ -82,7 +85,7 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentM
 }
 
 void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList,
-                               const DebugLines& debugLines)
+                               const DebugLines& debugLines, CubeMapHandle sky)
 {
     /* Width over height, read every frame, so a resize keeps the cubes' proportions */
     const auto [width, height] = swapchain.GetExtent();
@@ -121,9 +124,11 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighti
     /* One reference per pipeline. FrameLoop records one pass with each */
     const FramePipelines pipelines{
         .meshPipeline = gpuContext.SupportsRayQuery() && shadowsEnabled ? *rayQueryMeshPipeline : meshPipeline,
-        .linePipeline = linePipeline
+        .linePipeline = linePipeline,
+        .skyPipeline = skyPipeline
     };
-    frameLoop.DrawFrame(kClearColor, pipelines, resourceStore, drawList, debugLines, cameraUniform, lightUniform);
+    frameLoop.DrawFrame(kClearColor, pipelines, resourceStore, drawList, debugLines, cameraUniform, lightUniform,
+                        resourceStore.GetCubemap(sky));
 }
 
 PresentMode VulkanRenderer::GetPresentMode() const

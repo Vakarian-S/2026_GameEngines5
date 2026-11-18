@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "CubeMap.h"
 #include "Descriptors.h"
 #include "GPUContext.h"
 #include "GPUQueries.h"
@@ -21,6 +22,7 @@ struct FramePipelines
 {
     const Pipeline& meshPipeline;
     const Pipeline& linePipeline;
+    const Pipeline& skyPipeline;
 };
 
 
@@ -70,6 +72,7 @@ public:
      * @param debugLines the line vertices for this frame, copied into this slot's line buffer
      * @param camera the view and projection for this frame, copied into this slot's camera buffer
      * @param lights the lights for this frame, copied into this slot's light buffer
+     * @param sky Cubemap instance for the skybox, nullptr means no sky, showing the clear colour
      */
     void DrawFrame(
         const VkClearColorValue& clearColor,
@@ -78,7 +81,8 @@ public:
         const DrawList& drawList,
         const DebugLines& debugLines,
         const CameraUniform& camera,
-        const LightUniform& lights
+        const LightUniform& lights,
+        const CubeMap* sky
     );
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
@@ -177,7 +181,7 @@ private:
      *   1. Change the image's layout so the GPU can draw into it.
      *   2. Begin rendering, which clears the image to clearColor.
      *   3. Set the viewport and scissor, which both passes share.
-     *   4. Record the mesh pass, then the line pass.
+     *   4. Record the mesh pass, the sky pass, then the line pass.
      *   5. End rendering, and change the image's layout so it can be presented.
      *
      * @param imageIndex which swapchain image to draw into
@@ -186,6 +190,7 @@ private:
      * @param resourceStore where the meshes named in drawList live
      * @param drawList what to draw: one mesh and one model matrix per item
      * @param lineVertexCount how many line vertices this slot's line buffer holds
+     * @param drawSky Whether the recordCommandBuffer should record a skybox draw
      */
     void RecordCommandBuffer(
         uint32_t imageIndex,
@@ -193,7 +198,8 @@ private:
         const FramePipelines& pipelines,
         const ResourceStore& resourceStore,
         const DrawList& drawList,
-        uint32_t lineVertexCount
+        uint32_t lineVertexCount,
+        bool drawSky
     );
 
     /**
@@ -213,4 +219,11 @@ private:
      * @param vertexCount how many vertices this slot's line buffer holds. 0 records nothing
      */
     void RecordLinePass(VkCommandBuffer commandBuffer, const Pipeline& pipeline, uint32_t vertexCount) const;
+
+    /**
+     * Records the Skybox cubemap: Binds the sky pipeline
+     * @param commandBuffer the command buffer being recorded
+     * @param pipeline the sky pipeline
+     */
+    void RecordSkyPass(VkCommandBuffer commandBuffer, const Pipeline& pipeline) const;
 };

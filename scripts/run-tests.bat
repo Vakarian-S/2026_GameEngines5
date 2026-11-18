@@ -1,6 +1,7 @@
 @echo off
 setlocal
-REM Builds and runs MemoryMonitorTests, EcsTests and ArenaTests in every configuration.
+REM Builds and runs MemoryMonitorTests, EcsTests, ArenaTests and PhysicsTests in every
+REM configuration, and GpuTests on x64.
 REM
 REM Each suite is its own program. The monitor's tests make deliberate mistakes (double free,
 REM writing before an allocation) and that output does not belong in the demo. The ECS tests
@@ -61,7 +62,11 @@ if not "%RC%"=="0" (
 
 :configured
 
-cmake --build --preset %PLAT%-%CFG% --target MemoryMonitorTests EcsTests ArenaTests PhysicsTests
+REM GpuTests needs Vulkan, which only the x64 tree builds
+set "TARGETS=MemoryMonitorTests EcsTests ArenaTests PhysicsTests"
+if /i "%PLAT%"=="x64" set "TARGETS=%TARGETS% GpuTests"
+
+cmake --build --preset %PLAT%-%CFG% --target %TARGETS%
 set "RC=%errorlevel%"
 if not "%RC%"=="0" (
     echo   BUILD FAILED

@@ -1,11 +1,13 @@
 # Roadmap
 
-**Last updated:** 2026-11-14.
+**Last updated:** 2026-11-16.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
 
-Every block uses one table, `# | builds | why | status`. Notes under a table are free form. A row's
+Every block uses one table, `# | builds | why | status`. Notes under a table are free form. A row
+must be worth having on its own. The steps of one feature are one row, and the notes under the table
+hold its outline considerations; the full step list waits for PLAN.md. A row's
 status is **to-do**, or **in progress** once its block has moved to PLAN.md. A finished row leaves
 this file.
 
@@ -202,57 +204,49 @@ means a step of that plan.
 
 ### Skybox
 
-From the skybox and ImGui prototype, 2026-11-14 (branch `prototype/ui`, worktree
-`../2026_GameEngines5-ui`). The space behind the meshes shows a flat clear colour. A skybox paints it
-with a cube map that turns with the camera and never moves with it. The prototype drew it in Scene1
-with no validation errors, through a sky checkbox and a tall resize. Estimate: 2 to 3 sessions.
-
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | A depth compare field in `PipelineSettings`, and a pipeline with no vertex attributes | `Pipeline.cpp` hard-codes `VK_COMPARE_OP_LESS` and always sets one vertex binding. The sky needs `LESS_OR_EQUAL` and reads no vertex buffer | to-do |
-| 2 | `skybox.vert` and `skybox.frag`: one triangle over the screen at depth 1.0, its direction from the inverse projection and the view's rotation | No cube mesh and no vertex buffer. The view's translation is never used, so the sky never moves with the camera | to-do |
-| 3 | A cube map image: 6 layers, `CUBE_COMPATIBLE`, a cube view and a clamped sampler, uploaded from six files in one staging buffer | `Texture` is 2D with one layer. The six faces go in Vulkan's layer order: +X, -X, +Y, -Y, +Z, -Z | to-do |
-| 4 | The sky's descriptor set: one cube map sampler at set 1, binding 0 | Set 0, the camera, is shared with the other pipelines. Open: does it live with the cube map class or apart | to-do |
-| 5 | The sky pipeline, built from `SkyboxPipelineSettings`, owned by `VulkanRenderer` next to the mesh and line pipelines | The renderer owns every pipeline, and a scene never holds a Vulkan type (architecture rule 1). Not decided yet: the design talk stopped at decision a | to-do |
-| 6 | A sky pass in `FrameLoop`, after the mesh pass and before the line pass | Drawn after the meshes, the sky shades only the pixels they left at depth 1.0 | to-do |
-| 7 | Six face images, with a check of which way each face points | The prototype made procedural faces with a red mark on -Z, so the facing was right by construction | to-do |
-| 8 | Who picks the sky and turns it on or off: the scene, or the app | The prototype used a public bool on the renderer and an ImGui checkbox | to-do |
+| 1 | A skybox: a cube map drawn behind the meshes, which turns with the camera and never moves with it | The space behind the meshes shows a flat clear colour | in progress |
 
-**Things to watch out for**, from the prototype:
+From the skybox and ImGui prototype, 2026-11-14 (branch `prototype/ui`, worktree
+`../2026_GameEngines5-ui`), which drew a sky in Scene1 with no validation errors. Estimate: 2 to 3
+sessions. PLAN.md holds the design.
 
-- **Barriers over 6 layers.** `RecordImageBarrier` changes layer 0 only. The cube map's barriers need
-  `layerCount = 6`, or 5 faces stay in the wrong layout.
-- **Mirrored downloads.** Most skybox packs follow OpenGL's cube map convention. In this engine they
-  may show up mirrored, so plan a face swap or a flip, and check with a marked face.
-- **Depth 1.0 exactly.** The vertex shader writes `z = w`, so the sky lands on the cleared depth.
-  `LESS` would throw every sky pixel away; it must be `LESS_OR_EQUAL`, with depth write off.
-- **Clamp, not repeat.** A repeating sampler can bleed the opposite edge into a face's seam.
-- **sRGB faces.** The images load as `R8G8B8A8_SRGB`, like `Texture`, so the shader gets linear values.
-- **Rotation only.** `transpose(mat3(view))` undoes the view's rotation only while the view holds no
-  scale. The fly camera holds none.
-- **Lines after the sky.** Debug lines write no depth, so they must draw after the sky, or the sky
-  paints over them.
+Outline considerations:
+
+- No cube mesh: one triangle over the screen at depth 1.0, its direction from the camera.
+- A 6-layer cube map image from six files, with barriers over all 6 layers.
+- Depth compare `LESS_OR_EQUAL` with depth write off, or the sky loses to the cleared depth.
+- Drawn after the meshes and before the debug lines, which write no depth.
+- Downloaded packs may show up mirrored, so check the facing with a marked test sky.
 
 ### ImGui debug UI
 
-From the same prototype, 2026-11-14. Debug panels drawn over the game: stats, toggles, tuning values.
-The prototype used Dear ImGui 1.92.0 with its official backends, `imgui_impl_vulkan` and
-`imgui_impl_sdl3`, compiled into the game. It drew a panel in Scene1, took a click without moving the
-camera, and survived a resize. Estimate: 1 to 2 sessions. Comes before the game UI below, so the panels
-can tune it.
-
-The Khronos tutorial (Building a Simple Engine, GUI chapter) writes its own renderer instead of
-`imgui_impl_vulkan`, and leaves out its pipeline and shaders. That path is 4 to 6 sessions; it is
-row 6, kept for later.
-
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | ImGui's core files and the SDL3 and Vulkan backends in `external/imgui`, compiled into the game | They ship as source files, not a library. Pin a release newer than 1.92.0 if it fixes the flush bug below | to-do |
-| 2 | `UserInterfaceContext` in `app`: creates the ImGui context and starts `imgui_impl_sdl3`. A member of `Application` declared before the renderer | The context must exist before the Vulkan backend starts and outlive it, and member order gives both | to-do |
-| 3 | `ImGuiRenderer` in `vulkan`: starts `imgui_impl_vulkan` with dynamic rendering and the swapchain's colour format, records the draw data. `GPUContext` gains `GetInstance()` | Keeps every ImGui Vulkan call inside `vulkan/` (architecture rule 1). `DrawFrame` takes an `ImDrawData*`, an ImGui type, not a Vulkan one | to-do |
-| 4 | A second command buffer per frame slot for the UI, submitted in the same `vkQueueSubmit2` after the scene's | The scene buffer stops before the present transition. The UI buffer starts with a memory barrier, renders with `LOAD` and no depth, then moves the image to present. A barrier orders work from earlier buffers in the same submit, so no semaphore is needed | to-do |
-| 5 | Input order in `Application`: app keys first, then `ImGui_ImplSDL3_ProcessEvent`, then `InputState`, gated by `WantCaptureKeyboard` and `WantCaptureMouse` | Player commands and systems read `InputState`, so one gate covers them all (architecture rule 8). App keys before the gate, so the UI never swallows F1 to F5 | to-do |
-| 6 | Later: replace `imgui_impl_vulkan` with an own renderer on the game UI's 2D pipeline | For the learning. ImGui's vertex (`ImDrawVert`: 2D position, UV, packed colour) can be the game UI's vertex, so one 2D pipeline draws both. No speed gain at this scale | to-do |
+| 1 | Dear ImGui debug panels over the game, with its official `imgui_impl_vulkan` and `imgui_impl_sdl3` backends | Stats, toggles and tuning values on screen, without a key for each one. Comes before the game UI below, so the panels can tune it | to-do |
+| 2 | Later: an own renderer in place of `imgui_impl_vulkan`, on the game UI's 2D pipeline | For the learning. No speed gain at this scale | to-do |
+
+From the same prototype, 2026-11-14. It used Dear ImGui 1.92.0, drew a panel in Scene1, took a click
+without moving the camera, and survived a resize. Estimate: row 1, 1 to 2 sessions; row 2, 4 to 6
+sessions.
+
+Outline considerations for row 1:
+
+- ImGui ships as source files: its core and the two backends go in `external/imgui`, compiled into
+  the game.
+- The ImGui context lives in `app`, as a member of `Application` declared before the renderer, so it
+  starts before the Vulkan backend and outlives it.
+- Every ImGui Vulkan call stays inside `vulkan/` (architecture rule 1). `DrawFrame` takes an
+  `ImDrawData*`, an ImGui type, not a Vulkan one. `GPUContext` needs a `GetInstance()`.
+- The prototype drew the UI from a second command buffer per frame slot, in the same submit after the
+  scene's, with a barrier in between and no semaphore.
+- Input order: app keys first, then ImGui's events, then `InputState`, gated by `WantCaptureKeyboard`
+  and `WantCaptureMouse`. One gate covers every system (architecture rule 8).
+
+For row 2: the Khronos tutorial (Building a Simple Engine, GUI chapter) writes its own renderer but
+leaves out its pipeline and shaders. ImGui's vertex (`ImDrawVert`: 2D position, UV, packed colour)
+can be the game UI's vertex, so one 2D pipeline draws both.
 
 **Things to watch out for**, from the prototype:
 
@@ -273,20 +267,25 @@ row 6, kept for later.
 
 ### Game UI
 
-From the UI talk after the prototype, 2026-11-14. The UI players see: a HUD (health icons, counters),
-menus and text, as in the Hollow Knight-like prototype. Built in house, not with middleware. To be
-designed; the rows are the outline only. Estimate, a guess: 4 to 8 sessions for a usable HUD and
-menus. Needs the ImGui block first, for tuning.
-
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | A 2D pipeline: textured, coloured quads with an orthographic projection, drawn in the UI command buffer before ImGui | ImGui then stays on top. Use `ImDrawVert`'s layout, so ImGui row 6 can share the pipeline | to-do |
-| 2 | A UI quad list built each frame, as the `DrawList` is: texture, position, size, UV rectangle, colour | The game describes what to draw; the renderer draws it. No Vulkan type in game code | to-do |
-| 3 | Sprite atlases: one texture holding many HUD pieces, picked by UV rectangle | `Texture` already loads PNGs, so no new image parsing. One texture means fewer binds | to-do |
-| 4 | Anchors: a position relative to a screen corner or the centre | The HUD follows a resize | to-do |
-| 5 | Text from a font atlas baked with `stb_truetype` | One quad per letter, drawn by the same pipeline | to-do |
-| 6 | Menus: a state machine of screens and a selected button, fed by `InputState` | A controller and a keyboard work the same way | to-do |
-| 7 | Animation: flipbooks (frames over time change the UV rectangle) and tweens (a value from A to B with an easing curve) | A health icon breaking is a flipbook; one popping in is a tween. Both only feed quad fields, so the renderer does not change | to-do |
+| 1 | A HUD: textured, coloured quads on screen, anchored to a screen corner or the centre | Players see health icons and counters, and the HUD follows a resize | to-do |
+| 2 | Sprite atlases: one texture holding many HUD pieces, picked by UV rectangle | One texture means fewer binds. `Texture` already loads PNGs, so no new image parsing | to-do |
+| 3 | Text from a font atlas baked with `stb_truetype` | Counters and labels as text, one quad per letter, drawn by the HUD's pipeline | to-do |
+| 4 | Menus: a state machine of screens and a selected button, fed by `InputState` | A controller and a keyboard work the same way | to-do |
+| 5 | Animation: flipbooks (frames over time change the UV rectangle) and tweens (a value from A to B with an easing curve) | A health icon breaking is a flipbook; one popping in is a tween | to-do |
+
+From the UI talk after the prototype, 2026-11-14. The UI players see, as in the Hollow Knight-like
+prototype. Built in house, not with middleware. Estimate, a guess: 4 to 8 sessions for a usable HUD
+and menus. Needs the ImGui block first, for tuning. Rows 2 to 5 each build on row 1.
+
+Outline considerations:
+
+- Row 1 needs a 2D pipeline with an orthographic projection, drawn in the UI command buffer before
+  ImGui, so ImGui stays on top. Using `ImDrawVert`'s layout lets ImGui row 2 share it.
+- The game fills a UI quad list each frame, as it fills the `DrawList`: texture, position, size, UV
+  rectangle, colour. No Vulkan type in game code.
+- Flipbooks and tweens only feed quad fields, so animation needs no renderer change.
 
 Open for the design talk: whether UI elements become ECS entities with `UIQuad`, `Flipbook` and
 `Tween` components and systems that advance them; where layouts live (code first, a data file later);

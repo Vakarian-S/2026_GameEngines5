@@ -37,9 +37,10 @@ public:
     * @param lighting the scene's lights. More than kMaxLights throws
     * @param drawList what to draw this frame
     * @param debugLines the line vertices for this fram
+    * @param sky skybox handle to render, it can be null
     */
     void DrawFrame(const Camera& camera, const SceneLighting& lighting, const DrawList& drawList,
-                   const DebugLines& debugLines);
+                   const DebugLines& debugLines, CubeMapHandle sky);
 
 
     ResourceStore& GetResourceStore() { return resourceStore; }
@@ -116,7 +117,8 @@ private:
     bool shadowsEnabled = true;
     /** Pipeline used to draw the debug lines */
     Pipeline linePipeline;
-
+    /** Pipeline used to draw the skybox cubemap */
+    Pipeline skyPipeline;
     /** Line buffers that will be used for the linePipeline */
     LineBuffers lineBuffers;
 

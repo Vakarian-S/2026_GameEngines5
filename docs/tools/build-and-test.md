@@ -1,13 +1,13 @@
 # Build and test
 
-**Last updated:** 2026-11-14.
+**Last updated:** 2026-11-17.
 
 How the repository is laid out, how to build it, how to run its checks, and how to run the game from
 a script. Taking MemoryMonitor into another project is in tools/memory-monitor.md.
 
 ## Layout
 
-Eight programs and one library.
+Nine programs and one library.
 
 | Target | Kind | Holds |
 |---|---|---|
@@ -17,6 +17,7 @@ Eight programs and one library.
 | `EcsTests` | program | `tests/EcsTests.cpp`, the ECS checks |
 | `ArenaTests` | program | `tests/ArenaTests.cpp`, the arena's checks |
 | `PhysicsTests` | program | `tests/PhysicsTests.cpp`, the physics math's checks: the ray, the quadratic solver, the ray-shape tests, the rigid-body math, and the per-axis scale math |
+| `GpuTests` | program | `tests/GpuTests.cpp`, the checks for Vulkan classes that need a real GPU: today `CubeMap`. x64 only |
 | `ArenaDemo` | program | `demo/ArenaDemo.cpp`, the same work on the heap and from an arena |
 | `EcsBench` | program | `bench/EcsBench.cpp`, a load for the profiler |
 | `MathLibrary` | static library | `external/MathLibrary/include/` |
@@ -93,7 +94,7 @@ From the project root in PowerShell:
 ```
 
 This builds the `MemoryMonitorTests`, `EcsTests`, `ArenaTests` and `PhysicsTests` targets with CMake and runs them
-through CTest in Debug and Release, for x64 and Win32. It configures a build tree first if there is not one already. CTest
+through CTest in Debug and Release, for x64 and Win32. On x64 it also builds and runs `GpuTests`. It configures a build tree first if there is not one already. CTest
 prefixes each line of the program's own output with `1:`.
 
 To run the tests without the script, against a tree that is already configured:
@@ -119,7 +120,8 @@ next to the setting.
 Each test starts with a `TEST CASE:` header and one plain line saying what it checks. Debug runs 81 checks. Release runs 42, because the checks that need a check value or the leak list are skipped there.
 
 `EcsTests`, `ArenaTests` and `PhysicsTests` are their own programs, registered with CTest next to
-`MemoryMonitorTests`, so `ctest --preset x64-Debug` runs all four. `EcsTests` runs 348 checks in
+`MemoryMonitorTests`, so `ctest --preset Win32-Debug` runs all four, and `ctest --preset x64-Debug`
+runs those four and `GpuTests`. `EcsTests` runs 348 checks in
 every configuration (2026-11-13). Some cover core code that needs nothing else: 5 for `FixedStep`,
 the frame time stats, 11 for the GPU timestamp math in `core/TimestampMath.h`, and 11 for
 `AlignUp` in `core/AlignUp.h`. `ArenaTests` runs 73 in Debug and 72 in Release, because the check that reads
@@ -132,6 +134,15 @@ sphere, box, can and capsule, `ToLocalRay`, `MakePickRay`, and from 4c the force
 orientation, inertia per shape, grip, the spin limit and `MouseConstraint`, and from the non-uniform
 scale work the per-component math in `core/VectorMath.h`, a box scaled on one axis, per-axis
 inertia and `NormalMatrix`. Floats are compared with `Near`, within `1e-4`.
+
+`GpuTests` needs a GPU and a desktop session, because it opens a hidden SDL window to give
+`GPUContext` its surface. Only the x64 tree builds Vulkan, so it is x64 only. While a check runs, the
+test sends `std::cerr` into a string, and a validation `[WARNING]` or `[ERROR]` in it fails the check.
+Release has no validation layers, so there the same checks only test what the code returns and
+throws. It runs 9 checks in both configurations (2026-11-17): one folder of six 4x4 faces loads
+cleanly, and a face of the wrong size, a face that is not square and a missing face each throw with
+the file's name. Its images live in `tests/assets/cubemaps/`, and a POST_BUILD step copies them next
+to the executable as `tests/assets/...`.
 
 Four of the tests start threads: they hammer the counters and the leak list from 4 threads at once, ask for reports while that happens, and race two frees on the same block. They repeat their work 3 times per run. Timing bugs do not show up every run, so it is worth running the tests a few times in a row.
 
@@ -225,6 +236,7 @@ ROADMAP.md, "Automated game tests", moves this inside the engine.
 
 ## Files
 
-- `scripts/run-tests.bat`: builds and runs the four test programs.
+- `scripts/run-tests.bat`: builds and runs the four test programs, and `GpuTests` on x64.
+- `tests/GpuTests.cpp` and `tests/assets/cubemaps/`: the GPU checks and their face images.
 - `scripts/capture-output.sh`: the refactor check above.
 - `scripts/run-game.ps1`: runs the game from a script.

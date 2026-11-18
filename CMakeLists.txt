@@ -262,6 +262,34 @@ if (GE5_PLATFORM STREQUAL "x64")
     add_custom_target(Assets DEPENDS ${ASSET_COPIES} SOURCES ${ASSET_SOURCES})
     add_dependencies(GameEngines5 Assets)
 
+    # ============================== GpuTests ==============================
+    #
+    # Tests for the Vulkan classes that need a real GPU. A hidden SDL window gives GPUContext
+    # its surface. It compiles only the engine files those classes reach, so it builds fast.
+    #
+    # Its test images live under tests/assets/ and are copied next to the executable after
+    # each build, as tests/assets/..., so they never mix with the game's assets.
+
+    add_executable(GpuTests
+            tests/GpuTests.cpp
+            src/core/Paths.cpp
+            src/vulkan/Buffer.cpp
+            src/vulkan/CubeMap.cpp
+            src/vulkan/GPUContext.cpp
+            src/vulkan/ImageBarrier.cpp
+            src/vulkan/StbImage.cpp
+            src/vulkan/TemporaryCommandBuffers.cpp
+    )
+    target_include_directories(GpuTests PRIVATE include)
+    target_include_directories(GpuTests SYSTEM PRIVATE external/stb)
+    target_link_libraries(GpuTests PRIVATE SDL3::SDL3 Vulkan::Vulkan)
+    ge5_apply_common_settings(GpuTests)
+    add_custom_command(TARGET GpuTests POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/assets" "${GE5_OUTPUT_DIR}/tests/assets"
+            VERBATIM
+    )
+
 else ()
 
     message(STATUS
@@ -415,3 +443,7 @@ add_test(NAME MemoryMonitorTests COMMAND MemoryMonitorTests)
 add_test(NAME EcsTests COMMAND EcsTests)
 add_test(NAME ArenaTests COMMAND ArenaTests)
 add_test(NAME PhysicsTests COMMAND PhysicsTests)
+# GpuTests exists only where the engine builds, which is x64
+if (TARGET GpuTests)
+    add_test(NAME GpuTests COMMAND GpuTests)
+endif ()

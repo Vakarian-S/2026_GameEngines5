@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "Light.h"
+#include "Handles.h"
 
 struct Camera;
 struct InputState;
@@ -56,6 +57,12 @@ public:
      * @return Struct containing the light on the scene, which is ambient and a collection of lights
      */
     virtual SceneLighting GetLighting() const = 0;
+    
+    /**
+     * @return Struct containing the Cubemap Handle on the scene, which is the skybox, it can be null as scenes
+     * could not have a skybox
+     */
+    virtual CubeMapHandle GetSky () const { return {}; }
 
     /**
      * @return Instance of the scene's own World

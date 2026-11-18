@@ -79,6 +79,14 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     std::cout << "lighting: " << kSchemes[activeScheme].name << ". Keys 1 to " << kSchemes.size() << " switch\n";
     PROFILE_SCOPE_ECS(world, "OnCreate");
 
+    /* Skyboxes */
+    for (size_t i = 0; i < kSchemes.size(); ++i)
+    {
+        if (!kSchemes[i].skybox) continue;
+        const CubeMapHandle handle = resourceLoader.CreateCubemap(kSchemes[i].skybox);
+        skyboxSchemes[i] = handle;
+    }
+
     const TextureHandle floorTexture = resourceLoader.CreateTexture("assets/textures/floor_grey.png");
 
     EireneMesh = resourceLoader.CreateMesh("assets/meshes/eirene.obj");
@@ -174,15 +182,17 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     };
     constexpr float fallenScale = 0.06f;
     constexpr float fallenRest = 4.776f * fallenScale;
-    for (const FallenColumn& fallen : {FallenColumn{MATH::Vec3(-2.4f, 0.0f, 1.3f), 20.0f},
-                                       FallenColumn{MATH::Vec3(1.9f, 0.0f, 2.2f), -35.0f}})
+    for (const FallenColumn& fallen : {
+             FallenColumn{MATH::Vec3(-2.4f, 0.0f, 1.3f), 20.0f},
+             FallenColumn{MATH::Vec3(1.9f, 0.0f, 2.2f), -35.0f}
+         })
     {
         world.CreateEntity(
             Transform{
                 .position = MATH::Vec3(fallen.place.x, kFloorTop + fallenRest, fallen.place.z),
                 .scale = MATH::Vec3(fallenScale, fallenScale, fallenScale),
                 .orientation = MATH::QMath::angleAxisRotation(fallen.yaw, MATH::Vec3(0.0f, 1.0f, 0.0f)) *
-                               MATH::QMath::angleAxisRotation(90.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
+                MATH::QMath::angleAxisRotation(90.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
             },
             Renderable{columnMesh, columnMaterial}
         );
@@ -195,10 +205,12 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
         MATH::Vec3 size;
         float yaw;
     };
-    for (const RubbleBlock& block : {RubbleBlock{MATH::Vec3(1.8f, 0.0f, -3.2f), MATH::Vec3(0.6f, 0.4f, 0.5f), 15.0f},
-                                     RubbleBlock{MATH::Vec3(-1.6f, 0.0f, -3.5f), MATH::Vec3(0.8f, 0.3f, 0.5f), -20.0f},
-                                     RubbleBlock{MATH::Vec3(3.0f, 0.0f, 0.8f), MATH::Vec3(0.4f, 0.4f, 0.4f), 40.0f},
-                                     RubbleBlock{MATH::Vec3(-3.2f, 0.0f, 4.0f), MATH::Vec3(0.5f, 0.35f, 0.7f), 10.0f}})
+    for (const RubbleBlock& block : {
+             RubbleBlock{MATH::Vec3(1.8f, 0.0f, -3.2f), MATH::Vec3(0.6f, 0.4f, 0.5f), 15.0f},
+             RubbleBlock{MATH::Vec3(-1.6f, 0.0f, -3.5f), MATH::Vec3(0.8f, 0.3f, 0.5f), -20.0f},
+             RubbleBlock{MATH::Vec3(3.0f, 0.0f, 0.8f), MATH::Vec3(0.4f, 0.4f, 0.4f), 40.0f},
+             RubbleBlock{MATH::Vec3(-3.2f, 0.0f, 4.0f), MATH::Vec3(0.5f, 0.35f, 0.7f), 10.0f}
+         })
     {
         world.CreateEntity(
             Transform{

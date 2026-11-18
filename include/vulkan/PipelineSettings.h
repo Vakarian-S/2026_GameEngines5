@@ -20,6 +20,13 @@ PipelineSettings MeshPipelineSettings(VkDescriptorSetLayout frameSet, VkDescript
 PipelineSettings RayQueryMeshPipelineSettings(VkDescriptorSetLayout frameSet, VkDescriptorSetLayout materialSet);
 
 /**
+ * The settings for the Skybox Pipeline: A cubemap sampler
+ * @param frameSet the layout of set 0: the camera and the cubemap
+ * @return the filled settings, ready for the Pipeline constructor
+ */
+PipelineSettings SkyboxPipelineSettings(VkDescriptorSetLayout frameSet);
+
+/**
  * The settings for the debug line pipeline: colored lines
  * @param frameSet the layout of set 0: the camera and the lights
  * @return the filled settings, ready for the Pipeline constructor

@@ -49,13 +49,33 @@ void Descriptors::WriteTopLevelAccelerationStructure(uint32_t frameSlot, VkAccel
                            &writeDescriptorSet, 0, nullptr);
 }
 
+void Descriptors::WriteCubeMap(const uint32_t frameSlot, const VkImageView view, const VkSampler sampler) const
+{
+    VkDescriptorImageInfo descriptorImageInfo{};
+    descriptorImageInfo.sampler = sampler;
+    descriptorImageInfo.imageView = view;
+    descriptorImageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkWriteDescriptorSet writeDescriptorSet{};
+    writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSet.dstSet = descriptorSets[frameSlot];
+    writeDescriptorSet.dstBinding = kCubeMapBinding;
+    writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writeDescriptorSet.descriptorCount = 1;
+    writeDescriptorSet.pImageInfo = &descriptorImageInfo;
+
+    vkUpdateDescriptorSets(gpuContext.GetDevice(), 1,
+                           &writeDescriptorSet, 0, nullptr);
+}
+
 /* ============= 1. Set Layout ============= */
 /* The shape of a set. It says what sits at each binding number, and holds no data */
 void Descriptors::CreateLayout()
 {
-    /* One layout binding per row of kUniformBindings. Row i becomes binding i */
-    /* One extra binding for our TLAS */
-    std::array<VkDescriptorSetLayoutBinding, kUniformBindings.size() + 1> layoutBindings{};
+    /* Layout Bindings: */
+    /* 0 + 1: Camera, Light. 2: Ray Queries. 3: Skybox Cubemap */
+    std::array<VkDescriptorSetLayoutBinding, kUniformBindings.size() + 2> layoutBindings{};
+    uint32_t bindingCount = static_cast<uint32_t>(kUniformBindings.size());
     for (uint32_t binding = 0; binding < kUniformBindings.size(); ++binding)
     {
         /* binding is the number the shader uses: layout (set = 0, binding = N) */
@@ -68,16 +88,28 @@ void Descriptors::CreateLayout()
         layoutBindings[binding].stageFlags = kUniformBindings[binding].stages;
     }
 
-    /* TLAS Setup */
-    layoutBindings[kUniformBindings.size()].binding = kTopLevelAccelerationStructureBinding;
-    layoutBindings[kUniformBindings.size()].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    layoutBindings[kUniformBindings.size()].descriptorCount = 1;
-    layoutBindings[kUniformBindings.size()].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    if (gpuContext.SupportsRayQuery())
+    {
+        /* TLAS Setup */
+        layoutBindings[bindingCount].binding = kTopLevelAccelerationStructureBinding;
+        layoutBindings[bindingCount].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        layoutBindings[bindingCount].descriptorCount = 1;
+        layoutBindings[bindingCount].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        bindingCount++;
+    }
+
+
+    /* Cubemap Skybox Setup */
+    layoutBindings[bindingCount].binding = kCubeMapBinding;
+    layoutBindings[bindingCount].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    layoutBindings[bindingCount].descriptorCount = 1;
+    layoutBindings[bindingCount].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    bindingCount++;
+
 
     VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo{};
     descriptorSetLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(
-        gpuContext.SupportsRayQuery() ? layoutBindings.size() : kUniformBindings.size());
+    descriptorSetLayoutCreateInfo.bindingCount = static_cast<uint32_t>(bindingCount);
     descriptorSetLayoutCreateInfo.pBindings = layoutBindings.data();
 
     if (vkCreateDescriptorSetLayout(gpuContext.GetDevice(), &descriptorSetLayoutCreateInfo, nullptr,
@@ -91,20 +123,30 @@ void Descriptors::CreateLayout()
 /* The memory that sets come from. Its size is fixed here: how many sets, and how many descriptors of each type */
 void Descriptors::CreateDescriptorPool()
 {
-    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    std::array<VkDescriptorPoolSize, 3> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     /* Every set holds one uniform buffer descriptor per binding, and there is one set per frame slot */
     poolSizes[0].descriptorCount = static_cast<uint32_t>(kUniformBindings.size()) * kMaxFramesInFlight;
+    uint32_t poolSizeCount = 1u;
 
     /* TLAS Pool */
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-    poolSizes[1].descriptorCount = kMaxFramesInFlight;
+    if (gpuContext.SupportsRayQuery())
+    {
+        poolSizes[poolSizeCount].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+        poolSizes[poolSizeCount].descriptorCount = kMaxFramesInFlight;
+        poolSizeCount++;
+    }
+
+    /* Skybox Cubemap Pool */
+    poolSizes[poolSizeCount].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    poolSizes[poolSizeCount].descriptorCount = kMaxFramesInFlight;
+    poolSizeCount++;
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     /* maxSets is the number of sets that can be allocated from the pool */
     poolInfo.maxSets = kMaxFramesInFlight;
-    poolInfo.poolSizeCount = gpuContext.SupportsRayQuery() ? 2u : 1u;
+    poolInfo.poolSizeCount = poolSizeCount;
     poolInfo.pPoolSizes = poolSizes.data();
 
     if (vkCreateDescriptorPool(gpuContext.GetDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)

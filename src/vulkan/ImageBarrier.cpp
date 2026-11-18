@@ -1,8 +1,8 @@
 ﻿#include "vulkan/ImageBarrier.h"
 
 void RecordImageBarrier(const VkCommandBuffer commandBuffer, const VkImage image, const VkImageAspectFlags aspectMask,
-                               const VkImageLayout oldLayout,
-                               const VkImageLayout newLayout, const TransitionMasks& transitionMasks)
+                        const VkImageLayout oldLayout,
+                        const VkImageLayout newLayout, const TransitionMasks& transitionMasks, const uint32_t layerCount)
 {
     VkImageMemoryBarrier2 barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -21,7 +21,7 @@ void RecordImageBarrier(const VkCommandBuffer commandBuffer, const VkImage image
             .baseMipLevel = 0,
             .levelCount = 1,
             .baseArrayLayer = 0,
-            .layerCount = 1
+            .layerCount = layerCount
         }
     };
     const VkDependencyInfo dependencyInfo = {

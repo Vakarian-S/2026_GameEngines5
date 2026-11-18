@@ -207,8 +207,11 @@ void Application::Run()
         lastDebugLineCount = debugLines.size();
         {
             PROFILE_SCOPE("Render");
-            renderer.DrawFrame(sceneManager.GetCurrentScene().GetCamera(),
-                               sceneManager.GetCurrentScene().GetLighting(), drawList, debugLines);
+            renderer.DrawFrame(
+                sceneManager.GetCurrentScene().GetCamera(),
+                sceneManager.GetCurrentScene().GetLighting(), drawList, debugLines,
+                sceneManager.GetCurrentScene().GetSky()
+            );
         }
 
         {

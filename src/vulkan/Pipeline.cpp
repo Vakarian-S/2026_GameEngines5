@@ -64,7 +64,7 @@ void Pipeline::CreateGraphicsPipeline(const PipelineSettings& settings)
     /* How the bytes of a vertex buffer are laid out: the size of one vertex, and where each field sits in it */
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 1;
+    vertexInputInfo.vertexBindingDescriptionCount = settings.vertexInput.attributeDescriptionCount > 0 ? 1 : 0;
     vertexInputInfo.pVertexBindingDescriptions = &settings.vertexInput.bindingDescription;
     vertexInputInfo.vertexAttributeDescriptionCount = settings.vertexInput.attributeDescriptionCount;
     vertexInputInfo.pVertexAttributeDescriptions = settings.vertexInput.attributeDescriptions.data();
@@ -149,8 +149,8 @@ void Pipeline::CreateGraphicsPipeline(const PipelineSettings& settings)
     depthStencilCreateInfo.depthTestEnable = VK_TRUE;
     /* depthWriteEnable controls whether a pixel that passes replaces the stored depth */
     depthStencilCreateInfo.depthWriteEnable = settings.depthTest.write ? VK_TRUE : VK_FALSE;
-    /* depthCompareOp is the comparison. LESS keeps the pixel with the smaller depth, which is the nearer one */
-    depthStencilCreateInfo.depthCompareOp = VK_COMPARE_OP_LESS;
+    /* depthCompareOp is the comparison between a new pixel's depth and the stored depth. A pixel that fails is thrown away */
+    depthStencilCreateInfo.depthCompareOp = settings.depthTest.compare;
     /* depthBoundsTestEnable would also throw away pixels outside a chosen depth range */
     depthStencilCreateInfo.depthBoundsTestEnable = VK_FALSE;
     /* The depth format has no stencil part, so there is nothing to test */

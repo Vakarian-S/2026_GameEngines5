@@ -101,6 +101,14 @@ public:
      */
     void WriteTopLevelAccelerationStructure(uint32_t frameSlot, VkAccelerationStructureKHR handle) const;
 
+    /**
+     * Writes the skybox cubemap into descriptor binding 3 on set 0
+     * @param frameSlot current frame slot to write in, The GPU must have finished that slot's last frame
+     * @param view Image view of the cubemap
+     * @param sampler sampler texture of the cubemap
+     */
+    void WriteCubeMap(uint32_t frameSlot, VkImageView view, VkSampler sampler) const;
+
 private:
     /** What one uniform buffer binding holds. */
     struct UniformBinding
@@ -129,6 +137,8 @@ private:
     static constexpr uint32_t kLightBinding = 1;
     /** The binding number for our TLAS */
     static constexpr uint32_t kTopLevelAccelerationStructureBinding = 2;
+    /** The binding number for the Skybox cubemap */
+    static constexpr uint32_t kCubeMapBinding = 3;
 
     /** Where the device comes from. */
     const GPUContext& gpuContext;

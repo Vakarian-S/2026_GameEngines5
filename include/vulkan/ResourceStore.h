@@ -9,6 +9,7 @@
 #include "Buffer.h"
 #include "GPUContext.h"
 #include "Texture.h"
+#include "CubeMap.h"
 #include "MaterialDescriptors.h"
 #include "Vertex.h"
 #include "AccelerationStructure.h"
@@ -33,7 +34,7 @@ struct Mesh
     Buffer vertexBuffer;
     Buffer indexBuffer;
     uint32_t indexCount;
-        
+
     /** Bottom Level Acceleration Structure for this mesh. Stays null when ray queries are off */
     std::unique_ptr<AccelerationStructure> blas;
 };
@@ -107,6 +108,14 @@ public:
      */
     MaterialHandle CreateMaterial(const MaterialDesc& desc) override;
 
+
+    /**
+     * Loads a set of 6 images into GPU memory as a cube map
+     * @param folderPath The folder containing the 6 images, as a path next to the executable, such as "assets\skyboxes\test"
+     * @return the handle that names the cubemap
+     */
+    CubeMapHandle CreateCubemap(const std::string& folderPath) override;
+
     /**
      * @param material a handle this store returned
      * @return the set that points at that material, which FrameLoop binds as set 1
@@ -115,9 +124,16 @@ public:
 
     /**
      * @param mesh a handle this store returned
-     * @return the mesh it names
+     * @return reference to the mesh it names
      */
     const Mesh& GetMesh(MeshHandle mesh) const;
+
+    /**
+     * 
+     * @param cubemap a handle this store returned
+     * @return Pointer to the cubemap it indexes, or nullptr if there is no sky.
+     */
+    const CubeMap* GetCubemap(CubeMapHandle cubemap) const;
 
 private:
     /** Where the device comes from. */
@@ -137,7 +153,10 @@ private:
 
     /** Every material, in creation order. Declared after textureList, so C++ destroys the materials before the textures they point at */
     std::vector<std::unique_ptr<Material>> materialList;
-    
+
+    /** Every Cubemap, in creation order */
+    std::vector<std::unique_ptr<CubeMap>> cubeMapList;
+
     /** Cache for the cube, we only have one so we store that handle */
     std::optional<MeshHandle> cubeCache;
     /** Cache for the mesh, we search by path */
@@ -146,4 +165,6 @@ private:
     std::unordered_map<std::string, TextureHandle> textureCache;
     /** Cache for the materials, we search by values */
     std::vector<std::pair<MaterialDesc, MaterialHandle>> materialCache;
+    /** Cache for the cubeMaps, we search by folder path */
+    std::unordered_map<std::string, CubeMapHandle> cubeMapCache;
 };

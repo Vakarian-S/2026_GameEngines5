@@ -28,7 +28,8 @@ struct TransitionMasks
  * @param oldLayout the layout the image is in now. UNDEFINED means its contents may be thrown away
  * @param newLayout the layout the image ends up in
  * @param transitionMasks Masks for the image
+ * @param layerCount number of array layers, cubes need 6 of them
  */
 void RecordImageBarrier(VkCommandBuffer commandBuffer, VkImage image, VkImageAspectFlags aspectMask,
                         VkImageLayout oldLayout,
-                        VkImageLayout newLayout, const TransitionMasks& transitionMasks);
+                        VkImageLayout newLayout, const TransitionMasks& transitionMasks, uint32_t layerCount = 1);

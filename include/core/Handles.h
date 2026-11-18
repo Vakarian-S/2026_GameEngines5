@@ -24,3 +24,12 @@ struct MaterialHandle
 {
     uint32_t index;
 };
+
+/**
+ * A handle for a single cubemap in the store
+ */
+struct CubeMapHandle
+{
+    /* UINT32_MAX is to indicate we have no skybox */
+    uint32_t index = UINT32_MAX;
+};

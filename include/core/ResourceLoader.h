@@ -39,4 +39,11 @@ public:
      * @return the handle that names the material in draw items
      */
     virtual MaterialHandle CreateMaterial(const MaterialDesc& desc) = 0;
+
+    /**
+     * Loads a set of 6 images into GPU memory as a cube map
+     * @param folderPath The folder containing the 6 images, as a path next to the executable, such as "assets\skyboxes\test"
+     * @return the handle that names the cubemap
+     */
+    virtual CubeMapHandle CreateCubemap(const std::string& folderPath) = 0;
 };

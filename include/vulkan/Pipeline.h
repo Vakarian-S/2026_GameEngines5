@@ -25,6 +25,7 @@ struct PipelineSettings
         VkVertexInputBindingDescription bindingDescription{};
         /** Only the first attributeDescriptionCount entries are used. */
         std::array<VkVertexInputAttributeDescription, kMaxAttributes> attributeDescriptions{};
+        /** Counts the vertex fields (attributes) if 0, then no vertex buffer is build. */
         uint32_t attributeDescriptionCount = 0;
     } vertexInput;
 
@@ -57,11 +58,13 @@ struct PipelineSettings
         std::string file;
     } fragmentShader;
 
-    /** Step 9 - Depth Test */
+    /** Step 9 - Depth Test */  
     struct DepthTest
     {
         /** Whether a pixel that passes replaces the stored depth. */
         bool write = true;
+        /** Which new pixels pass the depth test. LESS keeps only pixels nearer than the stored depth, and LESS_OR_EQUAL also keeps ties. */
+        VkCompareOp compare = VK_COMPARE_OP_LESS;
     } depthTest;
 
     /** Not a stage: the pipeline layout, which CreatePipelineLayout reads. */

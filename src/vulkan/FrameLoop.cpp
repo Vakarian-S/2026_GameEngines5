@@ -47,7 +47,7 @@ FrameLoop::~FrameLoop()
 
 void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipelines& pipelines,
                           const ResourceStore& resourceStore, const DrawList& drawList, const DebugLines& debugLines,
-                          const CameraUniform& camera, const LightUniform& lights)
+                          const CameraUniform& camera, const LightUniform& lights, const CubeMap* sky)
 {
     /**
     At a high level, rendering a frame in Vulkan consists of a common set of steps:
@@ -80,10 +80,11 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
     topLevelAccelerationStructures.Fill(currentFrame, drawList, resourceStore);
     descriptors.WriteCamera(currentFrame, camera);
     descriptors.WriteLights(currentFrame, lights);
-    descriptors.WriteTopLevelAccelerationStructure(currentFrame, topLevelAccelerationStructures.GetHandle(currentFrame));
+    descriptors.
+        WriteTopLevelAccelerationStructure(currentFrame, topLevelAccelerationStructures.GetHandle(currentFrame));
+    if (sky != nullptr) descriptors.WriteCubeMap(currentFrame, sky->GetImageView(), sky->GetSampler());
     lineBuffers.Write(currentFrame, debugLines);
-    
-    
+
 
     /* ============= 3. Acquire An Image ============= */
     /* Asks the swapchain for an image to draw into, and handles a swapchain that no longer fits the window */
@@ -118,7 +119,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
         /* Times the CPU side of recording: one push and one draw per item. The GPU's work is not in here */
         PROFILE_SCOPE("Record");
         RecordCommandBuffer(imageIndex, clearColor, pipelines, resourceStore, drawList,
-                            static_cast<uint32_t>(debugLines.size()));
+                            static_cast<uint32_t>(debugLines.size()), sky != nullptr);
     }
 
     /* ============= 5. Submit ============= */
@@ -249,7 +250,7 @@ void FrameLoop::CreateSyncObjects()
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
                                     const FramePipelines& pipelines, const ResourceStore& resourceStore,
-                                    const DrawList& drawList, const uint32_t lineVertexCount)
+                                    const DrawList& drawList, const uint32_t lineVertexCount, const bool drawSky)
 {
     /* ============= 1. Begin Recording ============= */
     /* Opens this slot's command buffer. Every vkCmd call below adds to it */
@@ -377,12 +378,16 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
         PROFILE_GPU_SCOPE(gpuQueries, commandBuffer, GPUTimerName::MeshPass);
         RecordMeshPass(commandBuffer, pipelines.meshPipeline, resourceStore, drawList);
     }
+    
+    /* ============= 6. Skybox Pass ============= */
+    /* Draws before the Line pass so debug lines are always on top*/
+    /* Non scoped on the profiler as its a very simple draw */
+    if (drawSky) RecordSkyPass(commandBuffer, pipelines.skyPipeline);
 
-
-    /* ============= 6. Line Pass ============= */
+    /* ============= 7. Line Pass ============= */
     RecordLinePass(commandBuffer, pipelines.linePipeline, lineVertexCount);
 
-    /* ============= 7. Finish ============= */
+    /* ============= 8. Finish ============= */
     /* Ends drawing, readies the colour image for the screen, and closes the command buffer */
     vkCmdEndRendering(commandBuffer);
 
@@ -483,6 +488,22 @@ void FrameLoop::RecordLinePass(const VkCommandBuffer commandBuffer, const Pipeli
 
     /* Every line in one draw: two vertices make one line, one instance */
     vkCmdDraw(commandBuffer, vertexCount, 1, 0, 0);
+}
+
+void FrameLoop::RecordSkyPass(const VkCommandBuffer commandBuffer, const Pipeline& pipeline) const
+{
+    /* From here on, every draw in this command buffer uses the skybox pipeline's settings */
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
+
+    /*
+     * Set 0 again, the same set the mesh and line pass bound. since the layout changes
+     */
+    const VkDescriptorSet descriptorSet = descriptors.GetSet(currentFrame);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 0, 1,
+                            &descriptorSet, 0, nullptr);
+
+    /* Vertex count 3 as we are drawing a triangle */
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 }
 
 void FrameLoop::CreateRenderFinishedSemaphores()

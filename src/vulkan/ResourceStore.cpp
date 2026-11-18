@@ -214,6 +214,13 @@ const Mesh& ResourceStore::GetMesh(const MeshHandle mesh) const
     return *meshList[mesh.index];
 }
 
+const CubeMap* ResourceStore::GetCubemap(const CubeMapHandle cubemap) const
+{
+    if (cubemap.index == UINT32_MAX) return nullptr;
+    assert(cubemap.index < cubeMapList.size());
+    return cubeMapList[cubemap.index].get();
+}
+
 TextureHandle ResourceStore::CreateTexture(const std::string& path)
 {
     if (const auto it = textureCache.find(path); it != textureCache.end()) return it->second;
@@ -250,6 +257,16 @@ MaterialHandle ResourceStore::CreateMaterial(const MaterialDesc& desc)
     materialList.push_back(std::make_unique<Material>(gpuContext, temporaryCommandBuffers, materialDescriptors,
                                                       *textureList[desc.albedo.index], values));
     materialCache.emplace_back(desc, handle);
+    return handle;
+}
+
+CubeMapHandle ResourceStore::CreateCubemap(const std::string& folderPath)
+{
+    if (const auto it = cubeMapCache.find(folderPath); it != cubeMapCache.end()) return it->second;
+    /* The new texture's handle is its position in the list, so read the size before adding it */
+    const CubeMapHandle handle{static_cast<uint32_t>(cubeMapList.size())};
+    cubeMapList.push_back(std::make_unique<CubeMap>(gpuContext, temporaryCommandBuffers, folderPath));
+    cubeMapCache.emplace(folderPath, handle);
     return handle;
 }
 

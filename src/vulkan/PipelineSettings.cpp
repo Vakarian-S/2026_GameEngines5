@@ -13,7 +13,7 @@ PipelineSettings MeshPipelineSettings(const VkDescriptorSetLayout frameSet, cons
     /* A fourth field in Vertex would not fit the fixed array, so the build stops here instead of writing past it */
     static_assert(std::tuple_size_v<decltype(vertexAttributes)> <= PipelineSettings::kMaxAttributes);
 
-    /* Topology, cull mode and depth write keep their defaults, which are the mesh pipeline's values */
+    /* Topology, cull mode, depth write and depth compare keep their defaults, which are the mesh pipeline's values */
     PipelineSettings pipelineSettings{
         .vertexInput = {
             .bindingDescription = Vertex::GetVertexInputBindingDescription(),
@@ -34,11 +34,27 @@ PipelineSettings MeshPipelineSettings(const VkDescriptorSetLayout frameSet, cons
     return pipelineSettings;
 }
 
-PipelineSettings RayQueryMeshPipelineSettings(const VkDescriptorSetLayout frameSet, const VkDescriptorSetLayout materialSet)
+PipelineSettings RayQueryMeshPipelineSettings(const VkDescriptorSetLayout frameSet,
+                                              const VkDescriptorSetLayout materialSet)
 {
     PipelineSettings pipelineSettings = MeshPipelineSettings(frameSet, materialSet);
     pipelineSettings.fragmentShader.file = "shaders/phong_ray_query.frag.spv";
-    return pipelineSettings;   
+    return pipelineSettings;
+}
+
+PipelineSettings SkyboxPipelineSettings(const VkDescriptorSetLayout frameSet)
+{
+    PipelineSettings pipelineSettings{
+        .vertexShader = {.file = "shaders/skybox.vert.spv"},
+        .rasterizer = {.cullMode = VK_CULL_MODE_NONE},
+        .fragmentShader = {.file = "shaders/skybox.frag.spv"},
+        .depthTest = {.write = false, .compare = VK_COMPARE_OP_LESS_OR_EQUAL},
+        .layout = {
+            .setLayouts = {frameSet},
+            .setLayoutCount = 1,
+        },
+    };
+    return pipelineSettings;
 }
 
 PipelineSettings LinePipelineSettings(const VkDescriptorSetLayout frameSet)
