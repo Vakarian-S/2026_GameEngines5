@@ -1,6 +1,6 @@
 # ECS
 
-**Last updated:** 2026-11-05.
+**Last updated:** 2026-11-19.
 
 The ECS design: the settled decisions, the invariants, the rules for systems and phases, and the
 house rules. The data model lives on the Miro board, under "The diagram".
@@ -171,7 +171,7 @@ writes wins. "The playback rule" below says what a system sees.
 
 **Three habits keep threads possible.** They cost nothing on one thread.
 
-1. A system reaches the world, the buffer and the lists only through `SystemContext`, never
+1. A system reaches the world, the buffer and its resources only through `SystemContext`, never
    through the scene.
 2. A system keeps no shared state across rows, such as a static counter.
 3. The order stays manual. A later scheduler may run neighbours side by side when they do not

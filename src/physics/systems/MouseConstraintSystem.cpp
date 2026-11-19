@@ -2,6 +2,7 @@
 
 #include "core/Components.h"
 #include "ecs/Archetype.h"
+#include "ecs/DeltaTime.h"
 #include "ecs/SystemContext.h"
 #include "physics/Components.h"
 #include "physics/RigidBody.h"
@@ -26,7 +27,7 @@ MouseConstraintSystem::MouseConstraintSystem(World& world) :
 
 void MouseConstraintSystem::Run(const SystemContext& context)
 {
-    const float deltaTime = context.deltaTime;
+    const float deltaTime = context.Get<DeltaTime>().seconds;
     entities.ForEachChunk([&](ChunkView chunk)
     {
         const Transform* transforms = chunk.Column<Transform>();

@@ -148,7 +148,7 @@ trivially copyable types, `kVerySmall`), and 4b deleted parts of it.
 ### Frustum culling and transforms
 
 These three changes need culling, or the ECS hardening above, before they pay off. The camera already
-reaches systems: `SystemContext` has carried a `const Camera*` since step 4b.
+reaches systems: it is a resource, read with `context.Get<Camera>()`.
 
 | # | builds | why | status |
 |---|---|---|---|

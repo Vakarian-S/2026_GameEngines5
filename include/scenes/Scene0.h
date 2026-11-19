@@ -20,7 +20,7 @@ public:
     void Update(float deltaTime, const InputState& input) override;
 
     /** @return this scene's world, so Main can read its counters */
-    const World& GetWorld() const override { return world; }
+    World& GetWorld() override { return world; }
 
     /** @return the camera this scene is seen through */
     const Camera& GetCamera() const override { return camera; }

@@ -2,6 +2,7 @@
 
 #include "core/Components.h"
 #include "ecs/Archetype.h"
+#include "ecs/DeltaTime.h"
 #include "ecs/SystemContext.h"
 #include "physics/Components.h"
 #include "physics/RigidBody.h"
@@ -14,7 +15,7 @@ UpdatePositionSystem::UpdatePositionSystem(World& world) :
 
 void UpdatePositionSystem::Run(const SystemContext& context)
 {
-    const float deltaTime = context.deltaTime;
+    const float deltaTime = context.Get<DeltaTime>().seconds;
     movers.ForEachChunk([&](ChunkView chunk)
     {
         Transform* transform = chunk.Column<Transform>();

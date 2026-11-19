@@ -1,6 +1,6 @@
 # State
 
-**Last updated:** 2026-11-18.
+**Last updated:** 2026-11-19.
 
 What the engine has today, and the architecture rules that hold everywhere. Read this first.
 
@@ -27,11 +27,11 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 
 | part | what it does | where | details |
 |---|---|---|---|
-| ECS | Archetype storage in fixed-size chunks (16 KB by default) from the World's `ChunkPool`. Each chunk holds every column for a range of rows. Systems loop with `Query::ForEachChunk`, which hands them one `ChunkView` per chunk. `CreateEntity(values...)` puts a new entity straight in its final archetype, in the World and through the command buffer. `World::Clear` empties every archetype in one call and keeps the archetypes, so a respawn reuses their chunks. Dead entity slots form a free list inside the slot table, linked through each dead slot's `row`. A `DEBUG::DebugWatch` tag stops the debugger in every system that reaches the tagged entity, or in one named system. Queries with a cached match list, a command buffer for structural changes, per-frame counters (`WorldFrameStats`), chunk takes and returns included. Single threaded | `include/ecs` | ECS.md; dev-notes/ecs-chunks.md, create-with-components.md, clear-the-world.md, intrusive-free-list.md, entity-breakpoints.md |
+| ECS | Archetype storage in fixed-size chunks (16 KB by default) from the World's `ChunkPool`. Each chunk holds every column for a range of rows. Systems loop with `Query::ForEachChunk`, which hands them one `ChunkView` per chunk. `CreateEntity(values...)` puts a new entity straight in its final archetype, in the World and through the command buffer. `World::Clear` empties every archetype in one call and keeps the archetypes, so a respawn reuses their chunks. Dead entity slots form a free list inside the slot table, linked through each dead slot's `row`. A `DEBUG::DebugWatch` tag stops the debugger in every system that reaches the tagged entity, or in one named system. Queries with a cached match list, a command buffer for structural changes, per-frame counters (`WorldFrameStats`), chunk takes and returns included. Each World also owns a `Resources` store: one value per type, up to 64, each built in its own block from the World's arena. Systems read a value with `SystemContext::Get<T>()`. The engine refreshes the time, the input, the camera and the draw list and debug line targets there with `Set<T>`. `Insert<T>(args...)` builds a value that cannot be copied, such as a socket. `World::Clear` leaves resources alone. Single threaded | `include/ecs` | ECS.md; dev-notes/ecs-chunks.md, create-with-components.md, clear-the-world.md, intrusive-free-list.md, entity-breakpoints.md |
 | Systems and phases | Each scene owns a `SystemRegistry` and adds its systems in `OnCreate`. Phases run in order: Fixed (a 1/60 s `FixedStep`, 0 or more times a frame), Update, Extract. The command buffer plays back after each phase. `SetEnabled` switches a system off | `include/ecs`, `include/core/FixedStep.h` | ECS.md, dev-notes/systems-and-phases.md |
 | Components and systems | Split by module, each with a `Components.h` and a `systems/` folder: `core` (transform, drawing), `physics` (motion, colliders, picking), `game` (Scene0's test load, and the Pacing Scene's row tags, `SlideRightSystem` and `LoadSystem`) | `include/core`, `include/physics`, `include/game` | the headers |
 | Transform | One component: position, a scale per axis (default `(1, 1, 1)`), a quaternion orientation. `ModelMatrix` is the one place translate × rotate × scale is built, and `NormalMatrix` builds the cofactor matrix that keeps normals right under uneven scale | `include/core/Components.h` | dev-notes/transform.md, dev-notes/non-uniform-scale.md |
-| Input | `InputState`: keys held and pressed, mouse buttons held and pressed, the mouse position and the window size. Systems read it through `SystemContext` | `include/core/InputState.h` | dev-notes/physics-scene.md |
+| Input | `InputState`: keys held and pressed, mouse buttons held and pressed, the mouse position and the window size. `Application` sets it once a frame, and systems read it with `context.Get<InputState>()` | `include/core/InputState.h` | dev-notes/physics-scene.md |
 | Renderer | Vulkan. Pipelines from `PipelineSettings`: lit meshes (Phong, up to 4 lights, a material per draw), the same with ray query shadows, the sky, and debug lines (one draw for all of them). The scene hands over a camera, lights, a sky, a draw list and debug lines, and never sees a Vulkan type. The present mode is a setting (`include/core/PresentMode.h`): FIFO by default, or FIFO_RELAXED, MAILBOX or IMMEDIATE when the GPU offers them, with FIFO as the fallback. A mode change or a window resize rebuilds the swapchain at the start of the next frame | `include/vulkan`, `include/core/PresentMode.h` | dev-notes/vulkan-renderer.md, dev-notes/present-mode-and-fullscreen.md |
 | Ray query shadows | Hard shadows from one ray per light per lit pixel. `GPUContext` enables ray query only when the GPU has it, and loads the acceleration structure functions. Each `Mesh` holds a BLAS built at load; `TopLevelAccelerationStructures` holds one TLAS per frame slot, filled from the `DrawList` on the CPU and built in the frame's command buffer before rendering. Set 0, binding 2 points at it. `phong.frag` compiles twice, plain and with `RAY_QUERY`; Ctrl+K picks the pipeline. A GPU without ray query draws without shadows | `include/vulkan/AccelerationStructure.h`, `TopLevelAccelerationStructures.h`, `shaders/phong.frag` | dev-notes/ray-query-shadows.md |
 | Skybox | A `CubeMap` (one 6-layer image from a folder of six PNGs, `px` to `nz`) at set 0, binding 3. The sky pass draws one screen triangle at depth 1.0 between the mesh pass and the line pass, its direction from the inverse projection and the view's rotation, with z flipped for the cube map's left-handed convention. A scene picks its sky with `Scene::GetSky()`; the default empty handle means no sky, and the frame shows the clear colour | `include/vulkan/CubeMap.h`, `shaders/skybox.vert`, `shaders/skybox.frag`, `assets/skyboxes/` | dev-notes/skybox.md |
@@ -44,7 +44,7 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 | Frame timing | `Timer` counts nanoseconds with `SDL_GetTicksNS`. `FrameCap` holds a cap (off, 30, 60, 100, half the refresh rate, refresh minus 3) by sleeping with `SDL_DelayNS` to 1 ms before a fixed deadline, then spinning. `FrameTimeStats` sums the frame times once a second, and `Application` puts the line `FIFO \| cap off \| 239.8 fps \| 4.17 ms (min, max)`, plus the GPU times, in the window title and the console. With no cap, FIFO and the display pace the loop | `include/core/Timer.h`, `FrameCap.h`, `FrameTimeStats.h` | dev-notes/frame-cap-and-timer.md, dev-notes/live-fps-and-pacing-scene.md |
 | Physics | Ray picking against four collider shapes, and rigid bodies held by a mouse constraint with inertia per shape. Boxes scale per axis; spheres and capsules need uniform scale, and cylinders x equal to z. Plain free functions in `PHYSICS`, called by the systems | `include/physics` | dev-notes/dangle-physics.md; picking in dev-notes/physics-scene.md |
 | Tools | `MemoryMonitor`, `Profiler`, `Arena` | `include/utils` | tools/ |
-| Tests | `MemoryMonitorTests`, `EcsTests` (with `FixedStep`, `FrameTimeStats`, the timestamp math and `AlignUp`), `ArenaTests`, `PhysicsTests` (with the per-axis scale math and `NormalMatrix`), in x64 and Win32, Debug and Release. `GpuTests` (`CubeMap` on a real GPU, with validation messages as failures), x64 only | `tests/` | tools/build-and-test.md |
+| Tests | `MemoryMonitorTests`, `EcsTests` (with `FixedStep`, `FrameTimeStats`, the timestamp math, `AlignUp` and `Resources`), `ArenaTests`, `PhysicsTests` (with the per-axis scale math and `NormalMatrix`), in x64 and Win32, Debug and Release. `GpuTests` (`CubeMap` on a real GPU, with validation messages as failures), x64 only | `tests/` | tools/build-and-test.md |
 
 ## Architecture rules
 
@@ -52,9 +52,9 @@ What the engine has today, and the architecture rules that hold everywhere. Read
    `app` sees every layer, and only `main` includes `app`. This keeps a second backend possible.
 2. **Modules depend downward only.** `physics` may include `core`, `game` may include both, and `core`
    never includes `physics` or `game`.
-3. **The ECS depends on the standard library only.** Its headers name outside types (`InputState`,
-   `DrawItem`, `LineVertex`) by forward declaration, so the ECS-only targets build without SDL, on
-   Win32 too.
+3. **The ECS depends on the standard library only.** Its headers name no outside type. Per-World data
+   such as input, the camera and the draw lists lives in `Resources`, which only the outer code names,
+   so the ECS-only targets build without SDL, on Win32 too.
 4. **Components are plain, trivially copyable data,** because a migration is a `memcpy`. The math types
    default their copies, so a component may hold them; a hand-written copy breaks `Register<T>()` at
    compile time.
@@ -62,7 +62,8 @@ What the engine has today, and the architecture rules that hold everywhere. Read
    with data hands over its bytes; `T{}` is the default. ECS.md, "Rules of this engine".
 6. **Structural changes go through the command buffer.** They apply at the end of the phase, so later
    phases see them and the same phase never does.
-7. **A system gets everything through `SystemContext`,** never from the scene.
+7. **A system gets everything through `SystemContext`,** never from the scene. A per-World value comes
+   from `context.Get<T>()`.
 8. **Input enters in one place.** `Application` fills `InputState` once per frame. Read presses in
    Update, not Fixed; held state is safe in any phase.
 9. **Math is free functions on plain values.** Systems loop, call and write the result, so the tests run
@@ -73,6 +74,9 @@ What the engine has today, and the architecture rules that hold everywhere. Read
     needs x equal to z: scaled otherwise, each becomes a shape its inertia formula does not describe, and
     a debug build asserts.
 11. **The ECS house rules** from Unreal Mass: ECS.md, appendix.
+12. **Resources live per World, never in a static.** A listen server runs two Worlds in one process.
+    Use `Set` for a value the engine refreshes, and `Insert` for one that is created once. A system
+    reads one with `Get<T>()`, which asserts when it is missing.
 
 ## How to build and test
 

@@ -19,6 +19,9 @@ static_assert(sizeof(LineVertex) == 24);
 /** Two entries of DebugLines make one line */
 using DebugLines = std::pmr::vector<LineVertex>;
 
+/** Pointer to a debug lines list */
+struct DebugLinesTarget { DebugLines* lines = nullptr; };
+
 /**
  * Adds 2 vertices to the given Debug Lines
  * @param lines DebugLines vector to store the vertices

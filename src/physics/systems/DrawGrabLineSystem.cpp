@@ -25,8 +25,8 @@ DrawGrabLineSystem::DrawGrabLineSystem(World& world) :
 
 void DrawGrabLineSystem::Run(const SystemContext& context)
 {
-    assert(context.debugLines != nullptr && "DrawGrabLine runs in Extract, which hands it a debug lines list");
-    DebugLines& debugLines = *context.debugLines;
+    assert(context.Get<DebugLinesTarget>().lines != nullptr && "DrawGrabLine runs in Extract, which hands it a debug lines list");
+    DebugLines& debugLines = *context.Get<DebugLinesTarget>().lines;
 
     entities.ForEachChunk([&](const ChunkView chunk)
     {

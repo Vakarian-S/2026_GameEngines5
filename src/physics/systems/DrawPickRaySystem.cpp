@@ -24,8 +24,8 @@ DrawPickRaySystem::DrawPickRaySystem(World& world) :
 
 void DrawPickRaySystem::Run(const SystemContext& context)
 {
-    assert(context.debugLines != nullptr && "DrawPickRay runs in Extract, which hands it a debug lines list");
-    DebugLines& debugLines = *context.debugLines;
+    assert(context.Get<DebugLinesTarget>().lines != nullptr && "DrawPickRay runs in Extract, which hands it a debug lines list");
+    DebugLines& debugLines = *context.Get<DebugLinesTarget>().lines;
 
     pickRays.ForEachChunk([&](const ChunkView chunk)
     {

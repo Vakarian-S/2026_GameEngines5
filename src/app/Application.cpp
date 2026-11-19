@@ -141,7 +141,6 @@ void Application::Run()
         }
 
         SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
-        const Camera* camera = &sceneManager.GetCurrentScene().GetCamera();
 
         if (window.ShouldClose()) break;
 
@@ -171,31 +170,30 @@ void Application::Run()
         {
             PROFILE_SCOPE("Scene::Update");
             sceneManager.GetCurrentScene().Update(timer.GetDeltaTime(), inputState);
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<InputState>(inputState);
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<Camera>(
+                sceneManager.GetCurrentScene().GetCamera());
             fixedStep.Add(timer.GetDeltaTime());
             while (fixedStep.TakeStep())
                 systems.RunPhase(
                     Phase::Fixed,
-                    FixedStep::kFixedTimeStep,
-                    &inputState,
-                    camera
+                    FixedStep::kFixedTimeStep
                 );
             systems.RunPhase(
                 Phase::Update,
-                timer.GetDeltaTime(),
-                &inputState,
-                camera
+                timer.GetDeltaTime()
             );
         }
 
         {
             PROFILE_SCOPE("MakeDrawList");
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DrawListTarget>(DrawListTarget{&drawList});
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DebugLinesTarget>(DebugLinesTarget{&debugLines});
             systems.RunPhase(
                 Phase::Extract,
-                timer.GetDeltaTime(),
-                &inputState,
-                camera,
-                &drawList,
-                &debugLines);
+                timer.GetDeltaTime());
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DrawListTarget>(DrawListTarget{});
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DebugLinesTarget>(DebugLinesTarget{});
             /* The grid first, then the axes: lines do not write depth, so the line drawn last wins where they overlap */
             if (showWorldReference)
             {

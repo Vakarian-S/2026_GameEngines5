@@ -16,6 +16,7 @@
 #include <memory>
 #include <memory_resource>
 #include <new>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -27,9 +28,11 @@
 #include "ecs/ChunkPool.h"
 #include "ecs/CommandBuffer.h"
 #include "ecs/Component.h"
+#include "ecs/DeltaTime.h"
 #include "ecs/Entity.h"
 #include "ecs/Phase.h"
 #include "ecs/Query.h"
+#include "ecs/Resources.h"
 #include "ecs/SystemRegistry.h"
 #include "ecs/System.h"
 #include "ecs/SystemContext.h"
@@ -76,8 +79,7 @@ public:
     void Run(const SystemContext& context) override
     {
         log->push_back(GetName());
-        lastDeltaTime = context.deltaTime;
-        lastHadDrawList = context.drawList != nullptr;
+        lastDeltaTime = context.Get<DeltaTime>().seconds;
         currentSystemDuringRun = DEBUG::currentSystem;
     }
 
@@ -85,8 +87,6 @@ public:
     const char* currentSystemDuringRun = nullptr;
     /** The deltaTime this system's last run was given */
     float lastDeltaTime = 0.0f;
-    /** Whether this system's last run was given a draw list */
-    bool lastHadDrawList = false;
 
 private:
     /** The test's log, which this system writes its name into */
@@ -162,6 +162,60 @@ private:
     {
         return this == &other;
     }
+};
+
+/** A resource with plain data, so a test can put one value in a World and read it back. */
+struct Score
+{
+    int points = 0;
+};
+
+/** A resource that owns a vector of strings, which a component could never hold. */
+struct PlayerNames
+{
+    /** @param count how many names to make, "player 0" up to "player count - 1" */
+    explicit PlayerNames(const int count)
+    {
+        for (int i = 0; i < count; ++i) names.push_back("player " + std::to_string(i));
+    }
+
+    /** The names this resource owns */
+    std::vector<std::string> names;
+};
+
+/** A resource that writes its number into a log when it is destroyed, so a test can see the order. */
+template <int Number>
+struct DestroyLogger
+{
+    /** @param log_ where the destructor writes Number */
+    explicit DestroyLogger(std::vector<int>* log_) : log(log_)
+    {
+    }
+
+    ~DestroyLogger()
+    {
+        log->push_back(Number);
+    }
+
+    /** Where the destructor writes Number */
+    std::vector<int>* log;
+};
+
+/** A test system that reads the Score resource through its context and keeps what it saw. */
+class ScoreReadingSystem : public System
+{
+public:
+    ScoreReadingSystem() : System("ScoreReading", 0, 0)
+    {
+    }
+
+    void Run(const SystemContext& context) override
+    {
+        pointsSeen = context.Get<Score>().points;
+    }
+
+    /** The points the last run read, or -1 before any run */
+    int pointsSeen = -1;
 };
 
 namespace
@@ -1179,18 +1233,25 @@ int main()
     /* Not checked. First and Second both write Position, so the print ends with one note */
     registry.Print();
 
-    registry.RunPhase(Phase::Fixed, 1.0f / 60.0f, nullptr);
+    Check("a World holds no DeltaTime before its registry runs a phase", !systemWorld.GetResources().Has<DeltaTime>());
+
+    registry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
     Check("a phase runs only its own systems", log.size() == 2);
     Check("a phase runs its systems in add order", log.size() == 2 && log[0] == "First" && log[1] == "Second");
     Check("a system gets the deltaTime the phase was given", firstSystem->lastDeltaTime == 1.0f / 60.0f);
-    Check("a system outside Extract gets no draw list", !firstSystem->lastHadDrawList);
+    Check("the registry leaves the phase's DeltaTime in the World's store",
+          systemWorld.GetResources().Get<DeltaTime>().seconds == 1.0f / 60.0f);
 
-    registry.RunPhase(Phase::Update, 0.5f, nullptr);
+    registry.RunPhase(Phase::Update, 0.5f);
     Check("the next phase runs its own system", log.size() == 3 && log[2] == "Third");
     Check("each phase passes its own deltaTime", thirdSystem->lastDeltaTime == 0.5f);
 
-    registry.RunPhase(Phase::Extract, 0.5f, nullptr);
+    registry.RunPhase(Phase::Extract, 0.5f);
     Check("a phase with no systems runs nothing", log.size() == 3);
+
+    registry.RunPhase(Phase::Fixed, 0.25f);
+    Check("a later phase overwrites DeltaTime", systemWorld.GetResources().Get<DeltaTime>().seconds == 0.25f);
+    Check("a later phase gives its systems the new value", firstSystem->lastDeltaTime == 0.25f);
 
     std::cout << "\n-- systems, playback --\n";
 
@@ -1204,7 +1265,7 @@ int main()
     playbackRegistry.Add(Phase::Update, std::make_unique<TaggingSystem>(tagged));
     playbackRegistry.Add(Phase::Update, std::move(watcher));
 
-    playbackRegistry.RunPhase(Phase::Update, 0.5f, nullptr);
+    playbackRegistry.RunPhase(Phase::Update, 0.5f);
     Check("a queued tag is not in the world during its own phase", !watcherSystem->sawTag);
     Check("the phase plays the buffer back when it ends", playbackWorld.HasComponent<Dead>(tagged));
 
@@ -1590,7 +1651,7 @@ int main()
     auto namedLogger = std::make_unique<LoggingSystem>("Named", 0, &watchLog);
     const LoggingSystem* namedSystem = namedLogger.get();
     watchRegistry.Add(Phase::Update, std::move(namedLogger));
-    watchRegistry.RunPhase(Phase::Update, 0.5f, nullptr);
+    watchRegistry.RunPhase(Phase::Update, 0.5f);
     Check("RunPhase names the system it is running",
           namedSystem->currentSystemDuringRun != nullptr &&
           std::string_view(namedSystem->currentSystemDuringRun) == "Named");
@@ -1721,6 +1782,79 @@ int main()
 
     /* A 64-bit address near the top, as a GPU could hand out */
     Check("an address near the top of 64 bits rounds up", AlignUp(0xFFFF'FFFF'FFFF'FE01ull, 256) == 0xFFFF'FFFF'FFFF'FF00ull);
+
+    std::cout << "\n-- resources --\n";
+
+    /* Values that outlive the Worlds below, because the loggers write to this log as they are destroyed. */
+    std::vector<int> spareLog;
+    {
+        World resourceWorld;
+        Resources& resourceStore = resourceWorld.GetResources();
+
+        Check("a new World holds no Score", !resourceStore.Has<Score>());
+        Check("TryGet gives null before the Insert", resourceStore.TryGet<Score>() == nullptr);
+
+        Score& insertedScore = resourceStore.Insert<Score>(Score{7});
+        Check("Has finds the Score after the Insert", resourceStore.Has<Score>());
+        Check("TryGet finds the value Insert returned", resourceStore.TryGet<Score>() == &insertedScore);
+        Check("Get reads back the 7 that went in", resourceStore.Get<Score>().points == 7);
+        Check("a type that was never inserted is still absent", !resourceStore.Has<PlayerNames>());
+
+        resourceStore.Get<Score>().points = 9;
+        Check("writing through Get changes the stored value", insertedScore.points == 9);
+
+        SystemRegistry resourceRegistry(resourceWorld);
+        auto scoreReader = std::make_unique<ScoreReadingSystem>();
+        const ScoreReadingSystem* scoreReaderView = scoreReader.get();
+        resourceRegistry.Add(Phase::Update, std::move(scoreReader));
+        resourceRegistry.RunPhase(Phase::Update, 0.5f);
+        Check("a system reads the Score through its context", scoreReaderView->pointsSeen == 9);
+
+        World secondResourceWorld;
+        secondResourceWorld.GetResources().Insert<Score>(Score{100});
+        Check("a second World holds its own Score", secondResourceWorld.GetResources().Get<Score>().points == 100);
+        Check("the first World's Score did not change", resourceStore.Get<Score>().points == 9);
+        Check("the two Worlds hold their Scores at different addresses",
+              &secondResourceWorld.GetResources().Get<Score>() != &resourceStore.Get<Score>());
+
+        PlayerNames& insertedNames = resourceStore.Insert<PlayerNames>(3);
+        const PlayerNames* namesAddress = &insertedNames;
+        Check("Insert passes its arguments to the constructor", insertedNames.names.size() == 3);
+
+        resourceStore.Insert<DestroyLogger<1>>(&spareLog);
+        resourceStore.Insert<DestroyLogger<2>>(&spareLog);
+        Check("a value keeps its address after later Inserts", &resourceStore.Get<PlayerNames>() == namesAddress);
+        Check("a vector of strings survives later Inserts", resourceStore.Get<PlayerNames>().names[2] == "player 2");
+
+        Score& overwrittenScore = resourceStore.Set(Score{11});
+        Check("Set over an existing value keeps its address", &overwrittenScore == &insertedScore);
+        Check("Set over an existing value replaces it", resourceStore.Get<Score>().points == 11);
+
+        World setWorld;
+        Score& firstSet = setWorld.GetResources().Set(Score{5});
+        Check("Set on a missing type inserts it", setWorld.GetResources().Has<Score>() && firstSet.points == 5);
+        Score& secondSet = setWorld.GetResources().Set(Score{6});
+        Check("a second Set keeps the address", &secondSet == &firstSet);
+        Check("a second Set replaces the value", setWorld.GetResources().Get<Score>().points == 6);
+    }
+    Check("both loggers were destroyed with their World", spareLog.size() == 2);
+
+    /* A store built straight on a counting resource shows every block it takes and gives back. */
+    {
+        CountingResource countingMemory;
+        std::vector<int> destroyLog;
+        {
+            Resources countedStore(&countingMemory);
+            countedStore.Insert<DestroyLogger<1>>(&destroyLog);
+            countedStore.Insert<DestroyLogger<2>>(&destroyLog);
+            countedStore.Insert<DestroyLogger<3>>(&destroyLog);
+            Check("three Inserts take three blocks", countingMemory.allocations == 3);
+            Check("nothing is destroyed while the store lives", destroyLog.empty());
+        }
+        Check("the destructor ran all three values", destroyLog.size() == 3);
+        Check("it ran in reverse insertion order", destroyLog == std::vector<int>{3, 2, 1});
+        Check("every block went back", countingMemory.deallocations == 3);
+    }
 
     std::cout << "\n" << (failures ? Fail : Pass)
         << checks - failures << " of " << checks << " checks passed" << Reset << "\n";

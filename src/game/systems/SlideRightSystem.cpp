@@ -2,6 +2,7 @@
 
 #include "core/Components.h"
 #include "ecs/Archetype.h"
+#include "ecs/DeltaTime.h"
 #include "ecs/SystemContext.h"
 #include "physics/Components.h"
 
@@ -16,7 +17,7 @@ SlideRightSystem::SlideRightSystem(World& world, const char* name_, const Compon
 
 void SlideRightSystem::Run(const SystemContext& context)
 {
-    const float deltaTime = context.deltaTime;
+    const float deltaTime = context.Get<DeltaTime>().seconds;
     const float rightEdge = leftEdge + pathWidth;
     movers.ForEachChunk([&](ChunkView chunk)
     {

@@ -36,7 +36,7 @@ public:
     }
 
     /** @return the pacing scene's world, so Main can read its counters */
-    const World& GetWorld() const override { return world; }
+    World& GetWorld() override { return world; }
 
     /** @return the pacing scene's systems, so the frame loop can run their phases */
     SystemRegistry& GetSystems() override { return systems; }

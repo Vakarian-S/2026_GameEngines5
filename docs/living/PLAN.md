@@ -89,7 +89,10 @@ state into singleton components, about 40% of all its components (13:36).
 - **c. API.** `Insert<T>(args...)` builds the value in place and returns `T&`. `Get<T>()` returns
   `T&` and asserts the value exists. `TryGet<T>()` returns a pointer, or null. `Has<T>()` tests the
   mask bit. A second `Insert` of the same type asserts. There is no `Remove<T>()`, because nothing
-  calls it yet. `Get` returning a pointer was rejected.
+  calls it yet. `Get` returning a pointer was rejected. `Set<T>(const T&)` inserts when the type is
+  absent and assigns when it is present, at the same address. It exists for values the engine
+  refreshes every frame, and was added 2026-11-19, once step 3 had five callers. `Insert` keeps its
+  constructor arguments for types that cannot be copied, such as the sockets the networking plan lists.
 - **d. When to insert.** `Insert` is a direct call during scene setup, not a command. Rule 6
   protects entity rows being walked, and an insert moves none. The command buffer was rejected,
   because nothing needs a mid-phase insert.
@@ -109,6 +112,30 @@ state into singleton components, about 40% of all its components (13:36).
   runs when the World dies, in reverse insertion order; a value with a non-trivial type works,
   such as a `std::vector`.
 
+**What the build checked.**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` runs 376 checks,
+  25 of them in a new "resources" section:
+  - A `Score` goes in. `Has`, `TryGet` and `Get` find it at the same address, a write through `Get`
+    changes the stored value, and a type never inserted stays absent.
+  - A system reads the `Score` through `context.Get<Score>()` in `RunPhase`.
+  - A second World holds its own `Score` at another address, and the first World's value does not change.
+  - `PlayerNames`, which owns a vector of strings, takes its constructor argument from `Insert`, keeps
+    its address after later inserts, and keeps its strings.
+  - A `Resources` built on a counting memory resource takes three blocks and gives three back. Its
+    destructor runs three loggers in the order 3, 2, 1. A World also destroys its loggers.
+  - `Set` over an existing value keeps the address and replaces the value. `Set` on a missing type
+    inserts it, and a second `Set` keeps that address too.
+  - Not covered: the asserts on a second `Insert` and on `Get` of a missing type. A failed assert
+    stops the program.
+- **A bug the tests found.** The first build crashed `EcsTests` with a segfault in x64 Debug. The
+  `~Resources` loop used `count - 1` on a `uint32_t`, so a store with no resources wrapped to
+  4,294,967,295 and called a null destroy function. It now counts down from `count`.
+- **The game,** in Debug, through `scripts\run-game.ps1`: two runs, `-Scene 1` with F3, F4 and F1, and
+  `-Scene 0` with F2, F3, F4 and F1. Both ended with exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts,
+  0 fell to the heap and 0 leaked blocks. The keys switched through 1 scene in the first run and 3 in
+  the second, so no run covered all four scenes by key. Step 2 does not touch the scenes yet.
+
 **Open questions.** `System` declares the components it reads and writes; Bevy and Mass declare
 resource access the same way. Single threaded, that only documents and checks, so it can wait. The
 first users after this plan are the networking scene's `NetworkRole`, sockets, `ClientTable`,
@@ -121,21 +148,24 @@ Fixed and the frame time in Update and Extract, and `drawList` exists only in Ex
 writes these values and systems only read them. Bevy and Unity Entities do the same: Bevy overwrites
 its `Time` resource when `FixedUpdate` runs, and Unity keeps a time value per World.
 
-**Decisions.** Agreed 2026-11-18.
+**Decisions.** Agreed 2026-11-18. Decision b changed on 2026-11-19, when `Set` arrived in step 2.
 
-- **a. Time.** A one-float struct, `DeltaTime`, lives in `ecs`. The registry writes it before each
-  phase, because it already holds the number and knows which phase runs. Putting it in `core` was
+- **a. Time.** A one-float struct, `DeltaTime`, lives in `ecs`. The registry sets it with `Set` at
+  the start of each `RunPhase`, because it already holds the number and knows which phase runs. Putting it in `core` was
   rejected: the registry could not name it, so `Application` would write it before every phase. It
   can move there later with no other change.
-- **b. Input and camera.** `Application` copies `InputState` and the scene's `Camera` into the
-  World's resources once a frame. The camera copy comes after `Scene::Update`, because the fly
+- **b. Input and camera.** `Application` calls `Set` with `InputState` and the scene's `Camera` on
+  the World's resources once a frame. The camera copy comes after `Scene::Update`, because the fly
   camera moves there. Both are plain data that change once a frame, so a copy has no null and no
-  dangling pointer. One function, `InsertEngineResources(World&)`, in `app`, inserts them after each
-  scene's `OnCreate`, so four scenes do not repeat four `Insert` lines. `Scene::GetWorld()` becomes
-  non-const so `Application` can refresh them. Holding pointers to the owners was rejected.
+  dangling pointer. `Set` inserts on its first call, so nothing needs an insert step. The first
+  version of this decision had an `InsertEngineResources(World&)` function that ran after each scene's
+  `OnCreate`, but `SceneManager` lives in `core` and cannot call code in `app`, so it was dropped.
+  `Scene::GetWorld()` becomes non-const so `Application` can refresh the resources. Holding pointers
+  to the owners was rejected.
 - **c. Draw list and debug lines.** Each gets a small holder struct in `core` with one pointer,
-  `DrawListTarget` and `DebugLinesTarget`. Before Extract, `Application` points each at the frame's
-  list. After Extract, it sets each to null. The null rule stays as today, but `SystemContext.h`
+  `DrawListTarget` and `DebugLinesTarget`. Before Extract, `Application` sets each to point at the
+  frame's list. After Extract, it sets each back to null, so a system that asks for a list outside
+  Extract never reads freed arena memory. The null rule stays as today, but `SystemContext.h`
   stops naming the types. The lists live in the frame arena, which resets every frame, so a vector
   stored in the World would point at freed memory. A second render World like Bevy's was rejected:
   a big change with no caller. The call changes if the lists move off the frame arena.
@@ -144,4 +174,38 @@ its `Time` resource when `FixedUpdate` runs, and Unity keeps a time value per Wo
 - **e. Reading.** `SystemContext` keeps `world` and `commands` and gains `Get<T>()`, which forwards
   to the World's `Resources`. It needs `World.h` and the standard library only. Every system that
   read `context.deltaTime`, `drawList`, `debugLines`, `inputState` or `camera` reads
-  `context.Get<T>()` instead.
+  `context.Get<T>()` instead. `RunPhase` shrinks to `RunPhase(phase, deltaTime)`.
+
+**What the build checked.**
+
+- **Tests.** `scripts\run-tests.bat` passes in all four configurations. `EcsTests` runs 376 checks.
+  Four are new in the "systems" section and one is gone:
+  - A World holds no `DeltaTime` before its registry runs a phase.
+  - The registry leaves the phase's `DeltaTime` in the World's store.
+  - A later phase overwrites it, and its systems see the new value.
+  - The old "a system outside Extract gets no draw list" check is gone, because the registry no longer
+    sets lists. `Application` does.
+- **The game,** in Debug, through `scripts\run-game.ps1 -Scene 0`: F2, F3 with a mouse drag, F4, F1.
+  It went through all four scenes and ended with exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0
+  fell to the heap and 0 leaked blocks. In `PhysicsScene` the dragged cube turned, so picking works
+  through the input and camera resources. The screenshots of the other scenes look as before.
+- **Speed,** in Release x64, through `scripts\run-game.ps1 -Config Release -Scene 0` with F3 and F4
+  after 6 s and 11 s, 16 s a run. The old code (`2cafe20`) and the new code alternated: one cold run
+  each, dropped, then three runs each. The numbers are the profiler's average per span, in ms,
+  mean of 3:
+
+  | span | old | new |
+  |---|---|---|
+  | whole frame | 4.2057 | 4.2070 |
+  | Render | 4.1723 | 4.1733 |
+  | MakeDrawList | 0.0240 | 0.0243 |
+  | DrawRenderables | 0.0190 | 0.0187 |
+  | DrawColliders | 0.0090 | 0.0097 |
+  | Record | 0.0700 | 0.0697 |
+  | WrapIntoBox | 0.0030 | 0.0030 |
+  | UpdatePosition | 0.0020 | 0.0010 |
+  | Scene::Update | 0.0020 | 0.0020 |
+
+  The frame time is pinned at about 4.2 ms by the 240 Hz display (FIFO), so it hides a change of
+  microseconds. The profiler prints 0.001 ms steps, and every difference above is one step or less.
+  A cost under that cannot show here. `EcsBench` does not run the registry, so it could not help.

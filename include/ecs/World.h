@@ -7,6 +7,7 @@
 #include "Archetype.h"
 #include "ChunkPool.h"
 #include "Component.h"
+#include "Resources.h"
 #include "ecs/Entity.h"
 #include "ecs/EntitySlot.h"
 #include "WorldFrameStats.h"
@@ -250,9 +251,15 @@ public:
     /**
      * Clears the world, releasing all the archetypes and marking all the entity slots with a new version
      * and point to an invalid archetype
+     * Global Resources stay in memory.
      */
     void Clear();
-    
+
+    /**
+     * @return the one store of per-World values
+     */
+    Resources& GetResources() { return resources; }
+
     /**
      * Test Function\n
      * Walks the free list and returns false when it is broken: a link past the slot table, a live slot on
@@ -289,6 +296,9 @@ private:
 
     /** Structural changes across every frame so far */
     WorldFrameStats runTotals;
+    
+    /** Global Resources for this world */
+    Resources resources;
 
     /** Takes the next available entity slot, reusing a freed slot when possible or creating a new slot in the entity table.
     * @return Index of the entity slot to use.

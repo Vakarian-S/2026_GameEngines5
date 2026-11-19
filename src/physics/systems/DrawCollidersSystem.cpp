@@ -43,8 +43,8 @@ DrawCollidersSystem::DrawCollidersSystem(World& world) :
 
 void DrawCollidersSystem::Run(const SystemContext& context)
 {
-    assert(context.debugLines != nullptr && "DrawColliders runs in Extract, which hands it a debug lines list");
-    DebugLines& debugLines = *context.debugLines;
+    assert(context.Get<DebugLinesTarget>().lines != nullptr && "DrawColliders runs in Extract, which hands it a debug lines list");
+    DebugLines& debugLines = *context.Get<DebugLinesTarget>().lines;
     
     boxColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {

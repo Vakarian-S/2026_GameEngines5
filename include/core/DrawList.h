@@ -18,3 +18,6 @@ static_assert(sizeof(DrawItem) == 72);
 
 /** Everything to draw this frame. The caller picks the memory, so a frame arena can stand behind it. */
 using DrawList = std::pmr::vector<DrawItem>;
+
+/** Pointer to a draw list */
+struct DrawListTarget { DrawList* list = nullptr; };

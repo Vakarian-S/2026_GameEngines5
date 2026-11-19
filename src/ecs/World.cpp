@@ -18,7 +18,8 @@ World::World(const WorldConfig& config)
       maxRows(config.arenaBytes > 0 ? config.maxEntities : 0),
       chunkPool(&memory, config.chunkBytes, frameStats),
       entitySlots(&memory),
-      archetypes(&memory)
+      archetypes(&memory),
+      resources(&memory)
 {
     entitySlots.reserve(maxRows > 0 ? maxRows : kHeapReserve);
     if (maxRows > 0) archetypes.reserve(kArchetypeReserve);

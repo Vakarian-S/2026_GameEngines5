@@ -44,14 +44,14 @@ PickSystem::PickSystem(World& world) :
 void PickSystem::Run(const SystemContext& context)
 {
     const PHYSICS::Ray mouseRay = PHYSICS::MakePickRay(
-        context.inputState->mousePosition,
-        context.inputState->windowSize,
-        *context.camera);
+        context.Get<InputState>().mousePosition,
+        context.Get<InputState>().windowSize,
+        context.Get<Camera>());
 
-    auto input = context.inputState;
-    const bool drop = !input->mouseHeld[SDL_BUTTON_LEFT]
-    || input->mousePressed[SDL_BUTTON_LEFT]
-    || input->mousePressed[SDL_BUTTON_RIGHT];
+    const InputState& input = context.Get<InputState>();
+    const bool drop = !input.mouseHeld[SDL_BUTTON_LEFT]
+    || input.mousePressed[SDL_BUTTON_LEFT]
+    || input.mousePressed[SDL_BUTTON_RIGHT];
     
     if (drop)
     {
@@ -80,7 +80,7 @@ void PickSystem::Run(const SystemContext& context)
         });
     }
     
-    if (!context.inputState->mousePressed[SDL_BUTTON_LEFT]) return;
+    if (!context.Get<InputState>().mousePressed[SDL_BUTTON_LEFT]) return;
     
     float t = std::numeric_limits<float>::infinity();
     Entity pickedEntity{};
@@ -195,7 +195,7 @@ void PickSystem::Run(const SystemContext& context)
         {
             pickRayComponents[row] = {
                 .ray = mouseRay,
-                .t = hasHit ? finalRayHit.t : context.camera->farPlane,
+                .t = hasHit ? finalRayHit.t : context.Get<Camera>().farPlane,
                 .hasHit = hasHit
             };
         }

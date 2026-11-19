@@ -4,6 +4,7 @@
 #include <iterator>
 #include <iostream>
 
+#include "ecs/DeltaTime.h"
 #include "ecs/SystemContext.h"
 #include "ecs/World.h"
 #include "ecs/debug/DebugWatch.h"
@@ -58,18 +59,14 @@ System* SystemRegistry::Add(Phase phase, std::unique_ptr<System> system)
     return systemsByPhase[static_cast<size_t>(phase)].back().get();
 }
 
-void SystemRegistry::RunPhase(Phase phase, const float deltaTime, const InputState* inputState, const Camera* camera,
-                              std::pmr::vector<DrawItem>* drawItems,
-                              std::pmr::vector<LineVertex>* debugLines)
+void SystemRegistry::RunPhase(Phase phase, const float deltaTime)
 {
+    Resources& resources = world.GetResources();
+    resources.Set<DeltaTime>(DeltaTime{.seconds = deltaTime});
+    
     const SystemContext systemContext{
         .world = world,
         .commands = commands,
-        .deltaTime = deltaTime,
-        .drawList = drawItems,
-        .debugLines = debugLines,
-        .inputState = inputState,
-        .camera = camera
     };
     for (const std::unique_ptr<System>& system : systemsByPhase[static_cast<size_t>(phase)])
     {

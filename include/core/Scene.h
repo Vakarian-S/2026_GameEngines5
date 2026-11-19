@@ -67,7 +67,7 @@ public:
     /**
      * @return Instance of the scene's own World
      */
-    virtual const World& GetWorld() const = 0;
+    virtual World& GetWorld() = 0;
 
     /**
      * @return Instance of the System Registry used in this scene

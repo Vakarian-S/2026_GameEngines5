@@ -2,6 +2,7 @@
 
 #include "core/Components.h"
 #include "ecs/Archetype.h"
+#include "ecs/DeltaTime.h"
 #include "ecs/SystemContext.h"
 #include "physics/Components.h"
 #include "physics/RigidBody.h"
@@ -21,7 +22,7 @@ UpdateOrientationSystem::UpdateOrientationSystem(World& world) :
 
 void UpdateOrientationSystem::Run(const SystemContext& context)
 {
-    const float deltaTime = context.deltaTime;
+    const float deltaTime = context.Get<DeltaTime>().seconds;
     entities.ForEachChunk([&](ChunkView chunk)
     {
         Transform* transforms = chunk.Column<Transform>();

@@ -15,8 +15,8 @@ DrawRenderablesSystem::DrawRenderablesSystem(World& world) :
 
 void DrawRenderablesSystem::Run(const SystemContext& context)
 {
-    assert(context.drawList != nullptr && "DrawRenderables runs in Extract, which hands it a draw list");
-    DrawList& drawList = *context.drawList;
+    assert(context.Get<DrawListTarget>().list != nullptr && "DrawRenderables runs in Extract, which hands it a draw list");
+    DrawList& drawList = *context.Get<DrawListTarget>().list;
 
     uint32_t total = 0;
     for (const Archetype* archetype : drawables.Matches()) total += archetype->Count();
