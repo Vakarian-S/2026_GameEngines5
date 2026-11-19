@@ -1,7 +1,7 @@
 ﻿#include "scenes/PhysicsScene.h"
 
 #include "core/Components.h"
-#include "core/ResourceLoader.h"
+#include "core/AssetLoader.h"
 #include "core/systems/DrawRenderablesSystem.h"
 #include "physics/Components.h"
 #include "physics/systems/DrawCollidersSystem.h"
@@ -23,19 +23,19 @@ PhysicsScene::PhysicsScene() :
 {
 }
 
-bool PhysicsScene::OnCreate(ResourceLoader& resourceLoader)
+bool PhysicsScene::OnCreate(AssetLoader& assetLoader)
 {
     PROFILE_SCOPE_ECS(world, "OnCreate");
-    const TextureHandle marioTexture = resourceLoader.CreateTexture("assets/textures/mario_main.png");
-    const TextureHandle skullTexture = resourceLoader.
+    const TextureHandle marioTexture = assetLoader.CreateTexture("assets/textures/mario_main.png");
+    const TextureHandle skullTexture = assetLoader.
         CreateTexture("assets/textures/skull_texture.jpg");
 
-    marioMesh = resourceLoader.CreateMesh("assets/meshes/Mario.obj");
-    marioMaterial = resourceLoader.CreateMaterial({
+    marioMesh = assetLoader.CreateMesh("assets/meshes/Mario.obj");
+    marioMaterial = assetLoader.CreateMaterial({
         .albedo = marioTexture, .shininess = 32.0f, .specularStrength = 0.5f
     });
-    cubeMesh = resourceLoader.CreateCube();
-    cubeMaterial = resourceLoader.CreateMaterial({
+    cubeMesh = assetLoader.CreateCube();
+    cubeMaterial = assetLoader.CreateMaterial({
         .albedo = skullTexture, .shininess = 4.0f, .specularStrength = 0.1f
     });
     SpawnShapes();

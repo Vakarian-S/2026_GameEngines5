@@ -1,4 +1,4 @@
-﻿#include "vulkan/ResourceStore.h"
+﻿#include "vulkan/AssetStore.h"
 #include "vulkan/ObjLoader.h"
 
 #include <iostream>
@@ -54,7 +54,7 @@ Material::Material(const GPUContext& gpuContext, const TemporaryCommandBuffers& 
 {
 }
 
-ResourceStore::ResourceStore(const GPUContext& gpuContext_, const TemporaryCommandBuffers& temporaryCommandBuffers_,
+AssetStore::AssetStore(const GPUContext& gpuContext_, const TemporaryCommandBuffers& temporaryCommandBuffers_,
                              const MaterialDescriptors& materialDescriptors_) :
     gpuContext(gpuContext_),
     temporaryCommandBuffers(temporaryCommandBuffers_),
@@ -62,7 +62,7 @@ ResourceStore::ResourceStore(const GPUContext& gpuContext_, const TemporaryComma
 {
 }
 
-MeshHandle ResourceStore::CreateCube()
+MeshHandle AssetStore::CreateCube()
 {
     if (cubeCache.has_value()) return cubeCache.value();
     /*
@@ -196,7 +196,7 @@ MeshHandle ResourceStore::CreateCube()
     return handle;
 }
 
-MeshHandle ResourceStore::CreateMesh(const std::string& path)
+MeshHandle AssetStore::CreateMesh(const std::string& path)
 {
     if (const auto it = meshCache.find(path); it != meshCache.end()) return it->second;
     /* The CPU copy lives only until the GPU copy exists */
@@ -208,20 +208,20 @@ MeshHandle ResourceStore::CreateMesh(const std::string& path)
     return handle;
 }
 
-const Mesh& ResourceStore::GetMesh(const MeshHandle mesh) const
+const Mesh& AssetStore::GetMesh(const MeshHandle mesh) const
 {
     assert(mesh.index < meshList.size());
     return *meshList[mesh.index];
 }
 
-const CubeMap* ResourceStore::GetCubemap(const CubeMapHandle cubemap) const
+const CubeMap* AssetStore::GetCubemap(const CubeMapHandle cubemap) const
 {
     if (cubemap.index == UINT32_MAX) return nullptr;
     assert(cubemap.index < cubeMapList.size());
     return cubeMapList[cubemap.index].get();
 }
 
-TextureHandle ResourceStore::CreateTexture(const std::string& path)
+TextureHandle AssetStore::CreateTexture(const std::string& path)
 {
     if (const auto it = textureCache.find(path); it != textureCache.end()) return it->second;
     /* The new texture's handle is its position in the list, so read the size before adding it */
@@ -231,7 +231,7 @@ TextureHandle ResourceStore::CreateTexture(const std::string& path)
     return handle;
 }
 
-MaterialHandle ResourceStore::CreateMaterial(const MaterialDesc& desc)
+MaterialHandle AssetStore::CreateMaterial(const MaterialDesc& desc)
 {
     for (const auto& [materialDescription, materialHandle] : materialCache)
     {
@@ -260,7 +260,7 @@ MaterialHandle ResourceStore::CreateMaterial(const MaterialDesc& desc)
     return handle;
 }
 
-CubeMapHandle ResourceStore::CreateCubemap(const std::string& folderPath)
+CubeMapHandle AssetStore::CreateCubemap(const std::string& folderPath)
 {
     if (const auto it = cubeMapCache.find(folderPath); it != cubeMapCache.end()) return it->second;
     /* The new texture's handle is its position in the list, so read the size before adding it */
@@ -270,7 +270,7 @@ CubeMapHandle ResourceStore::CreateCubemap(const std::string& folderPath)
     return handle;
 }
 
-VkDescriptorSet ResourceStore::GetMaterialSet(const MaterialHandle material) const
+VkDescriptorSet AssetStore::GetMaterialSet(const MaterialHandle material) const
 {
     assert(material.index < materialList.size());
     return materialList[material.index]->descriptorSet;

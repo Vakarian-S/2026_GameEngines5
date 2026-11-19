@@ -4,7 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include "core/Components.h"
-#include "core/ResourceLoader.h"
+#include "core/AssetLoader.h"
 #include "core/systems/DrawRenderablesSystem.h"
 #include "game/Components.h"
 #include "game/systems/LoadSystem.h"
@@ -19,13 +19,13 @@ PacingScene::PacingScene() :
 {
 }
 
-bool PacingScene::OnCreate(ResourceLoader& resourceLoader)
+bool PacingScene::OnCreate(AssetLoader& assetLoader)
 {
     PROFILE_SCOPE_ECS(world, "OnCreate");
 
-    const TextureHandle marioTexture = resourceLoader.CreateTexture("assets/textures/mario_main.png");
-    const MeshHandle marioMesh = resourceLoader.CreateMesh("assets/meshes/Mario.obj");
-    const MaterialHandle marioMaterial = resourceLoader.CreateMaterial({
+    const TextureHandle marioTexture = assetLoader.CreateTexture("assets/textures/mario_main.png");
+    const MeshHandle marioMesh = assetLoader.CreateMesh("assets/meshes/Mario.obj");
+    const MaterialHandle marioMaterial = assetLoader.CreateMaterial({
         .albedo = marioTexture, .shininess = 32.0f, .specularStrength = 0.5f
     });
 

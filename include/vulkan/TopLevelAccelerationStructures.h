@@ -4,7 +4,7 @@
 
 #include "AccelerationStructure.h"
 #include "GPUContext.h"
-#include "ResourceStore.h"
+#include "AssetStore.h"
 #include "core/DrawList.h"
 
 /**
@@ -30,9 +30,9 @@ public:
      * Fills the Acceleration Structure buffer with the information from the drawlist.
      * @param slotIndex frame slot to use
      * @param drawList the draw list to write into the buffer
-     * @param resourceStore resource store to read for mesh info
+     * @param assetStore asset store to read for mesh info
      */
-    void Fill(uint32_t slotIndex, const DrawList& drawList, const ResourceStore& resourceStore);
+    void Fill(uint32_t slotIndex, const DrawList& drawList, const AssetStore& assetStore);
 
     /**
      * Records the build of the TLAS in the given command buffer, meant to be used on the Record section of the draw loop

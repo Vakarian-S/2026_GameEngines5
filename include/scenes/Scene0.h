@@ -15,7 +15,7 @@ public:
     ~Scene0() override = default;
 
     void HandleEvents(const SDL_Event& sdlEvent) override;
-    bool OnCreate(ResourceLoader& resourceLoader) override;
+    bool OnCreate(AssetLoader& assetLoader) override;
     void OnDestroy() override;
     void Update(float deltaTime, const InputState& input) override;
 

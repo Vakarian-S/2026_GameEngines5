@@ -10,7 +10,7 @@ struct InputState;
 
 union SDL_Event;
 class World;
-class ResourceLoader;
+class AssetLoader;
 class SystemRegistry;
 
 class Scene
@@ -35,7 +35,7 @@ public:
      * Function that runs on scene Creation
      * @return boolean indicating whether the scene creation was successful or not
      */
-    virtual bool OnCreate(ResourceLoader& loader) = 0;
+    virtual bool OnCreate(AssetLoader& loader) = 0;
 
     /**
      * Function that runs when the scene is destroyed

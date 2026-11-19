@@ -64,7 +64,7 @@ namespace
 Application::Application(const int argc, char* argv[]) :
     window("GameEngines5", 1280, 720),
     renderer(window.GetSDLWindow(), kStartPresentMode),
-    sceneManager(kScenes, renderer.GetResourceStore()),
+    sceneManager(kScenes, renderer.GetAssetStore()),
     frameArena(kFrameArenaBytes),
     frameMemory(frameArena)
 {

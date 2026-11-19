@@ -14,7 +14,7 @@ TopLevelAccelerationStructures::TopLevelAccelerationStructures(const GPUContext&
 }
 
 void TopLevelAccelerationStructures::Fill(const uint32_t slotIndex, const DrawList& drawList,
-                                          const ResourceStore& resourceStore)
+                                          const AssetStore& assetStore)
 {
     if (!gpuContext.SupportsRayQuery()) return;
 
@@ -38,7 +38,7 @@ void TopLevelAccelerationStructures::Fill(const uint32_t slotIndex, const DrawLi
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
         instance.flags = 0;
-        instance.accelerationStructureReference = resourceStore.GetMesh(drawItem.mesh).blas->GetDeviceAddress();
+        instance.accelerationStructureReference = assetStore.GetMesh(drawItem.mesh).blas->GetDeviceAddress();
         instances.push_back(instance);
     }
     slots[slotIndex].instanceCount = static_cast<uint32_t>(instances.size());

@@ -46,7 +46,7 @@ FrameLoop::~FrameLoop()
 
 
 void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipelines& pipelines,
-                          const ResourceStore& resourceStore, const DrawList& drawList, const DebugLines& debugLines,
+                          const AssetStore& assetStore, const DrawList& drawList, const DebugLines& debugLines,
                           const CameraUniform& camera, const LightUniform& lights, const CubeMap* sky)
 {
     /**
@@ -77,7 +77,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
 
     /* ============= 2. Write This Slot's Buffers ============= */
     /* The fence above proves the GPU finished this slot's last frame, so its buffers are free to overwrite */
-    topLevelAccelerationStructures.Fill(currentFrame, drawList, resourceStore);
+    topLevelAccelerationStructures.Fill(currentFrame, drawList, assetStore);
     descriptors.WriteCamera(currentFrame, camera);
     descriptors.WriteLights(currentFrame, lights);
     descriptors.
@@ -118,7 +118,7 @@ void FrameLoop::DrawFrame(const VkClearColorValue& clearColor, const FramePipeli
     {
         /* Times the CPU side of recording: one push and one draw per item. The GPU's work is not in here */
         PROFILE_SCOPE("Record");
-        RecordCommandBuffer(imageIndex, clearColor, pipelines, resourceStore, drawList,
+        RecordCommandBuffer(imageIndex, clearColor, pipelines, assetStore, drawList,
                             static_cast<uint32_t>(debugLines.size()), sky != nullptr);
     }
 
@@ -249,7 +249,7 @@ void FrameLoop::CreateSyncObjects()
 }
 
 void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColorValue& clearColor,
-                                    const FramePipelines& pipelines, const ResourceStore& resourceStore,
+                                    const FramePipelines& pipelines, const AssetStore& assetStore,
                                     const DrawList& drawList, const uint32_t lineVertexCount, const bool drawSky)
 {
     /* ============= 1. Begin Recording ============= */
@@ -376,7 +376,7 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
     /* Scoped by the profiler */
     {
         PROFILE_GPU_SCOPE(gpuQueries, commandBuffer, GPUTimerName::MeshPass);
-        RecordMeshPass(commandBuffer, pipelines.meshPipeline, resourceStore, drawList);
+        RecordMeshPass(commandBuffer, pipelines.meshPipeline, assetStore, drawList);
     }
     
     /* ============= 6. Skybox Pass ============= */
@@ -412,7 +412,7 @@ void FrameLoop::RecordCommandBuffer(const uint32_t imageIndex, const VkClearColo
 }
 
 void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeline& pipeline,
-                               const ResourceStore& resourceStore, const DrawList& drawList) const
+                               const AssetStore& assetStore, const DrawList& drawList) const
 {
     /* From here on, every draw in this command buffer uses the mesh pipeline's settings */
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetPipeline());
@@ -428,7 +428,7 @@ void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeli
     uint32_t boundMaterial = UINT32_MAX;
     for (const DrawItem& item : drawList)
     {
-        const Mesh& mesh = resourceStore.GetMesh(item.mesh);
+        const Mesh& mesh = assetStore.GetMesh(item.mesh);
         if (item.mesh.index != boundMesh)
         {
             /* The draws that follow read their vertices from this buffer, starting at byte 0 */
@@ -442,7 +442,7 @@ void FrameLoop::RecordMeshPass(const VkCommandBuffer commandBuffer, const Pipeli
         if (item.material.index != boundMaterial)
         {
             /* Points the shader's set 1 at this material. Set 0, the camera and the lights, stays bound */
-            const VkDescriptorSet materialSet = resourceStore.GetMaterialSet(item.material);
+            const VkDescriptorSet materialSet = assetStore.GetMaterialSet(item.material);
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline.GetLayout(), 1, 1,
                                     &materialSet, 0, nullptr);
             boundMaterial = item.material.index;

@@ -14,7 +14,7 @@
 #include "Vertex.h"
 #include "AccelerationStructure.h"
 #include "core/Material.h"
-#include "core/ResourceLoader.h"
+#include "core/AssetLoader.h"
 
 class TemporaryCommandBuffers;
 
@@ -63,7 +63,7 @@ struct Material
  * Owns every mesh, texture and material the renderer can draw. A handle is a position in its list,
  * so many draw items can share one mesh or one material.
  */
-class ResourceStore : public ResourceLoader
+class AssetStore : public AssetLoader
 {
 public:
     /**
@@ -71,14 +71,14 @@ public:
     * @param temporaryCommandBuffers_ Runs the copies into GPU memory. It must outlive this object
     * @param materialDescriptors_ Allocates one set per material. It must outlive this object
     */
-    ResourceStore(const GPUContext& gpuContext_, const TemporaryCommandBuffers& temporaryCommandBuffers_,
+    AssetStore(const GPUContext& gpuContext_, const TemporaryCommandBuffers& temporaryCommandBuffers_,
                   const MaterialDescriptors& materialDescriptors_);
 
     /* Holds Vulkan handles that the destructor destroys, so no copies or moves */
-    ResourceStore(const ResourceStore&) = delete;
-    ResourceStore& operator=(const ResourceStore&) = delete;
-    ResourceStore(ResourceStore&&) = delete;
-    ResourceStore& operator=(ResourceStore&&) = delete;
+    AssetStore(const AssetStore&) = delete;
+    AssetStore& operator=(const AssetStore&) = delete;
+    AssetStore(AssetStore&&) = delete;
+    AssetStore& operator=(AssetStore&&) = delete;
 
 
     /**

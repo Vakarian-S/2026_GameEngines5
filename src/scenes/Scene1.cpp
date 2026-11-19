@@ -4,7 +4,7 @@
 
 #include "MMath.h"
 #include "core/Components.h"
-#include "core/ResourceLoader.h"
+#include "core/AssetLoader.h"
 #include "core/systems/DrawRenderablesSystem.h"
 #include "utils/Profiler.h"
 
@@ -74,7 +74,7 @@ Scene1::Scene1() :
 {
 }
 
-bool Scene1::OnCreate(ResourceLoader& resourceLoader)
+bool Scene1::OnCreate(AssetLoader& assetLoader)
 {
     std::cout << "lighting: " << kSchemes[activeScheme].name << ". Keys 1 to " << kSchemes.size() << " switch\n";
     PROFILE_SCOPE_ECS(world, "OnCreate");
@@ -83,23 +83,23 @@ bool Scene1::OnCreate(ResourceLoader& resourceLoader)
     for (size_t i = 0; i < kSchemes.size(); ++i)
     {
         if (!kSchemes[i].skybox) continue;
-        const CubeMapHandle handle = resourceLoader.CreateCubemap(kSchemes[i].skybox);
+        const CubeMapHandle handle = assetLoader.CreateCubemap(kSchemes[i].skybox);
         skyboxSchemes[i] = handle;
     }
 
-    const TextureHandle floorTexture = resourceLoader.CreateTexture("assets/textures/floor_grey.png");
+    const TextureHandle floorTexture = assetLoader.CreateTexture("assets/textures/floor_grey.png");
 
-    EireneMesh = resourceLoader.CreateMesh("assets/meshes/eirene.obj");
-    columnMesh = resourceLoader.CreateMesh("assets/meshes/ionic_column.obj");
-    cubeMesh = resourceLoader.CreateCube();
-    columnMaterial = resourceLoader.CreateMaterial({
-        .albedo = resourceLoader.CreateTexture("assets/textures/ionic_column_albedo.jpg"),
+    EireneMesh = assetLoader.CreateMesh("assets/meshes/eirene.obj");
+    columnMesh = assetLoader.CreateMesh("assets/meshes/ionic_column.obj");
+    cubeMesh = assetLoader.CreateCube();
+    columnMaterial = assetLoader.CreateMaterial({
+        .albedo = assetLoader.CreateTexture("assets/textures/ionic_column_albedo.jpg"),
         .shininess = 16.0f, .specularStrength = 0.15f
     });
-    statueMaterial = resourceLoader.CreateMaterial({
+    statueMaterial = assetLoader.CreateMaterial({
         .albedo = floorTexture, .shininess = 16.0f, .specularStrength = 0.2f
     });
-    floorMaterial = resourceLoader.CreateMaterial({
+    floorMaterial = assetLoader.CreateMaterial({
         .albedo = floorTexture, .shininess = 4.0f, .specularStrength = 0.05f
     });
 

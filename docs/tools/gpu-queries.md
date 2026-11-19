@@ -40,7 +40,7 @@ Each frame, `FrameLoop` does three things with it:
 ```cpp
 {
     PROFILE_GPU_SCOPE(gpuQueries, commandBuffer, GPUTimerName::MeshPass);
-    RecordMeshPass(commandBuffer, pipelines.meshPipeline, resourceStore, drawList);
+    RecordMeshPass(commandBuffer, pipelines.meshPipeline, assetStore, drawList);
 }
 ```
 

@@ -4,7 +4,7 @@
 #include "Descriptors.h"
 #include "GPUContext.h"
 #include "GPUQueries.h"
-#include "ResourceStore.h"
+#include "AssetStore.h"
 #include "Swapchain.h"
 #include "TopLevelAccelerationStructures.h"
 #include "core/DrawList.h"
@@ -67,7 +67,7 @@ public:
      * Draws one frame: clears the next swapchain image to one colour, draws with the pipeline, and presents it.
      * @param clearColor the colour of the image is cleared to before anything is drawn
      * @param pipelines the settings to draw with
-     * @param resourceStore where the meshes named in drawList live
+     * @param assetStore where the meshes named in drawList live
      * @param drawList what to draw: one mesh and one model matrix per item
      * @param debugLines the line vertices for this frame, copied into this slot's line buffer
      * @param camera the view and projection for this frame, copied into this slot's camera buffer
@@ -77,7 +77,7 @@ public:
     void DrawFrame(
         const VkClearColorValue& clearColor,
         const FramePipelines& pipelines,
-        const ResourceStore& resourceStore,
+        const AssetStore& assetStore,
         const DrawList& drawList,
         const DebugLines& debugLines,
         const CameraUniform& camera,
@@ -187,7 +187,7 @@ private:
      * @param imageIndex which swapchain image to draw into
      * @param clearColor the color the image is cleared to
      * @param pipelines the pipelines to draw with: one per pass
-     * @param resourceStore where the meshes named in drawList live
+     * @param assetStore where the meshes named in drawList live
      * @param drawList what to draw: one mesh and one model matrix per item
      * @param lineVertexCount how many line vertices this slot's line buffer holds
      * @param drawSky Whether the recordCommandBuffer should record a skybox draw
@@ -196,7 +196,7 @@ private:
         uint32_t imageIndex,
         const VkClearColorValue& clearColor,
         const FramePipelines& pipelines,
-        const ResourceStore& resourceStore,
+        const AssetStore& assetStore,
         const DrawList& drawList,
         uint32_t lineVertexCount,
         bool drawSky
@@ -206,10 +206,10 @@ private:
     * Records the meshes: binds the mesh pipeline and set 0, then one push and one indexed draw per item.
     * @param commandBuffer the command buffer being recorded
     * @param pipeline the mesh pipeline
-    * @param resourceStore where the meshes named in drawList live
+    * @param assetStore where the meshes named in drawList live
     * @param drawList what to draw: one mesh and one model matrix per item
     */
-    void RecordMeshPass(VkCommandBuffer commandBuffer, const Pipeline& pipeline, const ResourceStore& resourceStore,
+    void RecordMeshPass(VkCommandBuffer commandBuffer, const Pipeline& pipeline, const AssetStore& assetStore,
                         const DrawList& drawList) const;
 
     /**

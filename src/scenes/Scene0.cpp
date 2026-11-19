@@ -6,7 +6,7 @@
 #include "MMath.h"
 #include "core/Components.h"
 #include "core/FlyCameraController.h"
-#include "core/ResourceLoader.h"
+#include "core/AssetLoader.h"
 #include "core/systems/DrawRenderablesSystem.h"
 #include "game/Components.h"
 #include "game/systems/DamageSystem.h"
@@ -28,18 +28,18 @@ void Scene0::HandleEvents(const SDL_Event& sdlEvent)
     flyCameraController.HandleEvent(sdlEvent);
 }
 
-bool Scene0::OnCreate(ResourceLoader& resourceLoader)
+bool Scene0::OnCreate(AssetLoader& assetLoader)
 {
     {
         PROFILE_SCOPE_ECS(world, "OnCreate");
-        cubeMesh = resourceLoader.CreateCube();
-        const TextureHandle mario = resourceLoader.CreateTexture("assets/textures/mario_main.png");
-        const TextureHandle skull = resourceLoader.
+        cubeMesh = assetLoader.CreateCube();
+        const TextureHandle mario = assetLoader.CreateTexture("assets/textures/mario_main.png");
+        const TextureHandle skull = assetLoader.
             CreateTexture("assets/textures/skull_texture.jpg");
-        const auto shinyMario = resourceLoader.CreateMaterial({
+        const auto shinyMario = assetLoader.CreateMaterial({
             .albedo = mario, .shininess = 32.0f, .specularStrength = 0.5f
         });
-        const auto matteSkull = resourceLoader.CreateMaterial({
+        const auto matteSkull = assetLoader.CreateMaterial({
             .albedo = skull, .shininess = 4.0f, .specularStrength = 0.1f
         });
         materials = {matteSkull, shinyMario};

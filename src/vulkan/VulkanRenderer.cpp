@@ -59,7 +59,7 @@ VulkanRenderer::VulkanRenderer(SDL_Window* sdlWindow_, PresentMode startPresentM
     materialDescriptors(gpuContext),
     temporaryCommandBuffers(gpuContext),
     swapchain(gpuContext, sdlWindow_, PresentModeToVulkan(startPresentMode)),
-    resourceStore(gpuContext, temporaryCommandBuffers,
+    assetStore(gpuContext, temporaryCommandBuffers,
                   materialDescriptors),
     meshPipeline(gpuContext, swapchain.GetImageFormat(),
                  swapchain.GetDepthFormat(),
@@ -127,8 +127,8 @@ void VulkanRenderer::DrawFrame(const Camera& camera, const SceneLighting& lighti
         .linePipeline = linePipeline,
         .skyPipeline = skyPipeline
     };
-    frameLoop.DrawFrame(kClearColor, pipelines, resourceStore, drawList, debugLines, cameraUniform, lightUniform,
-                        resourceStore.GetCubemap(sky));
+    frameLoop.DrawFrame(kClearColor, pipelines, assetStore, drawList, debugLines, cameraUniform, lightUniform,
+                        assetStore.GetCubemap(sky));
 }
 
 PresentMode VulkanRenderer::GetPresentMode() const

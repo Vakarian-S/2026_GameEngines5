@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated:** 2026-11-17.
+**Last updated:** 2026-11-18.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
@@ -19,6 +19,7 @@ hold the measurements behind most rows.
 
 - [ECS](#ecs)
   - [Hardening](#hardening)
+  - [Worth weighing](#worth-weighing)
 - [Physics](#physics)
   - [Collision](#collision)
   - [Rigid bodies](#rigid-bodies)
@@ -37,6 +38,8 @@ hold the measurements behind most rows.
   - [Persistent debug lines](#persistent-debug-lines)
   - [A shipping build](#a-shipping-build)
   - [Automated game tests](#automated-game-tests)
+- [Networking](#networking)
+  - [Boss Fight Scene](#boss-fight-scene)
 - [Course topics](#course-topics)
   - [Semester topics](#semester-topics)
   - [The Ubisoft Next contest](#the-ubisoft-next-contest)
@@ -54,13 +57,14 @@ the physics scenes hold a few hundred entities, created once.
 | # | builds | why | status |
 |---|---|---|---|
 | 3 | Handles inside component data resolved at playback, or a create that returns the real handle | The command buffer resolves placeholders only in a command's target, never inside a component's bytes. So today an entity that holds another entity's handle must be built straight into the World in `OnCreate`. Create with components is built (dev-notes/create-with-components.md), so a create already carries every value in one command | to-do |
-| 5 | A store on the World for world-unique data, keyed by type, that `SystemContext` reads from | Wanted since step 3, so that `ecs` names no render type. `deltaTime`, the draw list, the debug lines and the camera are each one per world, and each one is a hardcoded field on a struct every system includes. Bevy calls these resources, Unity uses singleton entities. Keyed by type, not one shared struct | to-do |
+| 5 | A store on the World for world-unique data, keyed by type, that `SystemContext` reads from | Wanted since step 3, so that `ecs` names no render type. `deltaTime`, the draw list, the debug lines and the camera are each one per world, and each one is a hardcoded field on a struct every system includes. Bevy calls these resources, Unity uses singleton entities. Keyed by type, not one shared struct | in progress |
 | 6 | Run conditions: `Add` takes an optional function that reads world data and answers run or skip. `RunPhase` asks it before each run. The C and M toggles become a `DebugView { showWires, showMeshes }` in the store from 5, written by an ordinary system in Update | Step 4a switches systems with a flag on `System` that only `SystemRegistry::SetEnabled` flips. That works for two toggles, but the on/off state hides in the registry. As data in the world, it can be printed, saved and shown like any component, and one condition (a `GamePaused`, say) can gate many systems at once. Bevy's `run_if` and Unity's `RequireForUpdate` work this way. The flag's `continue` in `RunPhase` stays; only the question changes. Needs 5 | to-do |
 | 8 | Stable type identity: identify a type by a hash of its compile-time name, keep the dense id for runtime, and register in the exe only | `IdOf<T>` is a header static, so each DLL gets its own counter, and the same mask means different things across the boundary. Needed by the first DLL, save or network packet | to-do |
 | 9 | Faster migrations: a column lookup table per archetype (`FindColumn` becomes an array read), walking only the shared bits of the two masks in `MoveEntity`, and an archetype edge cache (the archetype reached by adding component X) | Only when the counters show migration cost. Measured 2026-09-30 with `EcsBench`: 0.114 to 0.124 microseconds per migration from 1,000 to 100,000 entities, and 24,000 migrations fit in a 4.2 ms frame. Missing 60 fps would take about 130,000 migrations in one frame (dev-notes/profiling.md) | to-do |
 | 10 | Enableable components: one bit per entity per component, toggled with no structural change, honoured by queries | The answer if archetype churn ever dominates. Adding a tag is a full row copy here, against a push into one pool in EnTT. The counters say when | to-do |
 | 11 | Writes to other entities sorted by target first | A damage system that reads a contact and writes `Health` on another entity chases a pointer per write. Sorting the events by target is the usual answer. Only once it shows in a profile | to-do |
 | 13 | A chunk size per archetype, overriding the World's `chunkBytes` | Only once the 4, 16 and 64 KB benchmark (dev-notes/ecs-chunks.md) shows that different archetypes want different sizes: a wide row fits few entities in a small chunk, and a tiny row wastes a large one. Unreal Mass has this as `ChunkMemorySize` in `FMassArchetypeCreationParams`, where 0 means the default | to-do |
+| 14 | `Query::single()`: runs the query and checks for exactly one match | For one-of-a-kind entities that share behaviour with others, such as the player. Shorter than a loop that runs once, and it fails at once if a spawn bug makes zero or two | to-do |
 
 **Row 9, a further option: power-of-two rows per chunk.** Round `rowsPerChunk` down with
 `std::bit_floor`, and the row-to-chunk lookup becomes `row >> rowShift` and `row & rowMask` instead of a
@@ -73,9 +77,22 @@ and live in a sparse set. Adding and removing it then moves nothing, but iterati
 suggests it for per-frame markers and short status effects; here that means `Picked`, `Falling` and
 `DebugWatch`. Same trigger as row 10: the counters show archetype churn. Weigh both when it fires.
 
+**Row 8 and networking.** A packet needs stable type ids only if it carries component ids. The
+networking scene sends snapshots in a fixed, hand-written layout (network ID, position,
+orientation), so row 8 can wait for saves or DLLs.
+
 Order: 6 needs the store from 5. Rows 1, 2, 4, 7 and 12 were built by the ECS hardening plan that
 ended on 2026-11-05 (dev-notes/README.md, "Plan steps"); the numbers of the rows left keep their
 old values, so references to them still hold.
+
+### Worth weighing
+
+Not planned, and maybe never needed. Each row records a trade and the sign that would make it worth
+building. Until that sign shows, the row only reminds.
+
+| # | builds | why | status |
+|---|---|---|---|
+| 1 | Lifecycle hooks: a ctor, dtor and move function per component type, stored by `Register<T>()` and called by migrations, swap-remove, `Clear`, chunk returns and new rows. Trivially copyable types keep the `memcpy` path | Rule 4 keeps every component plain bytes, so no component can own a socket, a vector or a map. Flecs lifts that limit with hooks, and Bevy 0.19 then stores resources as components on entities. The command buffer is the expensive part: it stores components as raw bytes and must move values in and out instead. The risk is what hooks allow: a vector in a hot component keeps its elements off the chunk, and iteration loses its cache benefit. Rule 4 forbids that today; with hooks, only discipline does. The sign: an observer, a hook, an entity inspector or saving starts needing its own version for resources, which live in a separate store (Hardening row 5) | to-do |
 
 ## Physics
 
@@ -161,11 +178,11 @@ for step 4: the physics scene reuses Mario and the cube.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | `CreateSphere()`, `CreateBox(halfExtents)`, `CreateCylinder(radius, halfHeight)`, `CreateCapsule(radius, halfHeight)` on `ResourceLoader`, generated in code and cached per size | `Transform.scale` is uniform, so it cannot change a shape's proportions: a 1 m cube mesh can never become a 2 x 1 x 4 box. A mesh generated at the collider's sizes matches it at any proportions, and scale still multiplies both. The sizes follow the collider convention, half sizes measured from the centre. A ball has one size, so one unit sphere and `scale` cover every ball. Godot builds its primitives this way (`CapsuleMesh` has `radius`, `height`, `radial_segments`, `rings`); Unity's `CreatePrimitive` uses fixed built-in meshes | to-do |
+| 1 | `CreateSphere()`, `CreateBox(halfExtents)`, `CreateCylinder(radius, halfHeight)`, `CreateCapsule(radius, halfHeight)` on `AssetLoader`, generated in code and cached per size | `Transform.scale` is uniform, so it cannot change a shape's proportions: a 1 m cube mesh can never become a 2 x 1 x 4 box. A mesh generated at the collider's sizes matches it at any proportions, and scale still multiplies both. The sizes follow the collider convention, half sizes measured from the centre. A ball has one size, so one unit sphere and `scale` cover every ball. Godot builds its primitives this way (`CapsuleMesh` has `radius`, `height`, `radial_segments`, `rings`); Unity's `CreatePrimitive` uses fixed built-in meshes | to-do |
 
 **Decided against: a spawn helper** that creates the mesh, the entity and the matching collider in one
 call, as Unity's `CreatePrimitive` does. Creating a mesh and creating a collider are separate actions:
-the mesh is a shared asset in `ResourceStore`, and the collider is a component on one entity. Nothing
+the mesh is a shared asset in `AssetStore`, and the collider is a component on one entity. Nothing
 links them except the same numbers passed to both. Keeping the two calls visible in scene code keeps
 that clear.
 
@@ -178,7 +195,7 @@ use centred unit meshes.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | Import settings passed with the load, such as `CreateMesh("Mario.obj", {.fitSize = 1.0f, .recentre = true})`, and part of `ResourceStore`'s cache key | The store caches meshes by path and shares them between scenes, so a separate `AdjustMesh` call after the load would change the mesh for every scene and miss the copy already on the GPU. With the settings in the key, the same file with and without them becomes two meshes | to-do |
+| 1 | Import settings passed with the load, such as `CreateMesh("Mario.obj", {.fitSize = 1.0f, .recentre = true})`, and part of `AssetStore`'s cache key | The store caches meshes by path and shares them between scenes, so a separate `AdjustMesh` call after the load would change the mesh for every scene and miss the copy already on the GPU. With the settings in the key, the same file with and without them becomes two meshes | to-do |
 | 2 | An import scale: a known unit factor per file (centimetres to metres is 0.01), or fit to a size from the bounding box | Keeps `Transform.scale = (1, 1, 1)` meaning "the size the model is meant to be", so collider numbers are plain metres and scale stays free for gameplay. A uniform scale cannot deform the mesh: positions are multiplied by one number, and normals, UVs and indices do not change | to-do |
 | 3 | Recentre: subtract the bounding box centre from every vertex | The engine can measure where the origin sits but cannot know whether it was meant: a character's origin at the feet lets it stand at y = 0, and a door's sits on its hinge. So recentring is a choice made per model, never automatic. Where the origin is meant, the alternative is an offset on the collider, which Unity's colliders have as `center` and step 4a left out | to-do |
 | 4 | The facing fix: turn a model that faces +Z to the engine's -Z at load | Space prototype finding 8. `Mario.obj` faces +Z, and the prototype paid a quaternion multiply per draw for it | to-do |
@@ -318,6 +335,67 @@ desktop and plays the same frames every time.
 | 3 | Image compare: save a known-good image once, compare each run against it | Catches visual changes no log shows. Needs 1 and 2, so the same frames give the same image | to-do |
 | 4 | `run-game.ps1` starts the exe with a replay file, and the PowerShell input goes | Once 1 and 2 exist, the script only starts, waits and reads the summary | to-do |
 
+## Networking
+
+### Boss Fight Scene
+
+Planned 2026-11-18. Engine work first: the course's networking topic comes along with it.
+
+| # | builds | why | status |
+|---|---|---|---|
+| 1 | The Boss Fight Scene. A headless server runs a small boss fight. Clients join over TCP, send input over UDP, and draw the server's UDP snapshots with interpolation. No prediction | Effort large. Needs the store from ECS Hardening row 5. Changes the ECS additively: a `NetworkId` component and a map from network IDs to local entities. A lag test shows TCP against UDP on screen. The headless mode and the server and client split get reused by every later networked feature and by headless tests | to-do |
+
+**Decisions.** A dedicated headless server comes first: it proves the server code needs no window,
+renderer or local player, and a listen server later runs the same code. TCP carries the connection:
+join, leave, and rare events that must arrive ("player joined", "boss died"). UDP carries the
+constant data: input to the server every tick, snapshots back many times a second, because a late
+snapshot is useless and a new one replaces it. No prediction: the server decides everything, and a
+client shows what it receives. The scene picks its systems by role in `OnCreate`, server systems or
+client systems, as Unity's Netcode for Entities marks systems for server or client simulation. Built
+for N players with a client table, tested with 2, as three processes on localhost. Network state
+(`NetworkRole`, sockets, `ClientTable`, `SnapshotBuffer`, `NetworkIdMap`) lives in the store, per
+World, never in a static.
+
+**Outline.** In order: (1) a headless mode, where the engine starts with a server flag, opens no
+window, and the Fixed phase still ticks; (2) the Boss Fight Scene offline, with a boss on a pattern,
+a player that moves and shoots, in one process; (3) TCP join and leave, which hands the client an ID,
+learns its UDP port, and spawns or despawns its player on the server; (4) UDP input, so WASD on a
+client moves its player on the server; (5) UDP snapshots, mirrored on the client through
+`NetworkIdMap` and drawn raw, with visible jitter; (6) interpolation from a `SnapshotBuffer`, drawn
+about 100 ms in the past; (7) shooting, where fire goes up as input and the projectile comes back in
+a snapshot; (8) a lag test: a stats line (ping, loss, snapshot age), a switch that sends snapshots
+over TCP, and clumsy at 5% loss, where UDP skips a frame and TCP freezes then jumps.
+
+**Snapshots.** A fixed, hand-written layout: a header (tick, entity count), then per entity a network
+ID, a kind byte, a position and an orientation, written field by field, never as a `memcpy` of a
+struct with padding. The client turns the kind byte into its own mesh, because an `AssetStore`
+handle depends on load order and differs between processes. Only one writer and one reader know the
+byte order, so a generic layout can replace them later. A generic layout needs Hardening row 8,
+stable asset IDs, and a way to send components that point at other entities. Row 8 does not cover
+that last one: it makes a type ID match between processes, but an entity handle is a slot index in
+creation order, with no name to hash, so each World numbers its entities differently. Only the
+`NetworkId` matches on both sides. Two ways to use it, still to design: rewrite network IDs into
+local handles as a packet loads, as EnTT's `continuous_loader` does, or store the network ID in the
+component and look it up through `NetworkIdMap` on each access, as Unreal sends object references as
+`FNetworkGUID`s.
+
+**Interpolation.** It shares the blend math with Fixed step additions row 1: lerp the position and
+scale, slerp the orientation, as one free function. The rest differs: the two states come from
+snapshots, `t` comes from the render time between two server ticks, and a lost snapshot must be held
+or guessed forward. Fixed step row 1 is not needed first, but it is a small warm-up that builds the
+blend function and its test. The input a client sends each tick is the `PlayerCommand` from the
+controller note under Semester topics.
+
+**Open decisions,** each settled in its step: how `Application` runs without the renderer (1);
+SDL3_net or Winsock, and where a `net` module sits in the layers (3); non-blocking sockets in the
+main loop or a receive thread, the course's extra credit (3, 4); the tick rate, send rate and
+snapshot layout (5); how to measure ping (8).
+
+**Later,** each its own row once row 1 is done: prediction for the client's own movement, with
+reconciliation; a listen server, a server World and a client World in one process; or client
+authority over its own movement, which needs no reconciliation and trusts the client, fine for
+co-op.
+
 ## Course topics
 
 ### Semester topics
@@ -333,10 +411,8 @@ topic. When a topic is done, it leaves this table and STATE.md's table says so.
 | 4 | DLLs | Effort small. Does not change the ECS | to-do |
 | 5 | Frustum culling | Effort medium. Does not change the ECS: it is a system. See Rendering | to-do |
 | 6 | Concurrency | Effort medium. Barely changes the ECS: one command buffer per thread, merged at the sync point | to-do |
-| 7 | Networking | Effort large. Changes the ECS, additively: a `NetId` component and a map from remote to local entities. As in EnTT's `continuous_loader`, the map must also rewrite entity handles stored inside components | to-do |
-
 - Rows 1 to 4 are the small batch, done one at a time between larger steps. Rows 5 and 6 build on the
-  systems and phases from step 3. Networking goes last, because it is large and risky.
+  systems and phases from step 3. Networking moved to its own section, "Networking".
 - Never do two long tasks back to back. After a long one, do a small topic and finish it.
 - **Controller support, and a later player controller.** Step 4a's design named the next layer: a
   `PlayerCommand` for game commands (move, fire), built once per fixed step and reset at the start of
@@ -385,7 +461,7 @@ Known leftovers in the code, moved from STATE.md on 2026-11-03.
 | 1 | Automated tests for `PickSystem`, `DrawPickRaySystem` and the dangle systems | Nothing runs them automatically. Vakarian checked them by hand on 2026-10-30, 2026-11-02 and 2026-11-03; `PhysicsTests` covers only the math they call | to-do |
 | 2 | A check that a system's query asks for the components it reads: an assert in `Column`, or a check in the registry | The read mask is only a label. In 4c, a query copied from another system matched archetypes without `Picked`, so `Column<Picked>()` returned null and crashed. It happened again with `AngularVelocity` missing from `ApplyForcesSystem`'s query | to-do |
 | 3 | Measure what `PhysicsScene`'s world arena needs | `kWorldArenaBytes` went from 16 KB to 256 KB in 4c without a measurement | to-do |
-| 4 | Remove `ResourceStore::CreateMesh`'s `std::cout` mesh counts | Leftover debug print | to-do |
+| 4 | Remove `AssetStore::CreateMesh`'s `std::cout` mesh counts | Leftover debug print | to-do |
 | 5 | One `EcsTests` check through a `const World&` | The const `World::GetComponent` has no caller, so no build compiles its body. A scratch compile on 2026-10-27 showed it works | to-do |
 | 6 | A named local per cube orientation in `Scene1` | It builds both in one long `?:` inside the initializer | to-do |
 | 7 | A forward declaration instead of `Buffer.h` in `MaterialDescriptors.h` | The include is not needed | to-do |

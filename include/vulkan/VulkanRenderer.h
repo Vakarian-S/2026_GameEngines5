@@ -3,7 +3,7 @@
 #include "FrameLoop.h"
 #include "GPUContext.h"
 #include "Pipeline.h"
-#include "ResourceStore.h"
+#include "AssetStore.h"
 #include "Swapchain.h"
 #include "TemporaryCommandBuffers.h"
 #include "MaterialDescriptors.h"
@@ -43,7 +43,7 @@ public:
                    const DebugLines& debugLines, CubeMapHandle sky);
 
 
-    ResourceStore& GetResourceStore() { return resourceStore; }
+    AssetStore& GetAssetStore() { return assetStore; }
 
     /**
      * A change from SetPresentMode shows here from the next frame
@@ -99,7 +99,7 @@ private:
     /** Set 0: the camera, one set and one buffer per frame slot. */
     Descriptors descriptors;
 
-    /** Set 1: one set per material. Declared before resourceStore, which allocates from it */
+    /** Set 1: one set per material. Declared before assetStore, which allocates from it */
     MaterialDescriptors materialDescriptors;
 
     TemporaryCommandBuffers temporaryCommandBuffers;
@@ -107,7 +107,7 @@ private:
     Swapchain swapchain;
 
     /** Every mesh and texture. Declared before pipeline only for reading order; the pipeline does not use it */
-    ResourceStore resourceStore;
+    AssetStore assetStore;
 
     /** Pipeline used to draw the meshes */
     Pipeline meshPipeline;

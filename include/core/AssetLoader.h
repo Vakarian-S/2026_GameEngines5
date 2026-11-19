@@ -8,10 +8,10 @@
 /**
  * The contract that lets a scene load assets using a renderer's loader, in our case currently the Vulkan Loader
  */
-class ResourceLoader
+class AssetLoader
 {
 public:
-    virtual ~ResourceLoader() = default;
+    virtual ~AssetLoader() = default;
     
     /**
      * Copies a unit cube into GPU memory.

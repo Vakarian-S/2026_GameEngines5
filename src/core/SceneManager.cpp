@@ -47,7 +47,7 @@ namespace
     }
 }
 
-SceneManager::SceneManager(const std::span<const SceneEntry> scenes_, ResourceLoader& loader_) :
+SceneManager::SceneManager(const std::span<const SceneEntry> scenes_, AssetLoader& loader_) :
     scenes(scenes_),
     loader(loader_)
 {

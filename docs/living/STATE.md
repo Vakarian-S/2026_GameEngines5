@@ -1,6 +1,6 @@
 # State
 
-**Last updated:** 2026-11-17.
+**Last updated:** 2026-11-18.
 
 What the engine has today, and the architecture rules that hold everywhere. Read this first.
 
@@ -37,7 +37,7 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 | Skybox | A `CubeMap` (one 6-layer image from a folder of six PNGs, `px` to `nz`) at set 0, binding 3. The sky pass draws one screen triangle at depth 1.0 between the mesh pass and the line pass, its direction from the inverse projection and the view's rotation, with z flipped for the cube map's left-handed convention. A scene picks its sky with `Scene::GetSky()`; the default empty handle means no sky, and the frame shows the clear colour | `include/vulkan/CubeMap.h`, `shaders/skybox.vert`, `shaders/skybox.frag`, `assets/skyboxes/` | dev-notes/skybox.md |
 | GPU timers | `GPUQueries` writes timestamps around named zones (the mesh pass, the TLAS build) and averages them once a second for the stats line. Behind `GE5_PROFILING`; a GPU without timestamps shows no GPU time | `include/vulkan/GPUQueries.h` | tools/gpu-queries.md, dev-notes/gpu-timestamps.md |
 | Debug lines | Lines, wire boxes, spheres, cylinders and capsules, plus the grid and axes in every scene (G toggles them) | `include/core/debug` | dev-notes/line-pipeline.md |
-| Resources | `ResourceStore` holds meshes, textures, materials and cube maps behind handles, cached by path or by value, freed only at exit. Scenes load through the `ResourceLoader` interface | `include/core/ResourceLoader.h`, `include/core/Handles.h`, `include/vulkan` | dev-notes/scene-switcher.md, dev-notes/skybox.md |
+| Assets | `AssetStore` holds meshes, textures, materials and cube maps behind handles, cached by path or by value, freed only at exit. Scenes load through the `AssetLoader` interface | `include/core/AssetLoader.h`, `include/core/Handles.h`, `include/vulkan` | dev-notes/scene-switcher.md, dev-notes/skybox.md |
 | Scenes | `Scene0`: 1,000 moving cubes, the benchmark for `Record`. `Scene1`: the lights and shadows scene, the statue Eirene in a ruined temple of Ionic columns, walls with windows, beams and rubble, with four light schemes on keys 1 to 4. Each scheme also picks a sky: sunset, night, red skies, and none for RGB windows. `PhysicsScene`: six shapes with collider wires to pick and dangle from the mouse. `PacingScene`: two rows of 10 Marios that slide and wrap, the top row moved per frame and the bottom per fixed step, with Ctrl+H cycling a fake CPU load. F1 to F4 switch; C toggles wires, M meshes, and R in `PhysicsScene` clears the World and respawns the shapes | `include/scenes` | dev-notes/physics-scene.md, dev-notes/dangle-physics.md, dev-notes/live-fps-and-pacing-scene.md |
 | Camera | A fly camera in every scene: WASD, Q and E, Shift, right mouse to look. Stores a position, yaw and pitch, so it never drifts | `include/core/FlyCameraController.h` | dev-notes/fly-camera.md |
 | App | `Application` owns the window, renderer, `SceneManager`, timer, frame cap, frame time stats and frame arena, and runs the loop. App keys: F1 to F4, G, Ctrl+P (next present mode), Ctrl+L (next frame cap), Ctrl+K (shadows on and off), Alt+Enter (borderless fullscreen). `GameEngines5.exe 0` starts in Scene0; no argument starts in the last scene | `include/app` | dev-notes/scene-switcher.md |
