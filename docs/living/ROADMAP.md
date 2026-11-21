@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last updated:** 2026-11-18.
+**Last updated:** 2026-11-19.
 
 Work that is planned but not active, grouped by area. PLAN.md holds only the phase in progress. When a
 block here becomes the next phase, it moves to PLAN.md and gets designed piece by piece with Vakarian.
@@ -343,28 +343,31 @@ Planned 2026-11-18. Engine work first: the course's networking topic comes along
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | The Boss Fight Scene. A headless server runs a small boss fight. Clients join over TCP, send input over UDP, and draw the server's UDP snapshots with interpolation. No prediction | Effort large. Its per-World state goes in the `Resources` store (dev-notes/resources.md). Changes the ECS additively: a `NetworkId` component and a map from network IDs to local entities. A lag test shows TCP against UDP on screen. The headless mode and the server and client split get reused by every later networked feature and by headless tests | to-do |
+| 1 | The Boss Fight Scene. A headless server runs a small boss fight. Clients connect through GameNetworkingSockets (GNS), join with reliable messages, send input as unreliable messages, and draw the server's unreliable snapshots with interpolation. No prediction | Effort large. Its per-World state goes in the `Resources` store (dev-notes/resources.md). Changes the ECS additively: a `NetworkId` component and a map from network IDs to local entities. A lag test shows reliable against unreliable snapshots on screen. The headless mode and the server and client split get reused by every later networked feature and by headless tests | in progress |
 
 **Decisions.** A dedicated headless server comes first: it proves the server code needs no window,
-renderer or local player, and a listen server later runs the same code. TCP carries the connection:
-join, leave, and rare events that must arrive ("player joined", "boss died"). UDP carries the
-constant data: input to the server every tick, snapshots back many times a second, because a late
-snapshot is useless and a new one replaces it. No prediction: the server decides everything, and a
+renderer or local player, and a listen server later runs the same code. Valve's GameNetworkingSockets
+(GNS) carries everything over one connection per client, chosen on 2026-11-20 after a prototype
+(findings/2026-11-gns-prototype.md). Reliable messages carry join, leave, and rare events that must
+arrive ("player joined", "boss died"). Unreliable messages carry the constant data: input to the
+server every tick, snapshots back many times a second, because a late snapshot is useless and a new
+one replaces it. GNS starts once per program, so its library object lives per program, not per World. No prediction: the server decides everything, and a
 client shows what it receives. The scene picks its systems by role in `OnCreate`, server systems or
 client systems, as Unity's Netcode for Entities marks systems for server or client simulation. Built
 for N players with a client table, tested with 2, as three processes on localhost. Network state
-(`NetworkRole`, sockets, `ClientTable`, `SnapshotBuffer`, `NetworkIdMap`) lives in the store, per
-World, never in a static.
+(`NetworkSettings`, connections, `ClientTable`, `SnapshotBuffer`, `NetworkIdMap`) lives in the store, per
+World, never in a static. PLAN.md holds the step-by-step design.
 
 **Outline.** In order: (1) a headless mode, where the engine starts with a server flag, opens no
 window, and the Fixed phase still ticks; (2) the Boss Fight Scene offline, with a boss on a pattern,
-a player that moves and shoots, in one process; (3) TCP join and leave, which hands the client an ID,
-learns its UDP port, and spawns or despawns its player on the server; (4) UDP input, so WASD on a
-client moves its player on the server; (5) UDP snapshots, mirrored on the client through
+a player that moves and shoots, in one process; (3) join and leave over GNS, which hands the client
+an ID and spawns or despawns its player on the server; (4) input as unreliable messages, so WASD on a
+client moves its player on the server; (5) snapshots as unreliable messages, mirrored on the client through
 `NetworkIdMap` and drawn raw, with visible jitter; (6) interpolation from a `SnapshotBuffer`, drawn
 about 100 ms in the past; (7) shooting, where fire goes up as input and the projectile comes back in
 a snapshot; (8) a lag test: a stats line (ping, loss, snapshot age), a switch that sends snapshots
-over TCP, and clumsy at 5% loss, where UDP skips a frame and TCP freezes then jumps.
+as reliable messages, and GNS's fake loss at 5%, where unreliable snapshots skip a frame and reliable
+ones freeze then jump.
 
 **Snapshots.** A fixed, hand-written layout: a header (tick, entity count), then per entity a network
 ID, a kind byte, a position and an orientation, written field by field, never as a `memcpy` of a
@@ -386,10 +389,9 @@ or guessed forward. Fixed step row 1 is not needed first, but it is a small warm
 blend function and its test. The input a client sends each tick is the `PlayerCommand` from the
 controller note under Semester topics.
 
-**Open decisions,** each settled in its step: how `Application` runs without the renderer (1);
-SDL3_net or Winsock, and where a `net` module sits in the layers (3); non-blocking sockets in the
-main loop or a receive thread, the course's extra credit (3, 4); the tick rate, send rate and
-snapshot layout (5); how to measure ping (8).
+**Open decisions,** each settled in its step: the tick rate, send rate and snapshot layout (5); how
+to measure ping (8). Steps 1 to 3 settled the headless start, the library and the `net` module;
+PLAN.md has them.
 
 **Later,** each its own row once row 1 is done: prediction for the client's own movement, with
 reconciliation; a listen server, a server World and a client World in one process; or client

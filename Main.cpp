@@ -1,12 +1,17 @@
 #include <exception>
 #include <iostream>
 
+#include "app/ServerApplication.h"
 #include "app/Application.h"
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
 
+#include <span>
 #include <crtdbg.h>
 #include <cstdlib>
+#include <string_view>
+#include <algorithm>
+
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -51,6 +56,20 @@ namespace
         /* A real crash, such as an access violation, ends the process without the Windows error window. */
         SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     }
+
+    /**
+     * @return returns true when any argv entry equals --server.
+     */
+    bool HasServerFlag(const int argc, char* argv[])
+    {
+        /* Wrap argv in a span and skip argv[0] */
+        auto args = std::span(argv, argc).subspan(1);
+
+        return std::ranges::any_of(args, [](const std::string_view arg)
+        {
+            return arg == std::string_view("--server");
+        });
+    }
 }
 
 
@@ -72,8 +91,16 @@ int main(const int argc, char* argv[])
     std::cout << "GameEngines5\n";
     try
     {
-        Application app(argc, argv);
-        app.Run();
+        if (HasServerFlag(argc, argv))
+        {
+            ServerApplication app(argc, argv);
+            app.Run();
+        }
+        else
+        {
+            Application app(argc, argv);
+            app.Run();
+        }
     }
     catch (const std::exception& error)
     {

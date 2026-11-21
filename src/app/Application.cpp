@@ -10,11 +10,12 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
 
+#include "core/Camera.h"
+#include "app/SceneIndex.h"
 #include "core/PresentMode.h"
-#include "scenes/PacingScene.h"
-#include "scenes/PhysicsScene.h"
-#include "scenes/Scene0.h"
-#include "scenes/Scene1.h"
+#include "ecs/Phase.h"
+#include "ecs/SystemRegistry.h"
+#include "ecs/World.h"
 #include "utils/MemoryMonitor.h"
 #include "utils/Profiler.h"
 
@@ -23,48 +24,14 @@ namespace
     /** Bytes of scratch memory one frame may use. 1 MB holds about 14,000 draw items at 72 bytes each; Scene0's 1,000 take 72,000 */
     constexpr std::size_t kFrameArenaBytes = 1024 * 1024;
 
-    /** Every scene the program can run. F1 picks row 0, F2 row 1 and so on. At file scope, so it outlives the manager's span */
-    constexpr SceneEntry kScenes[] = {
-        {.name = "Scene0", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene0>(); }},
-        {.name = "Scene1", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene1>(); }},
-        {.name = "Physics Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PhysicsScene>(); }},
-        {.name = "Pacing Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PacingScene>(); }}
-    };
-
     /** The present mode the game starts in. Falls back to FIFO when the GPU lacks it */
     constexpr auto kStartPresentMode = PresentMode::Fifo;
-
-    /**
-     * Reads the starting scene from the command line.
-     * @return the row in argv[1], or the last row when no argument is given. Throws with the scene list on a bad argument
-     */
-    std::size_t PickScene(const int argc, char* argv[])
-    {
-        const std::size_t sceneCount = std::size(kScenes);
-        if (argc < 2) return sceneCount - 1;
-
-        const std::string_view text = argv[1];
-        std::size_t index = 0;
-        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), index);
-
-        /* Bad when it is not a number, has extra characters after the number, or is past the table */
-        if (error != std::errc() || end != text.data() + text.size() || index >= sceneCount)
-        {
-            std::string message = "no scene \"" + std::string(text) + "\". Pick one of:\n";
-            for (std::size_t i = 0; i < sceneCount; ++i)
-            {
-                message += "  " + std::to_string(i) + ": " + kScenes[i].name + "\n";
-            }
-            throw std::invalid_argument(message);
-        }
-        return index;
-    }
 }
 
 Application::Application(const int argc, char* argv[]) :
     window("GameEngines5", 1280, 720),
     renderer(window.GetSDLWindow(), kStartPresentMode),
-    sceneManager(kScenes, renderer.GetAssetStore()),
+    sceneManager(Scenes(), renderer.GetAssetStore()),
     frameArena(kFrameArenaBytes),
     frameMemory(frameArena)
 {
@@ -188,7 +155,8 @@ void Application::Run()
         {
             PROFILE_SCOPE("MakeDrawList");
             sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DrawListTarget>(DrawListTarget{&drawList});
-            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DebugLinesTarget>(DebugLinesTarget{&debugLines});
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<DebugLinesTarget>(
+                DebugLinesTarget{&debugLines});
             systems.RunPhase(
                 Phase::Extract,
                 timer.GetDeltaTime());
