@@ -187,7 +187,7 @@ server work and client work now, so step 3 only picks which lists run.
 - **d. Movement.** A player system turns the command into a `PHYSICS::Velocity`, the existing
   `UpdatePositionSystem` moves the player, and a clamp keeps it inside the arena. It reuses the Fixed
   system `PhysicsScene` runs. A second integrator was rejected.
-- **e. A tick counter.** A `TickCount` resource counts fixed steps. `Application` and
+- **e. A tick counter.** A `FixedTickCount` resource counts fixed steps. `Application` and
   `ServerApplication` add 1 and `Set` it before each Fixed run. The boss pattern, step 1's printout and
   step 5's snapshot header read it. It is ROADMAP.md, Fixed step additions row 3. Each user counting on
   its own was rejected.
@@ -226,6 +226,26 @@ server work and client work now, so step 3 only picks which lists run.
 the last one when an input is lost (transcript lines 674 to 689), and the client sends every input
 since the server's last acknowledgment in each packet, so one lost packet costs nothing (lines 728 to
 746).
+
+**What the build checked.** x64 Debug, one entry per decision as it lands.
+
+- **Decision f, 2026-11-21.** `FigureEightPathPosition(tick, periodTicks, halfWidth, halfDepth)` in
+  `game/FigureEightPath.h` gives the offset. A `FigureEightPath` component holds each entity's
+  `center`, period and sizes, so several entities can loop in different spots.
+  `FigureEightPathSystem` (it was `BossPatternSystem`) writes `center + offset` in Fixed. The boss
+  uses center (0, 0, -3), period 960, half width 6, half depth 2. Mario starts at (0, 0, 5).
+  - **Tests.** `PhysicsTests` gets "a figure-eight path loops through the origin", with 8 checks:
+    ticks 0, half a period and a whole period give the origin; an eighth gives
+    (0.707 × halfWidth, 0, halfDepth); a quarter gives (halfWidth, 0, 0); three quarters give
+    (-halfWidth, 0, 0); 1000 periods later gives the same point; y stays 0.
+    `src/game/FigureEightPath.cpp` joins the `PhysicsTests` sources. `scripts\run-tests.bat` passes
+    in all four configurations.
+  - **The game.** `scripts\run-game.ps1 -Scene 4`: screenshots 2 s apart show the boss moving from
+    the right of its center to the left, clear of Mario. F1, then F5, restarts the boss near the
+    start of its path, so the `FixedTickCount` reset works. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 leaked
+    blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
+    blocks.
 
 ## 3. Join and leave over GNS
 

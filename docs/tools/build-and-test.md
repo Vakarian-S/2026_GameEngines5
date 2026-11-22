@@ -170,15 +170,27 @@ screen, instead of asking Vakarian to test it.
 .\scripts\run-game.ps1 -Scene 0 -Steps "press F2","wait 1500","shot scene1"
 .\scripts\run-game.ps1 -Steps (1..20 | ForEach-Object { "press F2", "wait 700", "press F1", "wait 700" })
 .\scripts\run-game.ps1 -Steps "wait 500","click 540 390","wait 800","shot picked"
+.\scripts\run-game.ps1 -Server -Scene 3 -Ticks 600
 ```
 
 | parameter | meaning | default |
 |---|---|---|
-| `-Scene` | the scene index passed to the exe | none, which starts the last scene |
+| `-Scene` | the scene row, passed to the exe as `--scene N` | none, which starts the last scene |
 | `-Steps` | the steps, one per string | none |
 | `-Config` | `Debug` or `Release` | `Debug` |
 | `-OutDir` | where the logs and screenshots go | `%TEMP%\ge5-run` |
 | `-StartWait` | milliseconds to wait for the window | 4000 |
+| `-Server` | runs the headless server, passing `--server` and `--ticks N` | off |
+| `-Ticks` | the server's tick limit, 60 ticks a second | 600 |
+
+With `-Server`, the script skips `-Steps` and `-StartWait`. It waits for the server to exit, and kills
+it if it is still running 30 s after its ticks should end. The summary adds whether a window opened,
+the `tick N` lines (the first and the last) and the "Ran for" line.
+
+The exe's own flags are `--server` (headless), `--scene N` (the starting row) and `--ticks N` (the
+server stops after N ticks). Ctrl+Q stops the server from a real console. A pipe, such as Rider's run
+window or this script, cannot send it, so the Rider configuration `GameEngines5 Server`
+(`.run/GameEngines5 Server.run.xml`) opens an external console.
 
 | step | does |
 |---|---|
@@ -192,7 +204,7 @@ screen, instead of asking Vakarian to test it.
 | `resize W H` | moves the window to 50, 50 and sizes it W by H |
 | `minimize`, `maximize`, `restore` | the window states |
 
-Keys are F1 to F4, A to Z, 0 to 9, Shift, Ctrl, Alt, Enter, Space and Escape. A combination is a
+Keys are F1 to F5, A to Z, 0 to 9, Shift, Ctrl, Alt, Enter, Space and Escape. A combination is a
 hold with the modifier first: `hold Ctrl,P 100`, `hold Alt,Enter 100`.
 
 To run on the AMD 610M, set `$env:VK_LOADER_DRIVERS_SELECT = "*amd*"` before the script and remove
@@ -239,4 +251,6 @@ ROADMAP.md, "Automated game tests", moves this inside the engine.
 - `scripts/run-tests.bat`: builds and runs the four test programs, and `GpuTests` on x64.
 - `tests/GpuTests.cpp` and `tests/assets/cubemaps/`: the GPU checks and their face images.
 - `scripts/capture-output.sh`: the refactor check above.
-- `scripts/run-game.ps1`: runs the game from a script.
+- `scripts/run-game.ps1`: runs the game, or with `-Server` the headless server, from a script.
+- `.run/GameEngines5 Server.run.xml`: the Rider configuration that runs the server in an external
+  console.

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core/SceneManager.h"
+#include "scenes/BossFightScene.h"
 #include "scenes/PacingScene.h"
 #include "scenes/PhysicsScene.h"
 #include "scenes/Scene0.h"
@@ -17,7 +18,11 @@ namespace
         {.name = "Scene0", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene0>(); }},
         {.name = "Scene1", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<Scene1>(); }},
         {.name = "Physics Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PhysicsScene>(); }},
-        {.name = "Pacing Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PacingScene>(); }}
+        {.name = "Pacing Scene", .build = []() -> std::unique_ptr<Scene> { return std::make_unique<PacingScene>(); }},
+        {
+            .name = "Boss Fight Scene",
+            .build = []() -> std::unique_ptr<Scene> { return std::make_unique<BossFightScene>(); }
+        }
     };
 }
 

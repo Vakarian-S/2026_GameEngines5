@@ -17,6 +17,7 @@
 #include "core/Camera.h"
 #include "core/Components.h"
 #include "core/VectorMath.h"
+#include "game/FigureEightPath.h"
 #include "physics/Components.h"
 #include "physics/Quadratic.h"
 #include "physics/Ray.h"
@@ -1218,6 +1219,29 @@ int main()
         const Transform tiny{.scale = MATH::Vec3(0.001f, 0.001f, 0.001f)};
         Check("a tiny scale still gives the normal's direction",
               Near(MATH::VMath::normalize(NormalMatrix(ModelMatrix(tiny)) * normal), normal));
+    }
+
+    std::cout << "\nTEST CASE: a figure-eight path loops through the origin\n";
+    {
+        constexpr std::uint64_t period = 480;
+        constexpr float halfWidth = 6.0f;
+        constexpr float halfDepth = 3.0f;
+        const auto at = [](const std::uint64_t tick)
+        {
+            return FigureEightPathPosition(tick, period, halfWidth, halfDepth);
+        };
+
+        Check("tick 0 is the origin", Near(at(0), MATH::Vec3(0.0f, 0.0f, 0.0f)));
+        Check("an eighth of a loop is (0.707 * halfWidth, 0, halfDepth)",
+              Near(at(period / 8), MATH::Vec3(0.70710678f * halfWidth, 0.0f, halfDepth)));
+        Check("a quarter of a loop is the far right, (halfWidth, 0, 0)",
+              Near(at(period / 4), MATH::Vec3(halfWidth, 0.0f, 0.0f)));
+        Check("half a loop crosses back through the origin", Near(at(period / 2), MATH::Vec3(0.0f, 0.0f, 0.0f)));
+        Check("three quarters of a loop is the far left, (-halfWidth, 0, 0)",
+              Near(at(3 * period / 4), MATH::Vec3(-halfWidth, 0.0f, 0.0f)));
+        Check("one whole loop is back at the origin", Near(at(period), MATH::Vec3(0.0f, 0.0f, 0.0f)));
+        Check("a tick 1000 loops later is the same point", Near(at(1000 * period + period / 8), at(period / 8)));
+        Check("y stays on the floor", Near(at(period / 3).y, 0.0f));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

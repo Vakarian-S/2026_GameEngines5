@@ -30,7 +30,7 @@ private:
     /** Manager of the scenes in the app */
     SceneManager sceneManager;
     /** Counts tick in the server ran so far */
-    std::uint64_t tickCounter = 0;
+    std::uint64_t tickCount = 0;
     /** If set, the amount of ticks the server will run for before closing */
     std::optional<std::uint64_t> tickLifespan = std::nullopt;
     /** Limits the frames per second when set */

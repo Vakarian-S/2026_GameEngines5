@@ -21,6 +21,8 @@
 #define NOMINMAX
 #include <windows.h>
 
+#include "core/FixedTickCount.h"
+#include "ecs/World.h"
 #include "game/Components.h"
 
 namespace
@@ -86,16 +88,18 @@ void ServerApplication::Run()
     auto query = Query(sceneManager.GetCurrentScene().GetWorld(), COMPONENTS::MaskOf<Transform, FixedStepRow>());
     
     while (
-        (!tickLifespan || tickCounter < *tickLifespan) &&
+        (!tickLifespan || tickCount < *tickLifespan) &&
         !IsCloseCommandTriggered()
     )
     {
         SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
         {
             PROFILE_SCOPE("[Server]: Fixed Update");
+            tickCount++;
+            sceneManager.GetCurrentScene().GetWorld().GetResources().Set<FixedTickCount>({.ticks = tickCount});
             systems.RunPhase(Phase::Fixed, FixedStep::kFixedTimeStep);
-            tickCounter++;
-            if (tickCounter % static_cast<int>(kTicksPerSecond) == 0)
+            
+            if (tickCount % static_cast<int>(kTicksPerSecond) == 0)
             {
                 /* The query matches only the bottom row, so one Mario from the first chunk is enough */
                 bool printed = false;
@@ -103,7 +107,7 @@ void ServerApplication::Run()
                 {
                     if (printed || chunk.Count() == 0) return;
                     printed = true;
-                    std::cout << "tick " << tickCounter << ", mario x " <<
+                    std::cout << "tick " << tickCount << ", mario x " <<
                         chunk.Column<Transform>()[0].position.x << "\n";
                 });
             }
@@ -113,5 +117,5 @@ void ServerApplication::Run()
             frameCap.Wait();
         }
     }
-    std::cout << "Ran for " << tickCounter << " ticks" << std::endl;
+    std::cout << "Ran for " << tickCount << " ticks" << std::endl;
 }

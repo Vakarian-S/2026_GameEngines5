@@ -13,6 +13,7 @@
 #include "core/Camera.h"
 #include "app/SceneIndex.h"
 #include "core/PresentMode.h"
+#include "core/FixedTickCount.h"
 #include "ecs/Phase.h"
 #include "ecs/SystemRegistry.h"
 #include "ecs/World.h"
@@ -104,6 +105,7 @@ void Application::Run()
         if (sceneManager.ApplyPendingSwitch())
         {
             fixedStep.Reset();
+            tickCount = 0;
             timer.Start();
         }
 
@@ -142,10 +144,14 @@ void Application::Run()
                 sceneManager.GetCurrentScene().GetCamera());
             fixedStep.Add(timer.GetDeltaTime());
             while (fixedStep.TakeStep())
+            {
+                tickCount++;
+                sceneManager.GetCurrentScene().GetWorld().GetResources().Set<FixedTickCount>({.ticks = tickCount});
                 systems.RunPhase(
                     Phase::Fixed,
                     FixedStep::kFixedTimeStep
                 );
+            }
             systems.RunPhase(
                 Phase::Update,
                 timer.GetDeltaTime()
@@ -225,11 +231,11 @@ void Application::HandleEvent(const SDL_Event& event)
         inputState.mousePressed[event.button.button] = true;
     }
 
-    /* The application keeps F1 to F4 and G. The scene never sees these keys */
+    /* The application keeps F1 to F5 and G. The scene never sees these keys */
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
-        event.key.scancode >= SDL_SCANCODE_F1 && event.key.scancode <= SDL_SCANCODE_F4)
+        event.key.scancode >= SDL_SCANCODE_F1 && event.key.scancode <= SDL_SCANCODE_F5)
     {
-        /* F1 to F4 pick a row in the scene table */
+        /* F1 to F5 pick a row in the scene table */
         sceneManager.RequestSwitch(event.key.scancode - SDL_SCANCODE_F1);
         return;
     }

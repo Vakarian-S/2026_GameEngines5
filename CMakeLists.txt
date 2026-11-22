@@ -390,6 +390,8 @@ add_executable(PhysicsTests
         src/physics/RayIntersect.cpp
         src/physics/RigidBody.cpp
         src/physics/Ray.cpp
+        src/game/FigureEightPath.cpp
+        include/game/FigureEightPath.h
         include/physics/Quadratic.h
         include/physics/RayIntersect.h
         include/physics/Ray.h

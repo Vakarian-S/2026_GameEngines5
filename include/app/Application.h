@@ -48,6 +48,8 @@ private:
     FrameTimeStats frameTimeStats;
     /** Manages the time steps between frames */
     FixedStep fixedStep;
+    /** Counts tick in the server ran so far */
+    std::uint64_t tickCount = 0;
     /** Scratch memory for one frame. Run resets it at the top of every frame */
     Arena frameArena;
     /** Whether the frame arena overflow warning has printed. It prints once per run */
