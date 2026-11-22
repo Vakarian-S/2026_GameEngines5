@@ -20,8 +20,8 @@
 #include <string_view>
 #include <vector>
 
-#include "core/FixedStep.h"
-#include "core/FrameTimeStats.h"
+#include "core/time/FixedStep.h"
+#include "core/time/FrameTimeStats.h"
 #include "core/TimestampMath.h"
 #include "core/AlignUp.h"
 #include "ecs/Archetype.h"

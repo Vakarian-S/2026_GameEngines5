@@ -1,4 +1,4 @@
-﻿#include "core/FrameCap.h"
+﻿#include "core/time/FrameCap.h"
 
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_atomic.h>

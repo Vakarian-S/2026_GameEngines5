@@ -355,10 +355,10 @@ list(APPEND ECS_SOURCES src/utils/Profiler.cpp)
 # FixedStep, FrameTimeStats and TimestampMath are core, not ECS, but they need nothing either, so their checks ride along here.
 add_executable(EcsTests
         tests/EcsTests.cpp
-        src/core/FixedStep.cpp
-        include/core/FixedStep.h
-        src/core/FrameTimeStats.cpp
-        include/core/FrameTimeStats.h
+        src/core/time/FixedStep.cpp
+        include/core/time/FixedStep.h
+        src/core/time/FrameTimeStats.cpp
+        include/core/time/FrameTimeStats.h
         include/core/TimestampMath.h
         ${ECS_SOURCES}
         ${ECS_HEADERS}

@@ -1,7 +1,7 @@
 ﻿#include "game/systems/FigureEightPathSystem.h"
 
 #include "core/Components.h"
-#include "core/FixedTickCount.h"
+#include "core/time/FixedTickCount.h"
 #include "ecs/SystemContext.h"
 #include "game/Components.h"
 #include "game/FigureEightPath.h"

@@ -3,7 +3,7 @@
 #include <iostream>
 
 #include "app/SceneIndex.h"
-#include "core/FixedStep.h"
+#include "core/time/FixedStep.h"
 #include "ecs/Phase.h"
 #include "ecs/SystemRegistry.h"
 #include "utils/Profiler.h"
@@ -21,7 +21,7 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include "core/FixedTickCount.h"
+#include "core/time/FixedTickCount.h"
 #include "ecs/World.h"
 #include "game/Components.h"
 

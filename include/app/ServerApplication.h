@@ -1,5 +1,5 @@
 ﻿#pragma once
-#include "core/FrameCap.h"
+#include "core/time/FrameCap.h"
 #include "core/NullAssetLoader.h"
 #include "core/SceneManager.h"
 

@@ -13,7 +13,7 @@
 #include "core/Camera.h"
 #include "app/SceneIndex.h"
 #include "core/PresentMode.h"
-#include "core/FixedTickCount.h"
+#include "core/time/FixedTickCount.h"
 #include "ecs/Phase.h"
 #include "ecs/SystemRegistry.h"
 #include "ecs/World.h"
