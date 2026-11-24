@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Vector.h"
+#include "core/Components.h"
 
 #include <cstdint>
 
@@ -28,7 +29,8 @@ struct FixedStepRow
 struct PlayerCommand
 {
     MATH::Vec3 moveDirection;
-    bool fire;
+    /** The direction for shooting */
+    MATH::Vec3 aimDirection;
 };
 
 /** Tag indicating which one is the currently owned player */
@@ -37,7 +39,7 @@ struct LocalPlayer
 };
 
 /** Indicates this is a Boss entity on the BossFight Scene */
-struct Boss
+struct BossComponent
 {
 };
 
@@ -52,4 +54,34 @@ struct FigureEightPath
     float halfWidth;
     /** Distance from the center to the path's far front and back, along z */
     float halfDepth;
+};
+
+/** Give the player a gun feature with cooldown between shots*/
+struct GunComponent
+{
+    /** At what tick the gun can shoot again */
+    std::uint64_t readyTick;
+    /** Speed of the projectile shot */
+    float projectileSpeed;
+    /** The lifespan tick of the projectiles shot by this gun*/
+    std::uint64_t lifetimeTicks;
+    /** Cooldown ticks of this gun*/
+    std::uint64_t cooldownTicks;
+    /** Damage the projectile deals */
+    std::int32_t projectileDamage;
+    /** The renderable for the mesh */
+    Renderable projectileRenderable;
+    
+};
+
+/** Component that indicates this entity can be damaged and destroyed */
+struct HealthComponent
+{
+    std::int32_t points;
+};
+
+/** Component that indicates this entity damages entities with health components*/
+struct DamageComponent
+{
+    std::int32_t damage;
 };

@@ -1,7 +1,5 @@
 ﻿#include "game/systems/PlayerCommandSystem.h"
 
-#include <iostream>
-
 #include "VMath.h"
 #include "core/InputState.h"
 #include "ecs/ChunkView.h"
@@ -23,10 +21,19 @@ void PlayerCommandSystem::Run(const SystemContext& context)
     if (input.Held(SDL_SCANCODE_S)) direction.z += 1.0f;
     if (input.Held(SDL_SCANCODE_A)) direction.x -= 1.0f;
     if (input.Held(SDL_SCANCODE_D)) direction.x += 1.0f;
+    MATH::Vec3 aimDirection(0.0f, 0.0f, 0.0f);
+    if (input.Held(SDL_SCANCODE_UP)) aimDirection.z -= 1.0f;
+    if (input.Held(SDL_SCANCODE_DOWN)) aimDirection.z += 1.0f;
+    if (input.Held(SDL_SCANCODE_LEFT)) aimDirection.x -= 1.0f;
+    if (input.Held(SDL_SCANCODE_RIGHT)) aimDirection.x += 1.0f;
 
     if (direction.x != 0.0f || direction.z != 0.0f) direction = MATH::VMath::normalize(direction);
+    if (aimDirection.x != 0.0f || aimDirection.z != 0.0f) aimDirection = MATH::VMath::normalize(aimDirection);
 
-    const PlayerCommand command{.moveDirection = direction, .fire = input.Held(SDL_SCANCODE_SPACE)};
+
+    const PlayerCommand command{
+        .moveDirection = direction, .aimDirection = aimDirection
+    };
 
     localPlayers.ForEachChunk([&](ChunkView chunk)
     {

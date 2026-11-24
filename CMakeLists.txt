@@ -360,10 +360,15 @@ add_executable(EcsTests
         src/core/time/FrameTimeStats.cpp
         include/core/time/FrameTimeStats.h
         include/core/TimestampMath.h
+        src/core/systems/LifespanSystem.cpp
+        include/core/systems/LifespanSystem.h
+        src/game/systems/BossDeathSystem.cpp
+        include/game/systems/BossDeathSystem.h
         ${ECS_SOURCES}
         ${ECS_HEADERS}
 )
 target_include_directories(EcsTests PRIVATE include)
+target_link_libraries(EcsTests PRIVATE MathLibrary)
 ge5_apply_common_settings(EcsTests)
 
 # ============================== ArenaTests ==============================
@@ -392,6 +397,8 @@ add_executable(PhysicsTests
         src/physics/Ray.cpp
         src/game/FigureEightPath.cpp
         include/game/FigureEightPath.h
+        src/physics/Collision3D.cpp
+        include/physics/Collision3D.h
         include/physics/Quadratic.h
         include/physics/RayIntersect.h
         include/physics/Ray.h

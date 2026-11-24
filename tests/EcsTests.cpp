@@ -24,6 +24,10 @@
 #include "core/time/FrameTimeStats.h"
 #include "core/TimestampMath.h"
 #include "core/AlignUp.h"
+#include "core/Components.h"
+#include "core/systems/LifespanSystem.h"
+#include "game/Components.h"
+#include "game/systems/BossDeathSystem.h"
 #include "ecs/Archetype.h"
 #include "ecs/ChunkPool.h"
 #include "ecs/CommandBuffer.h"
@@ -1854,6 +1858,49 @@ int main()
         Check("the destructor ran all three values", destroyLog.size() == 3);
         Check("it ran in reverse insertion order", destroyLog == std::vector<int>{3, 2, 1});
         Check("every block went back", countingMemory.deallocations == 3);
+    }
+
+    std::cout << "\n-- LifespanSystem --\n";
+    {
+        World lifespanWorld;
+        SystemRegistry lifespanRegistry(lifespanWorld);
+        lifespanRegistry.Add(Phase::Fixed, std::make_unique<LifespanSystem>(lifespanWorld));
+
+        const Entity shortLived = lifespanWorld.CreateEntity(LifespanComponent{.ticksLeft = 3});
+        const Entity longLived = lifespanWorld.CreateEntity(LifespanComponent{.ticksLeft = 5});
+        const Entity noLifespan = lifespanWorld.CreateEntity(Position{1.0f, 2.0f, 3.0f});
+
+        lifespanRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+        lifespanRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+        Check("ticksLeft 3 is alive after 2 runs", lifespanWorld.DoesEntityExist(shortLived));
+        Check("each run takes 1 tick", lifespanWorld.GetComponent<LifespanComponent>(shortLived)->ticksLeft == 1);
+
+        lifespanRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+        Check("ticksLeft 3 is gone after the 3rd run", !lifespanWorld.DoesEntityExist(shortLived));
+        Check("ticksLeft 5 is still alive then", lifespanWorld.DoesEntityExist(longLived));
+
+        lifespanRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+        lifespanRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+        Check("ticksLeft 5 is gone after the 5th run", !lifespanWorld.DoesEntityExist(longLived));
+        Check("an entity with no lifespan is never destroyed", lifespanWorld.DoesEntityExist(noLifespan));
+    }
+
+    std::cout << "\n-- BossDeathSystem --\n";
+    {
+        World deathWorld;
+        SystemRegistry deathRegistry(deathWorld);
+        deathRegistry.Add(Phase::Fixed, std::make_unique<BossDeathSystem>(deathWorld));
+
+        const Entity deadBoss = deathWorld.CreateEntity(BossComponent{}, HealthComponent{.points = 0});
+        const Entity overkilledBoss = deathWorld.CreateEntity(BossComponent{}, HealthComponent{.points = -3});
+        const Entity aliveBoss = deathWorld.CreateEntity(BossComponent{}, HealthComponent{.points = 1});
+        const Entity notABoss = deathWorld.CreateEntity(HealthComponent{.points = 0});
+
+        deathRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);
+        Check("a boss at 0 health is gone after one run", !deathWorld.DoesEntityExist(deadBoss));
+        Check("a boss below 0 health is gone too", !deathWorld.DoesEntityExist(overkilledBoss));
+        Check("a boss at 1 health stays", deathWorld.DoesEntityExist(aliveBoss));
+        Check("0 health without the boss tag stays", deathWorld.DoesEntityExist(notABoss));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

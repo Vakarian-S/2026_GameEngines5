@@ -71,3 +71,9 @@ struct Renderable
     MeshHandle meshHandle;
     MaterialHandle materialHandle;
 };
+
+/** Gives the entity a fixed lifespan before being deleted*/
+struct LifespanComponent
+{
+    std::uint64_t ticksLeft;
+};

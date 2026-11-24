@@ -8,6 +8,8 @@
 #include <array>
 #include <span>
 
+#include "core/Components.h"
+
 /**
  * The boss fight: a boss on a pattern and a player that moves and shoots
  */
@@ -48,4 +50,16 @@ private:
     SystemRegistry systems;
     /** Camera for the scene */
     Camera camera;
+    
+    /** Renderable for the player */
+    Renderable playerRenderable;
+    /** Renderable for the boss */
+    Renderable bossRenderable;
+    /** Renderable for the projectiles launched by the player */
+    Renderable projectileRenderable;
+    /** Renderable for the Arena floor */
+    Renderable floorRenderable;
+    
+    /** Spawns all the entities on the scene */
+    void SpawnEntities();
 };

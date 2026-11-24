@@ -173,11 +173,14 @@ server work and client work now, so step 3 only picks which lists run.
   as benchmarks. Replacing one was rejected.
 - **b. Camera.** A fixed overhead camera, angled down, with play on the XZ plane. WASD moves the
   player, so the fly camera's WASD would fight it. Keeping the fly camera was rejected.
-- **c. Input.** A `PlayerCommand` component on each player entity holds a move direction and a fire
-  flag. `PlayerCommandSystem`, in Update, reads `InputState` and rewrites the local player's whole
-  command every frame. It is the only writer of `PlayerCommand`, and Fixed systems read only the
-  command, never `InputState`. Fire means Space is held; the shoot system's cooldown sets the rate, and
-  also stops a second shot when one frame runs two fixed steps. In step 4 the server fills the same
+- **c. Input.** A `PlayerCommand` component on each player entity holds a move direction (WASD) and
+  an aim direction (the arrow keys), each normalized. `PlayerCommandSystem`, in Update, reads
+  `InputState` and rewrites the local player's whole command every frame. It is the only writer of
+  `PlayerCommand`, and Fixed systems read only the command, never `InputState`. A held arrow aims and
+  fires at once, as in a twin-stick shooter; there is no fire flag, so a shot can never have a zero
+  direction. The gun's cooldown sets the rate, and also stops a second shot when one frame runs two
+  fixed steps. Changed 2026-11-24: Space fired along the last move direction, and moving, aiming and
+  firing needed three hands. In step 4 the server fills the same
   component from the network, and no Fixed system changes. A component, not a resource, because the
   server holds one command per player. Overwatch does the same: its input system fills a singleton
   input from the OS, and its command system "becomes the only place" that changes the `PlayerCommand`
@@ -194,31 +197,48 @@ server work and client work now, so step 3 only picks which lists run.
 - **f. The boss.** Its position is a free function of the tick, a figure-eight on the plane. It holds
   no state, and a test checks it with no ECS (rule 9). The boss does not attack in this step: nothing
   in the outline needs it. A pattern stepped by delta time was rejected, because it drifts.
-- **g. Shooting.** Fire spawns a projectile through the command buffer (rule 6), with `Transform`,
-  `Velocity` and `Lifetime { ticksLeft }`, flying along the player's last move direction. `Lifetime`
-  lives in `core/Components.h`, and a `LifetimeSystem` in `core/systems` counts it down in Fixed and
-  destroys the entity at 0 through the command buffer, so a hit spark or a pickup can reuse it. A
-  projectile also despawns on a hit. The command stays two values. Rejected: aiming with the mouse,
-  which needs a ray to the floor and an aim vector in the command, and a `Projectile` component in
-  `game`.
+- **g. Shooting.** `ShootSystem`, in Fixed, spawns a projectile through the command buffer (rule 6)
+  while the command's aim is not zero and the tick has reached the gun's `readyTick`. The projectile
+  gets `Transform`, `Velocity` along the aim, `LifespanComponent { ticksLeft }` and a `Renderable`.
+  The player's `GunComponent` in `game/Components.h` holds `readyTick` and the stats: projectile
+  speed, lifespan ticks, cooldown ticks and the projectile's `Renderable`. Stats on the component let
+  a second weapon be a different `GunComponent{}`, with no new system; one component passes ECS.md
+  rule 3, because only `ShootSystem` reads it. `LifespanComponent` lives in `core/Components.h`, and
+  `LifespanSystem` in `core/systems` counts it down in Fixed and destroys the entity at 0 through the
+  command buffer, so a hit spark or a pickup can reuse it. A projectile also despawns on a hit.
+  Rejected: aiming with the mouse, which needs a ray to the floor; stats as `ShootSystem` constants,
+  which allow one weapon only; a shared weapon table, which pays off only when many entities share
+  a weapon; splitting `GunComponent` into state and stats, which pays off only with many guns; and a
+  `Projectile` component in `game`.
 - **h. Hits.** The boss and each projectile get a `SphereCollider`. The test lives in
   `include/physics/Collision3D.h` and `src/physics/Collision3D.cpp`, free functions in `PHYSICS` next to
   `RayIntersect.h`. This step adds `Overlap(Transform, SphereCollider, Transform, SphereCollider)`,
   which returns a bool, with each radius times the scale (rule 10 keeps spheres uniform). Collision
   row 1 later adds the other shape pairs and a `Collide(...)` that returns a contact; resolving stays
   in `RigidBody.h`. `physics` may include `core`, and `game` may include `physics`, so both reach it.
-  On a hit, the boss's `Health` drops by 1 and the projectile despawns. `Collision2D.h` waits for its
+  On a hit, the boss's `HealthComponent` drops by the projectile's `DamageComponent` and the projectile
+  despawns. `ProjectileHitSystem`, in Fixed, pairs entities with `DamageComponent` against entities
+  with `HealthComponent`; a `Damage` component, not a `Projectile` tag, marks what can hit, and the
+  amount comes from the gun's stats. Projectiles are the outer loop and a projectile stops at its
+  first hit, so it deals damage once even though its destroy waits for the end of the phase. Health
+  and damage are `int32`, because health is subtracted and can pass below 0. `Collision2D.h` waits for its
   first caller, because nothing has a 2D collider. Rejected: `game` as the folder, `RayIntersect.h` as
   the file, waiting for Collision row 1, and an empty `Collision2D.h`.
-- **i. The boss dies.** At 0 health the boss despawns and the console prints "boss died". R restarts
-  the fight with `World::Clear`, as `PhysicsScene` does. It is the rare event a reliable message carries later.
-- **j. Server and client systems.** Pattern, movement, lifetime and hits go in Fixed, the server's
+- **i. The boss dies.** At 0 health the boss despawns and the console prints "boss died". A
+  `BossDeathSystem` on `BossComponent + HealthComponent` does both, in Fixed after
+  `ProjectileHitSystem`, so hits only change health (rule 8) and death is a scan, not a callback
+  (ECS.md rule 7). A general death system waits until something other than the boss has health. R
+  restarts the fight with `World::Clear`, as `PhysicsScene` does. The scene loads its assets once in
+  `OnCreate` and keeps three `Renderable` members, so `SpawnEntities` needs no asset loader. It is
+  the rare event a reliable message carries later.
+- **j. Server and client systems.** Pattern, movement, shooting, lifespan and hits go in Fixed, the server's
   list. `PlayerCommandSystem` goes in Update and drawing in Extract, the client's list. Step 3 then
   picks lists by role with no system rewritten.
 - **k. Assets.** Mario for the player, the Triceratops with its palette for the boss, a small cube for
-  projectiles, a flat scaled cube for the floor. All exist. New models were rejected.
-- **l. The check.** Tests: the boss pattern at known ticks in `EcsTests` or `PhysicsTests`, and the
-  sphere `Overlap` in `PhysicsTests`. `scripts\run-game.ps1 -Scene 4` holds WASD and Space; the
+  projectiles, a flat scaled cube for the floor. All exist. New models were rejected. The floor is
+  spawned in `SpawnEntities`, so it survives R, with `floor_grey.png` and no collider.
+- **l. The check.** Tests: the boss pattern at known ticks in `PhysicsTests`, `LifespanSystem` in
+  `EcsTests`, and the sphere `Overlap` in `PhysicsTests`. `scripts\run-game.ps1 -Scene 4` holds WASD and the arrow keys; the
   screenshots show the player moving and projectiles in flight, the console shows "boss died", and the
   run ends with 0 leaked blocks.
 
@@ -245,6 +265,85 @@ since the server's last acknowledgment in each packet, so one lost packet costs 
     start of its path, so the `FixedTickCount` reset works. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 leaked
     blocks.
   - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
+    blocks.
+- **Decision g, 2026-11-24.** `PlayerCommand` holds `moveDirection` and `aimDirection`, with no fire
+  flag. `ShootSystem` spawns a cube along the aim while the aim is not zero, at most once every
+  `cooldownTicks`. `GunComponent` holds `readyTick` and the stats; the scene sets speed 15 m/s,
+  lifespan 90 ticks and cooldown 12 ticks. `LifespanSystem` destroys an entity when
+  `LifespanComponent::ticksLeft` reaches 0. Both run in Fixed after `ClampToArenaSystem`.
+  - **Tests.** `EcsTests` gets "LifespanSystem", with 6 checks: `ticksLeft` 3 is alive after 2 runs,
+    each run takes 1 tick, and it is gone after the 3rd; `ticksLeft` 5 is alive then and gone after
+    the 5th; an entity with no lifespan stays. `EcsTests` now compiles `LifespanSystem.cpp` and links
+    `MathLibrary`, because `core/Components.h` needs the math headers. `scripts\run-tests.bat` passes
+    in all four configurations; `EcsTests` went from 376 to 382 checks.
+  - **The script.** `scripts\run-game.ps1` gets Up, Down, Left and Right. Arrows are extended keys, so
+    their codes carry 0xE0 and the script sends them with the extended-key flag.
+  - **The game.** `scripts\run-game.ps1 -Scene 4`: Up held shows a line of cubes about 3 m apart,
+    which matches 15 m/s at 5 shots a second; D with Right held moves Mario right and fires right;
+    2 s with nothing held removes every cube; Up with Left fires along the diagonal. Exit 0,
+    0 `[WARNING]`, 0 `[ERROR]`, 0 leaked blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
+    blocks.
+- **Decision h, 2026-11-24.** `PHYSICS::Overlap` in `physics/Collision3D` compares the distance
+  between two centres with the sum of `radius * scale.x`. Projectiles carry `SphereCollider` and
+  `DamageComponent`; the boss carries `SphereCollider` (radius 0.5, so 1.5 m at scale 3) and
+  `HealthComponent` 20. `ProjectileHitSystem` runs in Fixed after `LifespanSystem`, prints
+  "target health N" on each hit for now, and destroys the projectile.
+  - **Bugs the first run found.** The boss started at 0 health, and unsigned health wrapped from 0 to
+    4294967295 on the first hit and could never reach 0 again; health and damage became `int32`.
+    `Overlap` added the scale to the radius instead of multiplying, so hits landed 6 m away.
+  - **Tests.** `PhysicsTests` gets "two spheres overlap", with 9 checks: 0.9 apart overlaps, 1.1 apart
+    does not, exactly touching does not count, one inside the other and the same centre overlap, the
+    order of the spheres does not matter, scale 3 reaches 1.9 but not 2.1, and the distance counts
+    every axis. `src/physics/Collision3D.cpp` joins the `PhysicsTests` sources.
+    `scripts\run-tests.bat` passes in all four configurations; `PhysicsTests` went from 226 to 235
+    checks.
+  - **The game.** `scripts\run-game.ps1 -Scene 4`, Up held for 6 s: health printed 19 down to 10, one
+    point per hit, and cubes that miss fly past the boss. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0
+    leaked blocks. Holding Up, then Up and Right, fired every cube along the diagonal; a side shot
+    Vakarian saw by hand did not happen with the script's keys.
+  - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
+    blocks.
+- **Decision i, 2026-11-24.** `BossDeathSystem` prints "boss died" and destroys a boss at 0 health or
+  below. `ProjectileHitSystem` no longer destroys targets. `BossFightScene::SpawnEntities` creates
+  the player and the boss from the stored `Renderable` members, and `Update` calls `world.Clear()`
+  then `SpawnEntities()` when R is pressed.
+  - **Tests.** `EcsTests` gets "BossDeathSystem", with 4 checks: a boss at 0 health and a boss at -3
+    are gone after one run, a boss at 1 health stays, and an entity at 0 health without the boss tag
+    stays. `src/game/systems/BossDeathSystem.cpp` joins the `EcsTests` sources.
+    `scripts\run-tests.bat` passes in all four configurations; `EcsTests` went from 382 to 386 checks.
+  - **The game.** `scripts\run-game.ps1 -Scene 4`, Up held for 20 s: the boss crosses the line of fire
+    only part of the time, so 20 hits take about 18 s. The boss vanished and "boss died" printed
+    once. R brought Mario and the boss back, the boss at the current tick's point on its path. Exit 0,
+    0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0 leaked blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
+    blocks.
+- **Decision j, 2026-11-24.** Nothing to build. `BossFightScene::OnCreate` already puts every
+  simulation system in Fixed (path, movement, position, clamp, shoot, lifespan, hits, death),
+  `PlayerCommandSystem` alone in Update, and the two draw systems in Extract. `ServerApplication`
+  runs only Fixed, so it simulates the whole fight. R in `BossFightScene::Update` is the one
+  client-only piece outside the lists; step 3 turns it into a reliable message.
+- **Decision k, 2026-11-24.** A floor entity with `Transform` and `Renderable` only: the cube mesh,
+  `floor_grey.png`, scaled to the arena (20 × 0.1 × 14 m) and placed at y = -1.5 so Mario's feet sit
+  on it.
+  - **A crash the floor caused.** The first shot after adding the floor stopped the game with "the
+    arena is full, raise its size". Each archetype takes at least one 16 KB chunk; floor, player,
+    boss and projectile made four, 64 KB, which was all of `kWorldArenaBytes`. It is now 256 KB.
+  - **The game.** `scripts\run-game.ps1 -Scene 4`: D for 3 s, then Up: the screenshot shows the grey
+    floor, Mario clamped at its right edge, and cubes in flight. R brings the floor back with Mario
+    and the boss. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0 leaked blocks, no world
+    allocation fell to the heap.
+  - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
+    blocks.
+- **Decision l, 2026-11-24: the step's final check,** on the finished code.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations: `EcsTests` 386 checks
+    (`LifespanSystem`, `BossDeathSystem`), `PhysicsTests` 235 (`FigureEightPathPosition`, `Overlap`).
+  - **The game.** One `scripts\run-game.ps1 -Scene 4` run: A and W move Mario up and left; D and S bring
+    him back; Up held for 23.5 s shows cubes in flight, hits the boss as it crosses, and the console
+    prints "boss died" once, with the boss gone from the screenshot; R brings back the floor, Mario
+    and the boss. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0 leaked blocks, no frame or world
+    allocation fell to the heap.
+  - **The server.** `-Server -Scene 4 -Ticks 600`: exit 0, no window, "Ran for 600 ticks", 0 leaked
     blocks.
 
 ## 3. Join and leave over GNS

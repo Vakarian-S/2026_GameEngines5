@@ -18,6 +18,7 @@
 #include "core/Components.h"
 #include "core/VectorMath.h"
 #include "game/FigureEightPath.h"
+#include "physics/Collision3D.h"
 #include "physics/Components.h"
 #include "physics/Quadratic.h"
 #include "physics/Ray.h"
@@ -1242,6 +1243,36 @@ int main()
         Check("one whole loop is back at the origin", Near(at(period), MATH::Vec3(0.0f, 0.0f, 0.0f)));
         Check("a tick 1000 loops later is the same point", Near(at(1000 * period + period / 8), at(period / 8)));
         Check("y stays on the floor", Near(at(period / 3).y, 0.0f));
+    }
+
+    std::cout << "\nTEST CASE: two spheres overlap\n";
+    {
+        const PHYSICS::SphereCollider half{.radius = 0.5f};
+        const Transform origin{};
+        const auto at = [](const float x)
+        {
+            return Transform{.position = MATH::Vec3(x, 0.0f, 0.0f)};
+        };
+
+        Check("0.9 apart, radii 0.5 and 0.5, they overlap", PHYSICS::Overlap(origin, half, at(0.9f), half));
+        Check("1.1 apart, they do not", !PHYSICS::Overlap(origin, half, at(1.1f), half));
+        Check("exactly touching, 1.0 apart, does not count", !PHYSICS::Overlap(origin, half, at(1.0f), half));
+        Check("one inside the other overlaps", PHYSICS::Overlap(origin, PHYSICS::SphereCollider{.radius = 2.0f},
+                                                                at(0.5f), half));
+        Check("the same centre overlaps", PHYSICS::Overlap(origin, half, origin, half));
+        Check("the order of the two spheres does not matter",
+              PHYSICS::Overlap(at(0.9f), half, origin, half) == PHYSICS::Overlap(origin, half, at(0.9f), half));
+
+        /* Scale multiplies the radius: 0.5 at scale 3 is 1.5 */
+        const Transform scaled{.scale = MATH::Vec3(3.0f, 3.0f, 3.0f)};
+        Check("scale 3 reaches 1.9 away", PHYSICS::Overlap(scaled, half, at(1.9f), half));
+        Check("scale 3 does not reach 2.1 away", !PHYSICS::Overlap(scaled, half, at(2.1f), half));
+
+        const Transform diagonal{.position = MATH::Vec3(0.5f, 0.5f, 0.5f)};
+        Check("distance counts every axis: (0.5, 0.5, 0.5) is 0.87 away",
+              PHYSICS::Overlap(origin, half, diagonal, half) &&
+              !PHYSICS::Overlap(origin, PHYSICS::SphereCollider{.radius = 0.2f}, diagonal,
+                                PHYSICS::SphereCollider{.radius = 0.2f}));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

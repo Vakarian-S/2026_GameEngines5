@@ -204,7 +204,8 @@ window or this script, cannot send it, so the Rider configuration `GameEngines5 
 | `resize W H` | moves the window to 50, 50 and sizes it W by H |
 | `minimize`, `maximize`, `restore` | the window states |
 
-Keys are F1 to F5, A to Z, 0 to 9, Shift, Ctrl, Alt, Enter, Space and Escape. A combination is a
+Keys are F1 to F5, A to Z, 0 to 9, Shift, Ctrl, Alt, Enter, Space, Escape and the four arrows (Up,
+Down, Left, Right). A combination is a
 hold with the modifier first: `hold Ctrl,P 100`, `hold Alt,Enter 100`.
 
 To run on the AMD 610M, set `$env:VK_LOADER_DRIVERS_SELECT = "*amd*"` before the script and remove
