@@ -85,7 +85,7 @@ ServerApplication::ServerApplication(int argc, char* argv[]) :
 
 void ServerApplication::Run()
 {
-    auto query = Query(sceneManager.GetCurrentScene().GetWorld(), COMPONENTS::MaskOf<Transform, FixedStepRow>());
+    auto query = Query(sceneManager.GetCurrentScene().GetWorld(), COMPONENTS::MaskOf<TransformComponent, FixedStepRowTag>());
     
     while (
         (!tickLifespan || tickCount < *tickLifespan) &&
@@ -108,7 +108,7 @@ void ServerApplication::Run()
                     if (printed || chunk.Count() == 0) return;
                     printed = true;
                     std::cout << "tick " << tickCount << ", mario x " <<
-                        chunk.Column<Transform>()[0].position.x << "\n";
+                        chunk.Column<TransformComponent>()[0].position.x << "\n";
                 });
             }
         }

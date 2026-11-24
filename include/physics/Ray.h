@@ -2,7 +2,7 @@
 #include "Vector.h"
 
 struct Camera;
-struct Transform;
+struct TransformComponent;
 
 namespace PHYSICS
 {
@@ -39,10 +39,10 @@ namespace PHYSICS
     /**
      * Transforms a Ray from World Space to a shape's local space based on its transform
      * @param worldRay Ray in world space to transform to local space
-     * @param transform Transform of the target shape to be used to make the ray in local space
+     * @param transform TransformComponent of the target shape to be used to make the ray in local space
      * @return Ray instance in local space relative to the transform
      */
-    Ray ToLocalRay(const Ray& worldRay, const Transform& transform);
+    Ray ToLocalRay(const Ray& worldRay, const TransformComponent& transform);
 
     /**
      * Turns a mouse position into a world-space Ray by running the Camera view pipeline backwards

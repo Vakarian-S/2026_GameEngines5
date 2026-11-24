@@ -2,15 +2,15 @@
 #include "Quaternion.h"
 #include "Vector.h"
 
-struct Transform;
+struct TransformComponent;
 
 namespace PHYSICS
 {
-    struct BoxCollider;
-    struct SphereCollider;
-    struct CylinderCollider;
-    struct CapsuleCollider;
-    struct MassProperties;
+    struct BoxColliderComponent;
+    struct SphereColliderComponent;
+    struct CylinderColliderComponent;
+    struct CapsuleColliderComponent;
+    struct MassPropertiesComponent;
 
     /**
      * Applies forces such as gravity and drag to a given velocity and returns the resulting velocity.
@@ -77,10 +77,10 @@ namespace PHYSICS
      * @return the body's velocities after the pull
      */
     [[nodiscard]] BodyVelocity MouseConstraint(
-        const Transform& transform,
+        const TransformComponent& transform,
         const MATH::Vec3& localPoint,
         const MATH::Vec3& mouseTarget,
-        const MassProperties& massProperties,
+        const MassPropertiesComponent& massProperties,
         const MATH::Vec3& velocity,
         const MATH::Vec3& angularVelocity,
         float deltaTime
@@ -93,7 +93,7 @@ namespace PHYSICS
     * @param scale the transform's scale, one value per axis
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const BoxCollider& box, float mass, const MATH::Vec3& scale);
+    MATH::Matrix3 InertiaTensor(const BoxColliderComponent& box, float mass, const MATH::Vec3& scale);
     /**
     * How hard a shape is to turn about each of its own axes, in kg m^2
     * @param sphere the shape, at scale 1
@@ -101,7 +101,7 @@ namespace PHYSICS
     * @param scale the transform's scale. All three components must be equal
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const SphereCollider& sphere, float mass, const MATH::Vec3& scale);
+    MATH::Matrix3 InertiaTensor(const SphereColliderComponent& sphere, float mass, const MATH::Vec3& scale);
 
     /**
     * How hard a shape is to turn about each of its own axes, in kg m^2
@@ -110,7 +110,7 @@ namespace PHYSICS
     * @param scale the transform's scale. All three components must be equal
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const CapsuleCollider& capsule, float mass, const MATH::Vec3& scale);
+    MATH::Matrix3 InertiaTensor(const CapsuleColliderComponent& capsule, float mass, const MATH::Vec3& scale);
 
     /**
     * How hard a shape is to turn about each of its own axes, in kg m^2
@@ -119,5 +119,5 @@ namespace PHYSICS
     * @param scale the transform's scale. x and z must be equal; y stretches the height
     * @return a diagonal inertia tensor in the shape's own space
     */
-    MATH::Matrix3 InertiaTensor(const CylinderCollider& cylinder, float mass, const MATH::Vec3& scale);
+    MATH::Matrix3 InertiaTensor(const CylinderColliderComponent& cylinder, float mass, const MATH::Vec3& scale);
 }

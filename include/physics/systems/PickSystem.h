@@ -13,13 +13,13 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity with a Transform and a Box Collider Component */
+    /** Every entity with a TransformComponent and a BoxColliderComponent */
     Query boxColliderEntities;
-    /** Every entity with a Transform and a Sphere Collider Component */
+    /** Every entity with a TransformComponent and a SphereColliderComponent */
     Query sphereColliderEntities;
-    /** Every entity with a Transform and a Cylinder Collider Component */
+    /** Every entity with a TransformComponent and a CylinderColliderComponent */
     Query cylinderColliderEntities;
-    /** Every entity with a Transform and a Capsule Collider Component */
+    /** Every entity with a TransformComponent and a CapsuleColliderComponent */
     Query capsuleColliderEntities;
     /** Every entity that was already picked */
     Query pickedEntities;

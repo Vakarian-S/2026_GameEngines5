@@ -4,7 +4,7 @@
 
 class World;
 
-/** Adds a wire shape for each entity with a Transform and a collider */
+/** Adds a wire shape for each entity with a TransformComponent and a collider */
 class DrawCollidersSystem : public System
 {
 public:
@@ -14,12 +14,12 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity with a Transform and a Box Collider Component */
+    /** Every entity with a TransformComponent and a BoxColliderComponent */
     Query boxColliderDrawables;
-    /** Every entity with a Transform and a Sphere Collider Component */
+    /** Every entity with a TransformComponent and a SphereColliderComponent */
     Query sphereColliderDrawables;
-    /** Every entity with a Transform and a Cylinder Collider Component */
+    /** Every entity with a TransformComponent and a CylinderColliderComponent */
     Query cylinderColliderDrawables;
-    /** Every entity with a Transform and a Capsule Collider Component */
+    /** Every entity with a TransformComponent and a CapsuleColliderComponent */
     Query capsuleColliderDrawables;
 };

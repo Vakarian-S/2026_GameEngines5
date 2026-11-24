@@ -6,7 +6,7 @@ class World;
 
 
 /**
- * Fires a projectile from each entity with a GunComponent along its PlayerCommand's aim while the aim
+ * Fires a projectile from each entity with a GunComponent along its PlayerCommandComponent's aim while the aim
  * is not zero, at most once every cooldownTicks
  */
 class ShootSystem : public System
@@ -18,7 +18,7 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Entities with a Transform, a GunComponent and a PlayerCommand */
+    /** Entities with a TransformComponent, a GunComponent and a PlayerCommandComponent */
     Query entities;
 };
 

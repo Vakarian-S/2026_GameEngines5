@@ -13,7 +13,7 @@
 /**
  * The light and shadow scene: Eirene stands in a ruined temple on a raised base, like a diorama. Only
  * the back wall, with one window, still stands. The sides are rows of columns, so the side lights cast
- * column shadows across the floor. Every entity carries its own mesh and material in a Renderable.
+ * column shadows across the floor. Every entity carries its own mesh and material in a RenderableComponent.
  */
 class Scene1 : public Scene
 {

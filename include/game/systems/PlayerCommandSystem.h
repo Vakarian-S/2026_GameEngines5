@@ -5,7 +5,7 @@
 
 class World;
 
-/** Turns this machine's keys into the local player's PlayerCommand, once per frame in Update. The only writer of PlayerCommand */
+/** Turns this machine's keys into the local player's PlayerCommandComponent, once per frame in Update. The only writer of PlayerCommandComponent */
 class PlayerCommandSystem : public System
 {
 public:
@@ -15,6 +15,6 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** The local player: every entity with a PlayerCommand and the LocalPlayer tag */
+    /** The local player: every entity with a PlayerCommandComponent and LocalPlayerTag */
     Query localPlayers;
 };

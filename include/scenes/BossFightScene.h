@@ -51,14 +51,14 @@ private:
     /** Camera for the scene */
     Camera camera;
     
-    /** Renderable for the player */
-    Renderable playerRenderable;
-    /** Renderable for the boss */
-    Renderable bossRenderable;
-    /** Renderable for the projectiles launched by the player */
-    Renderable projectileRenderable;
-    /** Renderable for the Arena floor */
-    Renderable floorRenderable;
+    /** RenderableComponent for the player */
+    RenderableComponent playerRenderable;
+    /** RenderableComponent for the boss */
+    RenderableComponent bossRenderable;
+    /** RenderableComponent for the projectiles launched by the player */
+    RenderableComponent projectileRenderable;
+    /** RenderableComponent for the Arena floor */
+    RenderableComponent floorRenderable;
     
     /** Spawns all the entities on the scene */
     void SpawnEntities();

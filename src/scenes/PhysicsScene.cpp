@@ -86,18 +86,18 @@ void PhysicsScene::HandleEvents(const SDL_Event& sdlEvent)
 
 void PhysicsScene::SpawnShapes()
 {
-    constexpr PHYSICS::BoxCollider cubeCollider{};
+    constexpr PHYSICS::BoxColliderComponent cubeCollider{};
     world.CreateEntity(
-        Transform{
+        TransformComponent{
             .position = MATH::Vec3(
                 -10.f, 0.5f, 0.f
             )
         },
         cubeCollider,
-        Renderable{cubeMesh, cubeMaterial},
-        PHYSICS::Velocity{},
-        PHYSICS::AngularVelocity{},
-        PHYSICS::MassProperties{
+        RenderableComponent{cubeMesh, cubeMaterial},
+        PHYSICS::VelocityComponent{},
+        PHYSICS::AngularVelocityComponent{},
+        PHYSICS::MassPropertiesComponent{
             .mass = 1.0f,
             .inertiaTensor = PHYSICS::InertiaTensor(
                 cubeCollider, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))
@@ -105,70 +105,70 @@ void PhysicsScene::SpawnShapes()
     );
     
     world.CreateEntity(
-        Transform{
+        TransformComponent{
             .position = MATH::Vec3(6.f, 0.5f, 0.f),
             .scale = MATH::Vec3(1.0f, 1.0f, 1.0f),
             .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
         },
         cubeCollider,
-        Renderable{cubeMesh, cubeMaterial},
-        PHYSICS::Velocity{},
-        PHYSICS::AngularVelocity{MATH::Vec3(0.f, 0.5f, 0.f)},
-        PHYSICS::MassProperties{
+        RenderableComponent{cubeMesh, cubeMaterial},
+        PHYSICS::VelocityComponent{},
+        PHYSICS::AngularVelocityComponent{MATH::Vec3(0.f, 0.5f, 0.f)},
+        PHYSICS::MassPropertiesComponent{
             .mass = 1.0f,
             .inertiaTensor = PHYSICS::InertiaTensor(cubeCollider, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))
         }
     );
     
-    constexpr PHYSICS::SphereCollider sphereCollider{.radius = 1.3f};
+    constexpr PHYSICS::SphereColliderComponent sphereCollider{.radius = 1.3f};
     world.CreateEntity(
-        Transform{.position = MATH::Vec3(-6.f, 1.3f, 0.f)},
+        TransformComponent{.position = MATH::Vec3(-6.f, 1.3f, 0.f)},
         sphereCollider,
-        Renderable{marioMesh, marioMaterial},
-        PHYSICS::Velocity{},
-        PHYSICS::AngularVelocity{},
-        PHYSICS::MassProperties{
+        RenderableComponent{marioMesh, marioMaterial},
+        PHYSICS::VelocityComponent{},
+        PHYSICS::AngularVelocityComponent{},
+        PHYSICS::MassPropertiesComponent{
             .mass = 1.f,
             .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, MATH::Vec3(1.f, 1.f, 1.f))
         }
     );
     
-    constexpr PHYSICS::CapsuleCollider capsuleCollider{0.6f, 0.7f};
+    constexpr PHYSICS::CapsuleColliderComponent capsuleCollider{0.6f, 0.7f};
     world.CreateEntity(
-        Transform{.position = MATH::Vec3(-2.f, 1.3f, 0.f)},
+        TransformComponent{.position = MATH::Vec3(-2.f, 1.3f, 0.f)},
         capsuleCollider,
-        Renderable{marioMesh, marioMaterial},
-        PHYSICS::Velocity{},
-        PHYSICS::AngularVelocity{},
-        PHYSICS::MassProperties{
+        RenderableComponent{marioMesh, marioMaterial},
+        PHYSICS::VelocityComponent{},
+        PHYSICS::AngularVelocityComponent{},
+        PHYSICS::MassPropertiesComponent{
             .mass = 1.f,
             .inertiaTensor = PHYSICS::InertiaTensor(capsuleCollider, 1.f, MATH::Vec3(1.f, 1.f, 1.f))
         }
     );
     
-    constexpr PHYSICS::CylinderCollider cylinderCollider{0.7f, 1.3f};
+    constexpr PHYSICS::CylinderColliderComponent cylinderCollider{0.7f, 1.3f};
     world.CreateEntity(
-        Transform{.position = MATH::Vec3(2.f, 1.3f, 0.f)},
+        TransformComponent{.position = MATH::Vec3(2.f, 1.3f, 0.f)},
         cylinderCollider,
-        Renderable{marioMesh, marioMaterial},
-        PHYSICS::Velocity{},
-        PHYSICS::AngularVelocity{},
-        PHYSICS::MassProperties{
+        RenderableComponent{marioMesh, marioMaterial},
+        PHYSICS::VelocityComponent{},
+        PHYSICS::AngularVelocityComponent{},
+        PHYSICS::MassPropertiesComponent{
             .mass = 1.f,
             .inertiaTensor = PHYSICS::InertiaTensor(cylinderCollider, 1.f, MATH::Vec3(1.f, 1.f, 1.f))
         }
     );
     
     world.CreateEntity(
-        Transform{.position = MATH::Vec3(11.f, 2.6f, 0.f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f)},
+        TransformComponent{.position = MATH::Vec3(11.f, 2.6f, 0.f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f)},
         sphereCollider,
-        Renderable{marioMesh, marioMaterial},
-        PHYSICS::Velocity{},
-        PHYSICS::AngularVelocity{},
-        PHYSICS::MassProperties{
+        RenderableComponent{marioMesh, marioMaterial},
+        PHYSICS::VelocityComponent{},
+        PHYSICS::AngularVelocityComponent{},
+        PHYSICS::MassPropertiesComponent{
             .mass = 1.f,
             .inertiaTensor = PHYSICS::InertiaTensor(sphereCollider, 1.f, MATH::Vec3(2.f, 2.f, 2.f))
         }
     );
-    world.CreateEntity(PHYSICS::PickRay{});
+    world.CreateEntity(PHYSICS::PickRayComponent{});
 }

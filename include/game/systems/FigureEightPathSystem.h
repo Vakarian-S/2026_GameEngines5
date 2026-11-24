@@ -5,7 +5,7 @@
 class World;
 
 /**
- * Moves each entity with a FigureEightPath along its own figure-eight, based on the current tick.
+ * Moves each entity with a FigureEightPathComponent along its own figure-eight, based on the current tick.
  */
 class FigureEightPathSystem : public System
 {
@@ -16,6 +16,6 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Entities with a Transform and a FigureEightPath component */
+    /** Entities with a TransformComponent and a FigureEightPathComponent */
     Query entities;
 };

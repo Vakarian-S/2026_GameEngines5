@@ -14,30 +14,30 @@ namespace
     /**
      * Picks the wire colour for a whole archetype. Every row in an archetype has the same components
      * @param archetype archetype about to be drawn
-     * @return yellow when its entities hold Picked, otherwise green
+     * @return yellow when its entities hold PickedComponent, otherwise green
      */
     MATH::Vec3 WireColour(const Archetype* archetype)
     {
-        return (archetype->Mask() & COMPONENTS::MaskOf<PHYSICS::Picked>()) != 0 ? kYellowColour : kGreenColour;
+        return (archetype->Mask() & COMPONENTS::MaskOf<PHYSICS::PickedComponent>()) != 0 ? kYellowColour : kGreenColour;
     }
 }
 
 DrawCollidersSystem::DrawCollidersSystem(World& world) :
     System("DrawColliders",
            COMPONENTS::MaskOf<
-           Transform,
-           PHYSICS::BoxCollider,
-           PHYSICS::SphereCollider,
-           PHYSICS::CylinderCollider,
-           PHYSICS::CapsuleCollider,
-           PHYSICS::Picked
+           TransformComponent,
+           PHYSICS::BoxColliderComponent,
+           PHYSICS::SphereColliderComponent,
+           PHYSICS::CylinderColliderComponent,
+           PHYSICS::CapsuleColliderComponent,
+           PHYSICS::PickedComponent
            >()
            , 0),
-    boxColliderDrawables(world, COMPONENTS::MaskOf<Transform, PHYSICS::BoxCollider>()),
-    sphereColliderDrawables(world, COMPONENTS::MaskOf<Transform, PHYSICS::SphereCollider>()),
-    cylinderColliderDrawables(world, COMPONENTS::MaskOf<Transform, PHYSICS::CylinderCollider>()),
+    boxColliderDrawables(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::BoxColliderComponent>()),
+    sphereColliderDrawables(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::SphereColliderComponent>()),
+    cylinderColliderDrawables(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::CylinderColliderComponent>()),
     capsuleColliderDrawables(
-        world, COMPONENTS::MaskOf<Transform, PHYSICS::CapsuleCollider>())
+        world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::CapsuleColliderComponent>())
 {
 }
 
@@ -48,8 +48,8 @@ void DrawCollidersSystem::Run(const SystemContext& context)
     
     boxColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::BoxCollider* colliders = chunk.Column<PHYSICS::BoxCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::BoxColliderComponent* colliders = chunk.Column<PHYSICS::BoxColliderComponent>();
         const MATH::Vec3 colour = WireColour(chunk.Owner());
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
@@ -61,8 +61,8 @@ void DrawCollidersSystem::Run(const SystemContext& context)
 
     sphereColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::SphereCollider* colliders = chunk.Column<PHYSICS::SphereCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::SphereColliderComponent* colliders = chunk.Column<PHYSICS::SphereColliderComponent>();
         const MATH::Vec3 colour = WireColour(chunk.Owner());
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
@@ -74,8 +74,8 @@ void DrawCollidersSystem::Run(const SystemContext& context)
 
     cylinderColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::CylinderCollider* colliders = chunk.Column<PHYSICS::CylinderCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::CylinderColliderComponent* colliders = chunk.Column<PHYSICS::CylinderColliderComponent>();
         const MATH::Vec3 colour = WireColour(chunk.Owner());
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
@@ -88,8 +88,8 @@ void DrawCollidersSystem::Run(const SystemContext& context)
 
     capsuleColliderDrawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::CapsuleCollider* colliders = chunk.Column<PHYSICS::CapsuleCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::CapsuleColliderComponent* colliders = chunk.Column<PHYSICS::CapsuleColliderComponent>();
         const MATH::Vec3 colour = WireColour(chunk.Owner());
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)

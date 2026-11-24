@@ -5,7 +5,7 @@
 class World;
 
 /**
- * Calculates all physical forces acting on entities that are tagged as "Falling" and updates the velocity accordingly
+ * Calculates all physical forces acting on entities that are with FallingTag and updates the velocity accordingly
  */
 class ApplyForcesSystem : public System
 {

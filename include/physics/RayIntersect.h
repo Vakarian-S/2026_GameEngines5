@@ -5,10 +5,10 @@
 
 namespace PHYSICS
 {
-    struct CapsuleCollider;
-    struct SphereCollider;
-    struct BoxCollider;
-    struct CylinderCollider;
+    struct CapsuleColliderComponent;
+    struct SphereColliderComponent;
+    struct BoxColliderComponent;
+    struct CylinderColliderComponent;
     
     /**
      * Computes the intersection of a ray with a sphere collider in local space.
@@ -17,7 +17,7 @@ namespace PHYSICS
      * @return An optional containing a RayHit struct if the intersection occurs,
      *         or std::nullopt if the ray and sphere do not intersect.
      */
-    std::optional<RayHit> Intersect(const Ray& localRay, const SphereCollider& sphereCollider);
+    std::optional<RayHit> Intersect(const Ray& localRay, const SphereColliderComponent& sphereCollider);
     
     /**
      * Computes the intersection of a ray with a box collider in local space.
@@ -26,7 +26,7 @@ namespace PHYSICS
      * @return An optional containing a RayHit struct if the intersection occurs,
      *         or std::nullopt if the ray and box do not intersect.
      */
-    std::optional<RayHit> Intersect(const Ray& localRay, const BoxCollider& boxCollider);
+    std::optional<RayHit> Intersect(const Ray& localRay, const BoxColliderComponent& boxCollider);
 
     /**
      * Tests the intersection of a ray with a cylinder collider in local space.
@@ -35,7 +35,7 @@ namespace PHYSICS
      * @return An optional containing a RayHit struct if the ray intersects the cylinder,
      *         or std::nullopt if no intersection occurs.
      */
-    std::optional<RayHit> Intersect(const Ray& localRay, const CylinderCollider& cylinderCollider);
+    std::optional<RayHit> Intersect(const Ray& localRay, const CylinderColliderComponent& cylinderCollider);
 
     /**
      * Computes the intersection of a ray with a capsule collider in local space.
@@ -44,5 +44,5 @@ namespace PHYSICS
      * @return An optional containing a RayHit struct if the intersection occurs,
      *         or std::nullopt if the ray and capsule do not intersect.
      */
-    std::optional<RayHit> Intersect(const Ray& localRay, const CapsuleCollider& capsuleCollider);
+    std::optional<RayHit> Intersect(const Ray& localRay, const CapsuleColliderComponent& capsuleCollider);
 }

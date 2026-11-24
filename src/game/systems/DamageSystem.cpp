@@ -6,8 +6,8 @@
 #include "game/Components.h"
 
 DamageSystem::DamageSystem(World& world, const uint64_t damageEvery_) :
-    System("Damage", COMPONENTS::MaskOf<Damageable>(), COMPONENTS::MaskOf<Hit>()),
-    damageables(world, COMPONENTS::MaskOf<Damageable>()),
+    System("Damage", COMPONENTS::MaskOf<DamageableTag>(), COMPONENTS::MaskOf<HitTag>()),
+    damageables(world, COMPONENTS::MaskOf<DamageableTag>()),
     damageEvery(damageEvery_)
 {
 }
@@ -25,8 +25,8 @@ void DamageSystem::Run(const SystemContext& context)
         const Entity* rows = chunk.Entities();
         for (uint32_t row = 0; row < chunk.Count(); ++row)
         {
-            if (hitOn) context.commands.AddComponent<Hit>(rows[row]);
-            else context.commands.RemoveComponent<Hit>(rows[row]);
+            if (hitOn) context.commands.AddComponent<HitTag>(rows[row]);
+            else context.commands.RemoveComponent<HitTag>(rows[row]);
         }
     });
 }

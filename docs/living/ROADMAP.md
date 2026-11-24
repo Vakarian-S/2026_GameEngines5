@@ -74,7 +74,7 @@ so it comes with row 9's trigger: the counters show migration cost.
 
 **Row 10, the alternative: sparse-set storage.** Bevy lets a component opt out of the archetype tables
 and live in a sparse set. Adding and removing it then moves nothing, but iterating it gets slower. Bevy
-suggests it for per-frame markers and short status effects; here that means `Picked`, `Falling` and
+suggests it for per-frame markers and short status effects; here that means `PickedComponent`, `FallingTag` and
 `DebugWatch`. Same trigger as row 10: the counters show archetype churn. Weigh both when it fires.
 
 **Row 8 and networking.** A packet needs stable type ids only if it carries component ids. The
@@ -112,7 +112,7 @@ From the non-uniform scale bonus, 2026-11-14 (dev-notes/non-uniform-scale.md).
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | Build the mass properties from the `Transform`, so the scale is written once | Each body states its scale twice, in the `Transform` and in the `InertiaTensor` call, and nothing keeps them equal. Stretching a sphere's `Transform` alone made it spin like the old round sphere, and the uniform-scale assert never saw the stretch. A tensor that differs from the shape on purpose, for feel, would be set by hand afterwards | to-do |
+| 1 | Build the mass properties from the `TransformComponent`, so the scale is written once | Each body states its scale twice, in the `TransformComponent` and in the `InertiaTensor` call, and nothing keeps them equal. Stretching a sphere's `TransformComponent` alone made it spin like the old round sphere, and the uniform-scale assert never saw the stretch. A tensor that differs from the shape on purpose, for feel, would be set by hand afterwards | to-do |
 
 ### Fixed step additions
 
@@ -178,7 +178,7 @@ for step 4: the physics scene reuses Mario and the cube.
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | `CreateSphere()`, `CreateBox(halfExtents)`, `CreateCylinder(radius, halfHeight)`, `CreateCapsule(radius, halfHeight)` on `AssetLoader`, generated in code and cached per size | `Transform.scale` is uniform, so it cannot change a shape's proportions: a 1 m cube mesh can never become a 2 x 1 x 4 box. A mesh generated at the collider's sizes matches it at any proportions, and scale still multiplies both. The sizes follow the collider convention, half sizes measured from the centre. A ball has one size, so one unit sphere and `scale` cover every ball. Godot builds its primitives this way (`CapsuleMesh` has `radius`, `height`, `radial_segments`, `rings`); Unity's `CreatePrimitive` uses fixed built-in meshes | to-do |
+| 1 | `CreateSphere()`, `CreateBox(halfExtents)`, `CreateCylinder(radius, halfHeight)`, `CreateCapsule(radius, halfHeight)` on `AssetLoader`, generated in code and cached per size | `TransformComponent.scale` is uniform, so it cannot change a shape's proportions: a 1 m cube mesh can never become a 2 x 1 x 4 box. A mesh generated at the collider's sizes matches it at any proportions, and scale still multiplies both. The sizes follow the collider convention, half sizes measured from the centre. A ball has one size, so one unit sphere and `scale` cover every ball. Godot builds its primitives this way (`CapsuleMesh` has `radius`, `height`, `radial_segments`, `rings`); Unity's `CreatePrimitive` uses fixed built-in meshes | to-do |
 
 **Decided against: a spawn helper** that creates the mesh, the entity and the matching collider in one
 call, as Unity's `CreatePrimitive` does. Creating a mesh and creating a collider are separate actions:
@@ -189,14 +189,14 @@ that clear.
 ### Model import settings
 
 From physics step 4a's design, 2026-10-27. A collider is centred on the entity's origin and sized by
-`Transform.scale`, so a model in the wrong units or with its origin off centre puts the collider in
+`TransformComponent.scale`, so a model in the wrong units or with its origin off centre puts the collider in
 the wrong place, or makes every collider number read in odd units. Not needed while the physics scenes
 use centred unit meshes.
 
 | # | builds | why | status |
 |---|---|---|---|
 | 1 | Import settings passed with the load, such as `CreateMesh("Mario.obj", {.fitSize = 1.0f, .recentre = true})`, and part of `AssetStore`'s cache key | The store caches meshes by path and shares them between scenes, so a separate `AdjustMesh` call after the load would change the mesh for every scene and miss the copy already on the GPU. With the settings in the key, the same file with and without them becomes two meshes | to-do |
-| 2 | An import scale: a known unit factor per file (centimetres to metres is 0.01), or fit to a size from the bounding box | Keeps `Transform.scale = (1, 1, 1)` meaning "the size the model is meant to be", so collider numbers are plain metres and scale stays free for gameplay. A uniform scale cannot deform the mesh: positions are multiplied by one number, and normals, UVs and indices do not change | to-do |
+| 2 | An import scale: a known unit factor per file (centimetres to metres is 0.01), or fit to a size from the bounding box | Keeps `TransformComponent.scale = (1, 1, 1)` meaning "the size the model is meant to be", so collider numbers are plain metres and scale stays free for gameplay. A uniform scale cannot deform the mesh: positions are multiplied by one number, and normals, UVs and indices do not change | to-do |
 | 3 | Recentre: subtract the bounding box centre from every vertex | The engine can measure where the origin sits but cannot know whether it was meant: a character's origin at the feet lets it stand at y = 0, and a door's sits on its hinge. So recentring is a choice made per model, never automatic. Where the origin is meant, the alternative is an offset on the collider, which Unity's colliders have as `center` and step 4a left out | to-do |
 | 4 | The facing fix: turn a model that faces +Z to the engine's -Z at load | Space prototype finding 8. `Mario.obj` faces +Z, and the prototype paid a quaternion multiply per draw for it | to-do |
 
@@ -308,7 +308,7 @@ and RmlUi (HTML and CSS-like, MIT as recalled) as the fallback if menus grow lar
 
 | # | builds | why | status |
 |---|---|---|---|
-| 1 | A line added with a lifetime that `core/debug` keeps between frames | A system outside Extract could then draw once. Step 4b draws its pick ray each frame from a `PickRay` component instead. Unreal's `DrawDebugLine` takes a persistent flag and a lifetime (from memory, not checked) | to-do |
+| 1 | A line added with a lifetime that `core/debug` keeps between frames | A system outside Extract could then draw once. Step 4b draws its pick ray each frame from a `PickRayComponent` instead. Unreal's `DrawDebugLine` takes a persistent flag and a lifetime (from memory, not checked) | to-do |
 
 ### A shipping build
 
@@ -386,7 +386,7 @@ component and look it up through `NetworkIdMap` on each access, as Unreal sends 
 scale, slerp the orientation, as one free function. The rest differs: the two states come from
 snapshots, `t` comes from the render time between two server ticks, and a lost snapshot must be held
 or guessed forward. Fixed step row 1 is not needed first, but it is a small warm-up that builds the
-blend function and its test. The input a client sends each tick is the `PlayerCommand` from the
+blend function and its test. The input a client sends each tick is the `PlayerCommandComponent` from the
 controller note under Semester topics.
 
 **Open decisions,** each settled in its step: the tick rate, send rate and snapshot layout (5); how
@@ -417,7 +417,7 @@ topic. When a topic is done, it leaves this table and STATE.md's table says so.
   systems and phases from step 3. Networking moved to its own section, "Networking".
 - Never do two long tasks back to back. After a long one, do a small topic and finish it.
 - **Controller support, and a later player controller.** Step 4a's design named the next layer: a
-  `PlayerCommand` for game commands (move, fire), built once per fixed step and reset at the start of
+  `PlayerCommandComponent` for game commands (move, fire), built once per fixed step and reset at the start of
   each step, as Overwatch builds one per simulation tick. Per-frame readers keep reading
   `InputState`, so a visual effect follows the key at frame rate while the simulation follows its own
   step. Until it exists, a press needed in Fixed uses a latch: Update sets a flag, and the next fixed
@@ -461,7 +461,7 @@ Known leftovers in the code, moved from STATE.md on 2026-11-03.
 | # | builds | why | status |
 |---|---|---|---|
 | 1 | Automated tests for `PickSystem`, `DrawPickRaySystem` and the dangle systems | Nothing runs them automatically. Vakarian checked them by hand on 2026-10-30, 2026-11-02 and 2026-11-03; `PhysicsTests` covers only the math they call | to-do |
-| 2 | A check that a system's query asks for the components it reads: an assert in `Column`, or a check in the registry | The read mask is only a label. In 4c, a query copied from another system matched archetypes without `Picked`, so `Column<Picked>()` returned null and crashed. It happened again with `AngularVelocity` missing from `ApplyForcesSystem`'s query | to-do |
+| 2 | A check that a system's query asks for the components it reads: an assert in `Column`, or a check in the registry | The read mask is only a label. In 4c, a query copied from another system matched archetypes without `PickedComponent`, so `Column<PickedComponent>()` returned null and crashed. It happened again with `AngularVelocityComponent` missing from `ApplyForcesSystem`'s query | to-do |
 | 3 | Measure what `PhysicsScene`'s world arena needs | `kWorldArenaBytes` went from 16 KB to 256 KB in 4c without a measurement | to-do |
 | 4 | Remove `AssetStore::CreateMesh`'s `std::cout` mesh counts | Leftover debug print | to-do |
 | 5 | One `EcsTests` check through a `const World&` | The const `World::GetComponent` has no caller, so no build compiles its body. A scratch compile on 2026-10-27 showed it works | to-do |

@@ -2,8 +2,8 @@
 
 #include "core/Components.h"
 
-bool PHYSICS::Overlap(const Transform& a, const PHYSICS::SphereCollider& sphereA, const Transform& b,
-                      const PHYSICS::SphereCollider& sphereB)
+bool PHYSICS::Overlap(const TransformComponent& a, const PHYSICS::SphereColliderComponent& sphereA, const TransformComponent& b,
+                      const PHYSICS::SphereColliderComponent& sphereB)
 {
     /* Spheres assume that scale is uniform */
     const float radiusA = sphereA.radius * a.scale.x;

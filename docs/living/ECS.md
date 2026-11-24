@@ -273,11 +273,11 @@ exists. Never say "died" for destruction. Conflating these caused confusion twic
 - So every add of a component with data must hand over that component's bytes. `T{}` is the
   default value. `World::AddComponent<T>` and `CommandBuffer::AddComponent<T>` both copy it when
   the caller passes nothing.
-- A component whose zero bytes are not a valid value depends on this rule. A zeroed `Transform`
+- A component whose zero bytes are not a valid value depends on this rule. A zeroed `TransformComponent`
   has scale 0 and the zero quaternion, so the mesh draws as a single point and no error appears.
 - `World::AddComponentById` asserts it. A component whose size is not 0 must come with a value
   and a size. A tag has size 0, so it passes with `nullptr`.
-- `CreateEntity(values...)` follows the rule too: the caller builds every value, so `Transform{}`
+- `CreateEntity(values...)` follows the rule too: the caller builds every value, so `TransformComponent{}`
   already holds scale 1 and the identity quaternion when the World copies it.
 - Loading entities from a file will need the same care, because a saved entity can miss a field. A
   default value per component type waits for that caller (dev-notes/create-with-components.md, decision 1).
@@ -287,5 +287,5 @@ exists. Never say "died" for destruction. Conflating these caused confusion twic
 - A component added or removed through the command buffer is not in the world until playback.
 - `SystemRegistry::RunPhase` plays back at the end of each phase. Systems in later phases see
   the change; systems in the same phase never do.
-- `PickSystem` queues `Picked` in Update, so `DrawColliders` draws the yellow wire in the same
+- `PickSystem` queues `PickedComponent` in Update, so `DrawColliders` draws the yellow wire in the same
   frame's Extract.

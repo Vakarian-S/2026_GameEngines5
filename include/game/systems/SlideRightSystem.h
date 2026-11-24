@@ -21,7 +21,7 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity in the row, with a Transform and a Velocity */
+    /** Every entity in the row, with a TransformComponent and a VelocityComponent */
     Query movers;
     /** The x where the slide path starts, in metres */
     float leftEdge;

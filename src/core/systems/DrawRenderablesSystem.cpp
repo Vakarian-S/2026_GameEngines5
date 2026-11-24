@@ -8,8 +8,8 @@
 #include "ecs/SystemContext.h"
 
 DrawRenderablesSystem::DrawRenderablesSystem(World& world) :
-    System("DrawRenderables", COMPONENTS::MaskOf<Transform, Renderable>(), 0),
-    drawables(world, COMPONENTS::MaskOf<Transform, Renderable>())
+    System("DrawRenderables", COMPONENTS::MaskOf<TransformComponent, RenderableComponent>(), 0),
+    drawables(world, COMPONENTS::MaskOf<TransformComponent, RenderableComponent>())
 {
 }
 
@@ -26,8 +26,8 @@ void DrawRenderablesSystem::Run(const SystemContext& context)
 
     drawables.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const Renderable* renderables = chunk.Column<Renderable>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const RenderableComponent* renderables = chunk.Column<RenderableComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

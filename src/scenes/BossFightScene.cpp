@@ -41,9 +41,9 @@ namespace
     constexpr MATH::Vec3 kBossPathCenter = MATH::Vec3(0.f, 0.f, -3.f);
     /** How many ticks it takes for the boss to do a full loop */
     constexpr std::uint64_t kBossPeriodTicks = 960;
-    /** Half Width of the Boss movement pattern*/
+    /** Half Width of the boss movement pattern*/
     constexpr float kBossHalfWidth = 6.f;
-    /** Half Depth of the Boss movement pattern*/
+    /** Half Depth of the boss movement pattern*/
     constexpr float kBossHalfDepth = 2.f;
     /** Speed of a projectile in metres per second */
     constexpr float kProjectileSpeed = 15.f;
@@ -143,7 +143,7 @@ void BossFightScene::SpawnEntities()
 {
     /* ======== Floor ======== */
     world.CreateEntity(
-        Transform{
+        TransformComponent{
             .position = MATH::Vec3(0.f, -1.5f, 0.f),
             .scale = MATH::Vec3(2 * kArenaHalfWidth, kFloorThickness, 2 * kArenaHalfDepth)
         },
@@ -151,11 +151,11 @@ void BossFightScene::SpawnEntities()
         );
     /* ======== Player ======== */
     world.CreateEntity(
-        Transform{.position = MATH::Vec3(0.f, 0.f, 5.f)},
-        PHYSICS::Velocity{},
+        TransformComponent{.position = MATH::Vec3(0.f, 0.f, 5.f)},
+        PHYSICS::VelocityComponent{},
         playerRenderable,
-        PlayerCommand{},
-        LocalPlayer{},
+        PlayerCommandComponent{},
+        LocalPlayerTag{},
         GunComponent{
             .projectileSpeed = kProjectileSpeed,
             .lifetimeTicks = kProjectileLifetimeTicks,
@@ -167,11 +167,11 @@ void BossFightScene::SpawnEntities()
 
     /* ======== Boss ======== */
     world.CreateEntity(
-        Transform{.position = kBossPathCenter, .scale = MATH::Vec3(3.0f, 3.0f, 3.0f)},
+        TransformComponent{.position = kBossPathCenter, .scale = MATH::Vec3(3.0f, 3.0f, 3.0f)},
         bossRenderable,
-        FigureEightPath{kBossPathCenter, kBossPeriodTicks, kBossHalfWidth, kBossHalfDepth},
-        BossComponent{},
-        PHYSICS::SphereCollider{},
+        FigureEightPathComponent{kBossPathCenter, kBossPeriodTicks, kBossHalfWidth, kBossHalfDepth},
+        BossTag{},
+        PHYSICS::SphereColliderComponent{},
         HealthComponent{.points = kBossHealth}
     );
 }

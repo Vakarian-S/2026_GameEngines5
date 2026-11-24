@@ -8,10 +8,10 @@
 #include "physics/Components.h"
 
 ProjectileHitSystem::ProjectileHitSystem(World& world) :
-    System("ProjectileHit", COMPONENTS::MaskOf<Transform, PHYSICS::SphereCollider, DamageComponent>(),
+    System("ProjectileHit", COMPONENTS::MaskOf<TransformComponent, PHYSICS::SphereColliderComponent, DamageComponent>(),
            COMPONENTS::MaskOf<HealthComponent>()),
-    projectiles(world, COMPONENTS::MaskOf<Transform, PHYSICS::SphereCollider, DamageComponent>()),
-    targets(world, COMPONENTS::MaskOf<Transform, PHYSICS::SphereCollider, HealthComponent>())
+    projectiles(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::SphereColliderComponent, DamageComponent>()),
+    targets(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::SphereColliderComponent, HealthComponent>())
 {
 }
 
@@ -21,8 +21,8 @@ void ProjectileHitSystem::Run(const SystemContext& context)
     {
         const Entity* projectileEntities = projectileChunk.Entities();
         const DamageComponent* damageComponents = projectileChunk.Column<DamageComponent>();
-        const Transform* projectileTransforms = projectileChunk.Column<Transform>();
-        const PHYSICS::SphereCollider* projectileColliders = projectileChunk.Column<PHYSICS::SphereCollider>();
+        const TransformComponent* projectileTransforms = projectileChunk.Column<TransformComponent>();
+        const PHYSICS::SphereColliderComponent* projectileColliders = projectileChunk.Column<PHYSICS::SphereColliderComponent>();
         const uint32_t projectileRowTotal = projectileChunk.Count();
         for (uint32_t projectileRow = 0; projectileRow < projectileRowTotal; ++projectileRow)
         {
@@ -32,8 +32,8 @@ void ProjectileHitSystem::Run(const SystemContext& context)
             {
                 if (spent) return;
                 HealthComponent* healthComponents = targetChunk.Column<HealthComponent>();
-                const Transform* targetTransforms = targetChunk.Column<Transform>();
-                const PHYSICS::SphereCollider* targetColliders = targetChunk.Column<PHYSICS::SphereCollider>();
+                const TransformComponent* targetTransforms = targetChunk.Column<TransformComponent>();
+                const PHYSICS::SphereColliderComponent* targetColliders = targetChunk.Column<PHYSICS::SphereColliderComponent>();
                 const uint32_t targetRowTotal = targetChunk.Count();
                 for (uint32_t targetRow = 0; targetRow < targetRowTotal; ++targetRow)
                 {

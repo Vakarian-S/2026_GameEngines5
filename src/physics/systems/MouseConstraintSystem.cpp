@@ -10,18 +10,18 @@
 MouseConstraintSystem::MouseConstraintSystem(World& world) :
     System("MouseConstraint",
            COMPONENTS::MaskOf<
-               PHYSICS::Picked,
-               Transform,
-               PHYSICS::Velocity,
-               PHYSICS::AngularVelocity,
-               PHYSICS::MassProperties
+               PHYSICS::PickedComponent,
+               TransformComponent,
+               PHYSICS::VelocityComponent,
+               PHYSICS::AngularVelocityComponent,
+               PHYSICS::MassPropertiesComponent
            >()
-           , COMPONENTS::MaskOf<PHYSICS::Velocity, PHYSICS::AngularVelocity>()),
-    entities(world, COMPONENTS::MaskOf<PHYSICS::Picked,
-                                       Transform,
-                                       PHYSICS::Velocity,
-                                       PHYSICS::AngularVelocity,
-                                       PHYSICS::MassProperties>())
+           , COMPONENTS::MaskOf<PHYSICS::VelocityComponent, PHYSICS::AngularVelocityComponent>()),
+    entities(world, COMPONENTS::MaskOf<PHYSICS::PickedComponent,
+                                       TransformComponent,
+                                       PHYSICS::VelocityComponent,
+                                       PHYSICS::AngularVelocityComponent,
+                                       PHYSICS::MassPropertiesComponent>())
 {
 }
 
@@ -30,11 +30,11 @@ void MouseConstraintSystem::Run(const SystemContext& context)
     const float deltaTime = context.Get<DeltaTime>().seconds;
     entities.ForEachChunk([&](ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::Picked* pickedComponents = chunk.Column<PHYSICS::Picked>();
-        PHYSICS::Velocity* velocities = chunk.Column<PHYSICS::Velocity>();
-        PHYSICS::AngularVelocity* angularVelocities = chunk.Column<PHYSICS::AngularVelocity>();
-        const PHYSICS::MassProperties* massProperties = chunk.Column<PHYSICS::MassProperties>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::PickedComponent* pickedComponents = chunk.Column<PHYSICS::PickedComponent>();
+        PHYSICS::VelocityComponent* velocities = chunk.Column<PHYSICS::VelocityComponent>();
+        PHYSICS::AngularVelocityComponent* angularVelocities = chunk.Column<PHYSICS::AngularVelocityComponent>();
+        const PHYSICS::MassPropertiesComponent* massProperties = chunk.Column<PHYSICS::MassPropertiesComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

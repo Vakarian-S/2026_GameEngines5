@@ -30,20 +30,20 @@ bool PacingScene::OnCreate(AssetLoader& assetLoader)
     });
 
     /* Both rows start in the same places along the path, so any gap between them is the pacing */
-    const PHYSICS::Velocity velocity{MATH::Vec3(kSpeed, 0.0f, 0.0f)};
+    const PHYSICS::VelocityComponent velocity{MATH::Vec3(kSpeed, 0.0f, 0.0f)};
     for (int i = 0; i < kMariosPerRow; ++i)
     {
         const float x = kPathLeft + kPathWidth * static_cast<float>(i) / kMariosPerRow;
-        world.CreateEntity(Transform{.position = MATH::Vec3(x, kRowHeight, 0.0f)},
-                           Renderable{marioMesh, marioMaterial}, velocity, FrameStepRow{});
-        world.CreateEntity(Transform{.position = MATH::Vec3(x, -kRowHeight, 0.0f)},
-                           Renderable{marioMesh, marioMaterial}, velocity, FixedStepRow{});
+        world.CreateEntity(TransformComponent{.position = MATH::Vec3(x, kRowHeight, 0.0f)},
+                           RenderableComponent{marioMesh, marioMaterial}, velocity, FrameStepRowTag{});
+        world.CreateEntity(TransformComponent{.position = MATH::Vec3(x, -kRowHeight, 0.0f)},
+                           RenderableComponent{marioMesh, marioMaterial}, velocity, FixedStepRowTag{});
     }
 
     systems.Add(Phase::Fixed, std::make_unique<SlideRightSystem>(
-                    world, "SlideFixedStepRow", COMPONENTS::MaskOf<FixedStepRow>(), kPathLeft, kPathWidth));
+                    world, "SlideFixedStepRow", COMPONENTS::MaskOf<FixedStepRowTag>(), kPathLeft, kPathWidth));
     systems.Add(Phase::Update, std::make_unique<SlideRightSystem>(
-                    world, "SlideFrameStepRow", COMPONENTS::MaskOf<FrameStepRow>(), kPathLeft, kPathWidth));
+                    world, "SlideFrameStepRow", COMPONENTS::MaskOf<FrameStepRowTag>(), kPathLeft, kPathWidth));
     auto load = std::make_unique<LoadSystem>();
     loadSystem = load.get();
     systems.Add(Phase::Update, std::move(load));

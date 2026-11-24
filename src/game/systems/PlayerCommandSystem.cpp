@@ -6,8 +6,8 @@
 #include "ecs/SystemContext.h"
 
 PlayerCommandSystem::PlayerCommandSystem(World& world) :
-    System("PlayerCommand", 0, COMPONENTS::MaskOf<PlayerCommand>()),
-    localPlayers(world, COMPONENTS::MaskOf<PlayerCommand, LocalPlayer>())
+    System("PlayerCommand", 0, COMPONENTS::MaskOf<PlayerCommandComponent>()),
+    localPlayers(world, COMPONENTS::MaskOf<PlayerCommandComponent, LocalPlayerTag>())
 {
 }
 
@@ -31,13 +31,13 @@ void PlayerCommandSystem::Run(const SystemContext& context)
     if (aimDirection.x != 0.0f || aimDirection.z != 0.0f) aimDirection = MATH::VMath::normalize(aimDirection);
 
 
-    const PlayerCommand command{
+    const PlayerCommandComponent command{
         .moveDirection = direction, .aimDirection = aimDirection
     };
 
     localPlayers.ForEachChunk([&](ChunkView chunk)
     {
-        PlayerCommand* commands = chunk.Column<PlayerCommand>();
+        PlayerCommandComponent* commands = chunk.Column<PlayerCommandComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

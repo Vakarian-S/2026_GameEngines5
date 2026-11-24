@@ -15,6 +15,6 @@ public:
     
     void Run(const SystemContext& context) override;
 private:
-    /** Every entity with a Transform and a Velocity */
+    /** Every entity with a TransformComponent and a VelocityComponent */
     Query movers;
 };

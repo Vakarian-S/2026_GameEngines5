@@ -17,7 +17,7 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity with a Position and a Velocity */
+    /** Every entity with a Position and a VelocityComponent */
     Query movers;
     /** Half the width of the box the entities stay inside, in metres */
     float boxHalfWidth;

@@ -1891,9 +1891,9 @@ int main()
         SystemRegistry deathRegistry(deathWorld);
         deathRegistry.Add(Phase::Fixed, std::make_unique<BossDeathSystem>(deathWorld));
 
-        const Entity deadBoss = deathWorld.CreateEntity(BossComponent{}, HealthComponent{.points = 0});
-        const Entity overkilledBoss = deathWorld.CreateEntity(BossComponent{}, HealthComponent{.points = -3});
-        const Entity aliveBoss = deathWorld.CreateEntity(BossComponent{}, HealthComponent{.points = 1});
+        const Entity deadBoss = deathWorld.CreateEntity(BossTag{}, HealthComponent{.points = 0});
+        const Entity overkilledBoss = deathWorld.CreateEntity(BossTag{}, HealthComponent{.points = -3});
+        const Entity aliveBoss = deathWorld.CreateEntity(BossTag{}, HealthComponent{.points = 1});
         const Entity notABoss = deathWorld.CreateEntity(HealthComponent{.points = 0});
 
         deathRegistry.RunPhase(Phase::Fixed, 1.0f / 60.0f);

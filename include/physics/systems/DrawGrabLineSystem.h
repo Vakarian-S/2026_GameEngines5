@@ -5,7 +5,7 @@
 class World;
 
 /**
- * Draws a line between the current mouse position to the grabbed point of a Picked Entity
+ * Draws a line between the current mouse position to the grabbed point of the entity with PickedComponent
  */
 class DrawGrabLineSystem : public System
 {
@@ -15,6 +15,6 @@ public:
     
     void Run(const SystemContext& context) override;
 private:
-    /** Picked Entities to draw the lines to */
+    /** Entities with PickedComponent to draw the lines to */
     Query entities;
 };

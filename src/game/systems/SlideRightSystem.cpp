@@ -8,8 +8,8 @@
 
 SlideRightSystem::SlideRightSystem(World& world, const char* name_, const ComponentMask rowTag, const float leftEdge_,
                                    const float pathWidth_) :
-    System(name_, COMPONENTS::MaskOf<PHYSICS::Velocity>(), COMPONENTS::MaskOf<Transform>()),
-    movers(world, COMPONENTS::MaskOf<Transform, PHYSICS::Velocity>() | rowTag),
+    System(name_, COMPONENTS::MaskOf<PHYSICS::VelocityComponent>(), COMPONENTS::MaskOf<TransformComponent>()),
+    movers(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::VelocityComponent>() | rowTag),
     leftEdge(leftEdge_),
     pathWidth(pathWidth_)
 {
@@ -21,8 +21,8 @@ void SlideRightSystem::Run(const SystemContext& context)
     const float rightEdge = leftEdge + pathWidth;
     movers.ForEachChunk([&](ChunkView chunk)
     {
-        Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::Velocity* velocities = chunk.Column<PHYSICS::Velocity>();
+        TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::VelocityComponent* velocities = chunk.Column<PHYSICS::VelocityComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

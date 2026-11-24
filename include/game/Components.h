@@ -6,27 +6,27 @@
 #include <cstdint>
 
 /** Marks an entity that was hit. Carries nothing, so it is a tag. */
-struct Hit
+struct HitTag
 {
 };
 
 /** Marks an entity that the damage system tags and untags. Carries nothing, so it is a tag */
-struct Damageable
+struct DamageableTag
 {
 };
 
 /** Marks an entity in the pacing scene's top row, which moves once per frame */
-struct FrameStepRow
+struct FrameStepRowTag
 {
 };
 
 /** Marks an entity in the pacing scene's bottom row, which moves once per fixed step*/
-struct FixedStepRow
+struct FixedStepRowTag
 {
 };
 
 /** Player commands inputted by the player */
-struct PlayerCommand
+struct PlayerCommandComponent
 {
     MATH::Vec3 moveDirection;
     /** The direction for shooting */
@@ -34,17 +34,17 @@ struct PlayerCommand
 };
 
 /** Tag indicating which one is the currently owned player */
-struct LocalPlayer
+struct LocalPlayerTag
 {
 };
 
-/** Indicates this is a Boss entity on the BossFight Scene */
-struct BossComponent
+/** Indicates this is the boss entity of the boss fight scene */
+struct BossTag
 {
 };
 
 /** A figure-eight path on the floor that an entity follows, one loop every periodTicks */
-struct FigureEightPath
+struct FigureEightPathComponent
 {
     /** World position where the path crosses itself */
     MATH::Vec3 center;
@@ -70,7 +70,7 @@ struct GunComponent
     /** Damage the projectile deals */
     std::int32_t projectileDamage;
     /** The renderable for the mesh */
-    Renderable projectileRenderable;
+    RenderableComponent projectileRenderable;
     
 };
 

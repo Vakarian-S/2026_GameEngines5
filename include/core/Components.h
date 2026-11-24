@@ -6,8 +6,8 @@
 #include "Vector.h"
 #include "VMath.h"
 
-/** Transform of an entity, required to build a Model Matrix */
-struct Transform
+/** TransformComponent of an entity, required to build a Model Matrix */
+struct TransformComponent
 {
     /** Position of the unit in metres */
     MATH::Vec3 position;
@@ -18,11 +18,11 @@ struct Transform
 };
 
 /**
- * Builds translate × rotate × scale from a Transform, so meshes and wires land in the same place
+ * Builds translate × rotate × scale from a TransformComponent, so meshes and wires land in the same place
  * @param transform transform component data
  * @return Model Matrix generated from the transform
  */
-inline MATH::Matrix4 ModelMatrix(const Transform& transform)
+inline MATH::Matrix4 ModelMatrix(const TransformComponent& transform)
 {
     /* Turns the mesh about its own centre first, then moves it into place. */
     return
@@ -66,7 +66,7 @@ inline MATH::Matrix3 NormalMatrix(const MATH::Matrix4& model)
 }
 
 /** Marks the entity as renderable */
-struct Renderable
+struct RenderableComponent
 {
     MeshHandle meshHandle;
     MaterialHandle materialHandle;

@@ -1,6 +1,6 @@
 # Plan
 
-**Last updated:** 2026-11-20.
+**Last updated:** 2026-11-24.
 
 This plan builds the Boss Fight Scene: a headless server runs a small boss fight, and clients connect
 to it through Valve's GameNetworkingSockets (GNS). Joins and leaves go as reliable messages, input and
@@ -13,8 +13,8 @@ networking topic comes along with it. It came from ROADMAP.md, Networking, Boss 
 
 | # | step | done when | stage |
 |---|---|---|---|
-| 1 | A headless mode: the engine starts with a server flag, opens no window, and the Fixed phase still ticks | A server run prints its tick count, opens no window, and closes clean | designed |
-| 2 | The Boss Fight Scene offline: a boss on a pattern, a player that moves and shoots, in one process | The scene plays in one window, with no network | designed |
+| 1 | A headless mode: the engine starts with a server flag, opens no window, and the Fixed phase still ticks | A server run prints its tick count, opens no window, and closes clean | done (d58e448) |
+| 2 | The Boss Fight Scene offline: a boss on a pattern, a player that moves and shoots, in one process | The scene plays in one window, with no network | done (cacd49e, 1d06049) |
 | 3 | Join and leave over GNS: the server hands the client an ID, and spawns or despawns its player | Two clients join and leave, and the server's player count follows | designed |
 | 4 | Input as unreliable messages: WASD on a client moves its player on the server | The server logs each player moving from its own client's keys | outline |
 | 5 | Snapshots as unreliable messages, mirrored on the client through `NetworkIdMap` and drawn raw | Both clients show the boss and both players, with visible jitter | outline |
@@ -121,7 +121,7 @@ renderer.
   a `FrameCap` at `kTicksPerSecond` (60), `tickCounter` and `tickLifespan`. `Run` calls
   `RunPhase(Phase::Fixed, FixedStep::kFixedTimeStep)` and `Wait` once per tick, and stops at the tick
   limit or on Ctrl+Q (`IsCloseCommandTriggered`). Every 60 ticks it prints `tick N, mario x X` from
-  the first chunk of a `Query` on `Transform` and `FixedStepRow`.
+  the first chunk of a `Query` on `TransformComponent` and `FixedStepRowTag`.
 - `Main.cpp`: `HasServerFlag` looks for `--server` in any argument and builds one application or the
   other in an `if` / `else`, so both fall through to the profiler, memory and leak reports.
 - `NullAssetLoader` in `include/core/NullAssetLoader.h`, header only; each function returns `{}`.
@@ -149,7 +149,7 @@ renderer.
   | run | result |
   |---|---|
   | `-Server -Scene 3 -Ticks 600` | exit 0, no window, 10 tick lines from tick 60 to tick 600, "Ran for 600 ticks", 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0 leaked blocks |
-  | `-Server -Scene 0 -Ticks 60` | exit 0, no tick lines (Scene0 has no `FixedStepRow`), 0 leaked blocks |
+  | `-Server -Scene 0 -Ticks 60` | exit 0, no tick lines (Scene0 has no `FixedStepRowTag`), 0 leaked blocks |
   | `-Server -Scene 9 -Ticks 60` | exit 1, prints the scene list |
 
   The Mario x moves 10 units a second and wraps from 15 to -15 (-5, 5, -15, -5 ...), which matches
@@ -173,21 +173,21 @@ server work and client work now, so step 3 only picks which lists run.
   as benchmarks. Replacing one was rejected.
 - **b. Camera.** A fixed overhead camera, angled down, with play on the XZ plane. WASD moves the
   player, so the fly camera's WASD would fight it. Keeping the fly camera was rejected.
-- **c. Input.** A `PlayerCommand` component on each player entity holds a move direction (WASD) and
+- **c. Input.** A `PlayerCommandComponent` on each player entity holds a move direction (WASD) and
   an aim direction (the arrow keys), each normalized. `PlayerCommandSystem`, in Update, reads
   `InputState` and rewrites the local player's whole command every frame. It is the only writer of
-  `PlayerCommand`, and Fixed systems read only the command, never `InputState`. A held arrow aims and
+  `PlayerCommandComponent`, and Fixed systems read only the command, never `InputState`. A held arrow aims and
   fires at once, as in a twin-stick shooter; there is no fire flag, so a shot can never have a zero
   direction. The gun's cooldown sets the rate, and also stops a second shot when one frame runs two
   fixed steps. Changed 2026-11-24: Space fired along the last move direction, and moving, aiming and
   firing needed three hands. In step 4 the server fills the same
   component from the network, and no Fixed system changes. A component, not a resource, because the
   server holds one command per player. Overwatch does the same: its input system fills a singleton
-  input from the OS, and its command system "becomes the only place" that changes the `PlayerCommand`
+  input from the OS, and its command system "becomes the only place" that changes the `PlayerCommandComponent`
   that is networked and simulated (GDC 2017, "Overwatch Gameplay Architecture and Netcode", 13:52 to
   14:56). Rejected: Fixed systems that read `InputState`, and a fire latch that a Fixed system clears,
   because it adds a second writer.
-- **d. Movement.** A player system turns the command into a `PHYSICS::Velocity`, the existing
+- **d. Movement.** A player system turns the command into a `PHYSICS::VelocityComponent`, the existing
   `UpdatePositionSystem` moves the player, and a clamp keeps it inside the arena. It reuses the Fixed
   system `PhysicsScene` runs. A second integrator was rejected.
 - **e. A tick counter.** A `FixedTickCount` resource counts fixed steps. `Application` and
@@ -199,9 +199,9 @@ server work and client work now, so step 3 only picks which lists run.
   in the outline needs it. A pattern stepped by delta time was rejected, because it drifts.
 - **g. Shooting.** `ShootSystem`, in Fixed, spawns a projectile through the command buffer (rule 6)
   while the command's aim is not zero and the tick has reached the gun's `readyTick`. The projectile
-  gets `Transform`, `Velocity` along the aim, `LifespanComponent { ticksLeft }` and a `Renderable`.
+  gets `TransformComponent`, `VelocityComponent` along the aim, `LifespanComponent { ticksLeft }` and a `RenderableComponent`.
   The player's `GunComponent` in `game/Components.h` holds `readyTick` and the stats: projectile
-  speed, lifespan ticks, cooldown ticks and the projectile's `Renderable`. Stats on the component let
+  speed, lifespan ticks, cooldown ticks and the projectile's `RenderableComponent`. Stats on the component let
   a second weapon be a different `GunComponent{}`, with no new system; one component passes ECS.md
   rule 3, because only `ShootSystem` reads it. `LifespanComponent` lives in `core/Components.h`, and
   `LifespanSystem` in `core/systems` counts it down in Fixed and destroys the entity at 0 through the
@@ -210,9 +210,9 @@ server work and client work now, so step 3 only picks which lists run.
   which allow one weapon only; a shared weapon table, which pays off only when many entities share
   a weapon; splitting `GunComponent` into state and stats, which pays off only with many guns; and a
   `Projectile` component in `game`.
-- **h. Hits.** The boss and each projectile get a `SphereCollider`. The test lives in
+- **h. Hits.** The boss and each projectile get a `SphereColliderComponent`. The test lives in
   `include/physics/Collision3D.h` and `src/physics/Collision3D.cpp`, free functions in `PHYSICS` next to
-  `RayIntersect.h`. This step adds `Overlap(Transform, SphereCollider, Transform, SphereCollider)`,
+  `RayIntersect.h`. This step adds `Overlap(TransformComponent, SphereColliderComponent, TransformComponent, SphereColliderComponent)`,
   which returns a bool, with each radius times the scale (rule 10 keeps spheres uniform). Collision
   row 1 later adds the other shape pairs and a `Collide(...)` that returns a contact; resolving stays
   in `RigidBody.h`. `physics` may include `core`, and `game` may include `physics`, so both reach it.
@@ -225,11 +225,11 @@ server work and client work now, so step 3 only picks which lists run.
   first caller, because nothing has a 2D collider. Rejected: `game` as the folder, `RayIntersect.h` as
   the file, waiting for Collision row 1, and an empty `Collision2D.h`.
 - **i. The boss dies.** At 0 health the boss despawns and the console prints "boss died". A
-  `BossDeathSystem` on `BossComponent + HealthComponent` does both, in Fixed after
+  `BossDeathSystem` on `BossTag + HealthComponent` does both, in Fixed after
   `ProjectileHitSystem`, so hits only change health (rule 8) and death is a scan, not a callback
   (ECS.md rule 7). A general death system waits until something other than the boss has health. R
   restarts the fight with `World::Clear`, as `PhysicsScene` does. The scene loads its assets once in
-  `OnCreate` and keeps three `Renderable` members, so `SpawnEntities` needs no asset loader. It is
+  `OnCreate` and keeps three `RenderableComponent` members, so `SpawnEntities` needs no asset loader. It is
   the rare event a reliable message carries later.
 - **j. Server and client systems.** Pattern, movement, shooting, lifespan and hits go in Fixed, the server's
   list. `PlayerCommandSystem` goes in Update and drawing in Extract, the client's list. Step 3 then
@@ -250,7 +250,7 @@ since the server's last acknowledgment in each packet, so one lost packet costs 
 **What the build checked.** x64 Debug, one entry per decision as it lands.
 
 - **Decision f, 2026-11-21.** `FigureEightPathPosition(tick, periodTicks, halfWidth, halfDepth)` in
-  `game/FigureEightPath.h` gives the offset. A `FigureEightPath` component holds each entity's
+  `game/FigureEightPath.h` gives the offset. A `FigureEightPathComponent` holds each entity's
   `center`, period and sizes, so several entities can loop in different spots.
   `FigureEightPathSystem` (it was `BossPatternSystem`) writes `center + offset` in Fixed. The boss
   uses center (0, 0, -3), period 960, half width 6, half depth 2. Mario starts at (0, 0, 5).
@@ -266,7 +266,7 @@ since the server's last acknowledgment in each packet, so one lost packet costs 
     blocks.
   - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
     blocks.
-- **Decision g, 2026-11-24.** `PlayerCommand` holds `moveDirection` and `aimDirection`, with no fire
+- **Decision g, 2026-11-24.** `PlayerCommandComponent` holds `moveDirection` and `aimDirection`, with no fire
   flag. `ShootSystem` spawns a cube along the aim while the aim is not zero, at most once every
   `cooldownTicks`. `GunComponent` holds `readyTick` and the stats; the scene sets speed 15 m/s,
   lifespan 90 ticks and cooldown 12 ticks. `LifespanSystem` destroys an entity when
@@ -285,8 +285,8 @@ since the server's last acknowledgment in each packet, so one lost packet costs 
   - **The server.** `-Server -Scene 4 -Ticks 180`: exit 0, no window, "Ran for 180 ticks", 0 leaked
     blocks.
 - **Decision h, 2026-11-24.** `PHYSICS::Overlap` in `physics/Collision3D` compares the distance
-  between two centres with the sum of `radius * scale.x`. Projectiles carry `SphereCollider` and
-  `DamageComponent`; the boss carries `SphereCollider` (radius 0.5, so 1.5 m at scale 3) and
+  between two centres with the sum of `radius * scale.x`. Projectiles carry `SphereColliderComponent` and
+  `DamageComponent`; the boss carries `SphereColliderComponent` (radius 0.5, so 1.5 m at scale 3) and
   `HealthComponent` 20. `ProjectileHitSystem` runs in Fixed after `LifespanSystem`, prints
   "target health N" on each hit for now, and destroys the projectile.
   - **Bugs the first run found.** The boss started at 0 health, and unsigned health wrapped from 0 to
@@ -306,7 +306,7 @@ since the server's last acknowledgment in each packet, so one lost packet costs 
     blocks.
 - **Decision i, 2026-11-24.** `BossDeathSystem` prints "boss died" and destroys a boss at 0 health or
   below. `ProjectileHitSystem` no longer destroys targets. `BossFightScene::SpawnEntities` creates
-  the player and the boss from the stored `Renderable` members, and `Update` calls `world.Clear()`
+  the player and the boss from the stored `RenderableComponent` members, and `Update` calls `world.Clear()`
   then `SpawnEntities()` when R is pressed.
   - **Tests.** `EcsTests` gets "BossDeathSystem", with 4 checks: a boss at 0 health and a boss at -3
     are gone after one run, a boss at 1 health stays, and an entity at 0 health without the boss tag
@@ -323,7 +323,7 @@ since the server's last acknowledgment in each packet, so one lost packet costs 
   `PlayerCommandSystem` alone in Update, and the two draw systems in Extract. `ServerApplication`
   runs only Fixed, so it simulates the whole fight. R in `BossFightScene::Update` is the one
   client-only piece outside the lists; step 3 turns it into a reliable message.
-- **Decision k, 2026-11-24.** A floor entity with `Transform` and `Renderable` only: the cube mesh,
+- **Decision k, 2026-11-24.** A floor entity with `TransformComponent` and `RenderableComponent` only: the cube mesh,
   `floor_grey.png`, scaled to the arena (20 × 0.1 × 14 m) and placed at y = -1.5 so Mario's feet sit
   on it.
   - **A crash the floor caused.** The first shot after adding the floor stopped the game with "the

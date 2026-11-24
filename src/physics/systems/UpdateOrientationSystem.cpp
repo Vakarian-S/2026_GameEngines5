@@ -10,13 +10,13 @@
 UpdateOrientationSystem::UpdateOrientationSystem(World& world) :
     System("UpdateOrientation",
            COMPONENTS::MaskOf<
-               Transform,
-               PHYSICS::AngularVelocity
+               TransformComponent,
+               PHYSICS::AngularVelocityComponent
            >()
            , COMPONENTS::MaskOf<
-               Transform>()),
-    entities(world, COMPONENTS::MaskOf<Transform,
-                                       PHYSICS::AngularVelocity>())
+               TransformComponent>()),
+    entities(world, COMPONENTS::MaskOf<TransformComponent,
+                                       PHYSICS::AngularVelocityComponent>())
 {
 }
 
@@ -25,8 +25,8 @@ void UpdateOrientationSystem::Run(const SystemContext& context)
     const float deltaTime = context.Get<DeltaTime>().seconds;
     entities.ForEachChunk([&](ChunkView chunk)
     {
-        Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::AngularVelocity* angularVelocities = chunk.Column<PHYSICS::AngularVelocity>();
+        TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::AngularVelocityComponent* angularVelocities = chunk.Column<PHYSICS::AngularVelocityComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

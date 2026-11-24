@@ -89,10 +89,10 @@ MATH::Vec3 PHYSICS::LimitSpin(const MATH::Vec3& angularVelocity)
                : angularVelocity;
 }
 
-PHYSICS::BodyVelocity PHYSICS::MouseConstraint(const Transform& transform,
+PHYSICS::BodyVelocity PHYSICS::MouseConstraint(const TransformComponent& transform,
                                                  const MATH::Vec3& localPoint,
                                                  const MATH::Vec3& mouseTarget,
-                                                 const MassProperties& massProperties,
+                                                 const MassPropertiesComponent& massProperties,
                                                  const MATH::Vec3& velocity,
                                                  const MATH::Vec3& angularVelocity,
                                                  const float deltaTime)
@@ -135,7 +135,7 @@ PHYSICS::BodyVelocity PHYSICS::MouseConstraint(const Transform& transform,
     };
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const BoxCollider& box, const float mass, const MATH::Vec3& scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const BoxColliderComponent& box, const float mass, const MATH::Vec3& scale)
 {
     /* 1/12 m (h² + d²) per axis, with full sizes */
     /* m/3 (b² + c²), since each full size is twice the half: (2b)²/12 = b²/3 */
@@ -147,14 +147,14 @@ MATH::Matrix3 PHYSICS::InertiaTensor(const BoxCollider& box, const float mass, c
     return Diagonal(mass / 3.0f * (y2 + z2), mass / 3.0f * (x2 + z2), mass / 3.0f * (x2 + y2));
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const SphereCollider& sphere, const float mass, const MATH::Vec3& scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const SphereColliderComponent& sphere, const float mass, const MATH::Vec3& scale)
 {
     const float r = sphere.radius * UniformScale(scale);
     const float value = 0.4f * mass * r * r;
     return Diagonal(value, value, value);
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const CapsuleCollider& capsule, const float mass, const MATH::Vec3& scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const CapsuleColliderComponent& capsule, const float mass, const MATH::Vec3& scale)
 {
     /* Read more: https://gamedev.net/tutorials/programming/math-and-physics/capsule-inertia-tensor-r3856 */
     const float uniformScale = UniformScale(scale);
@@ -174,7 +174,7 @@ MATH::Matrix3 PHYSICS::InertiaTensor(const CapsuleCollider& capsule, const float
     return Diagonal(across, along, across);
 }
 
-MATH::Matrix3 PHYSICS::InertiaTensor(const CylinderCollider& cylinder, const float mass, const MATH::Vec3& scale)
+MATH::Matrix3 PHYSICS::InertiaTensor(const CylinderColliderComponent& cylinder, const float mass, const MATH::Vec3& scale)
 {
     /* Wikipedia: 1/12 m (3r² + h²), with h the full height
      * (3r² + 4h²) / 12, since our h is half: (2h)² = 4h² */

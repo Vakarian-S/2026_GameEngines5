@@ -15,11 +15,11 @@ namespace
 DrawGrabLineSystem::DrawGrabLineSystem(World& world) :
     System("DrawGrabLine",
            COMPONENTS::MaskOf<
-               PHYSICS::Picked,
-               Transform
+               PHYSICS::PickedComponent,
+               TransformComponent
            >()
            , 0),
-    entities(world, COMPONENTS::MaskOf<Transform, PHYSICS::Picked>())
+    entities(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::PickedComponent>())
 {
 }
 
@@ -30,8 +30,8 @@ void DrawGrabLineSystem::Run(const SystemContext& context)
 
     entities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::Picked* pickedComponents = chunk.Column<PHYSICS::Picked>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::PickedComponent* pickedComponents = chunk.Column<PHYSICS::PickedComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

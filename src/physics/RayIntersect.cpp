@@ -53,7 +53,7 @@ namespace
     {
         /* Our sphere test assumes the sphere sits at the origin, so we move our ray */
         const PHYSICS::Ray capRay{.origin = localRay.origin - sphereCentre, .direction = localRay.direction};
-        const PHYSICS::SphereCollider sphereCollider{.radius = radius};
+        const PHYSICS::SphereColliderComponent sphereCollider{.radius = radius};
         const std::optional<PHYSICS::RayHit> rayHit = Intersect(capRay, sphereCollider);
         if (!rayHit.has_value()) return std::nullopt;
         /* Move back to our original space */
@@ -66,7 +66,7 @@ namespace
     }
 }
 
-std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const SphereCollider& sphereCollider)
+std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const SphereColliderComponent& sphereCollider)
 {
     /* Quadratic equation at² + bt + c = 0, where
      * a = D·D, b = 2(M·D), c = M·M - r², and M = rayStart - centre */
@@ -92,7 +92,7 @@ std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const Sph
     };
 }
 
-std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const BoxCollider& boxCollider)
+std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const BoxColliderComponent& boxCollider)
 {
     /* The handout starts tmin at 0, which makes a ray starting inside a hit at t = 0.
      * Starting at -infinity keeps the real entry, so the inside check below can see it */
@@ -139,7 +139,7 @@ std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const Box
     };
 }
 
-std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const CylinderCollider& cylinderCollider)
+std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const CylinderColliderComponent& cylinderCollider)
 {
     /* A is the bottom cap centre, B the top one, and AB the unit axis from A to B */
     const MATH::Vec3 v = localRay.direction;
@@ -202,7 +202,7 @@ std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const Cyl
     return IntersectCap(localRay, hitHeight < 0.0f ? A : B, AB, cylinderCollider.radius);
 }
 
-std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const CapsuleCollider& capsuleCollider)
+std::optional<PHYSICS::RayHit> PHYSICS::Intersect(const Ray& localRay, const CapsuleColliderComponent& capsuleCollider)
 {
     /* Infinite Cylinder Check */
     const MATH::Vec3 v = localRay.direction;

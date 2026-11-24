@@ -7,7 +7,7 @@
 #include "core/Camera.h"
 #include "core/VectorMath.h"
 
-PHYSICS::Ray PHYSICS::ToLocalRay(const Ray& worldRay, const Transform& transform)
+PHYSICS::Ray PHYSICS::ToLocalRay(const Ray& worldRay, const TransformComponent& transform)
 {
     /* We have to reverse the process of a transform */
     const MATH::Quaternion orientation = MATH::QMath::conjugate(transform.orientation);

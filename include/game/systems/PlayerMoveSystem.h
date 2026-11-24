@@ -17,7 +17,7 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Entities with a PlayerCommand and a Velocity component */
+    /** Entities with a PlayerCommandComponent and a VelocityComponent */
     Query entities;
     /** Speed in metres per second to move entities */
     float speed;

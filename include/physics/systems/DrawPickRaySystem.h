@@ -14,6 +14,6 @@ public:
     void Run(const SystemContext& context) override;
 
 private:
-    /** Every entity with a PickRay Component */
+    /** Every entity with a PickRayComponent */
     Query pickRays;
 };

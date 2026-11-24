@@ -5,7 +5,7 @@
 class World;
 
 /**
- * System traps entities considered players via PlayerCommand to limit their movement to the arena of the given dimension
+ * System traps entities considered players via PlayerCommandComponent to limit their movement to the arena of the given dimension
  */
 class ClampToArenaSystem : public System
 {

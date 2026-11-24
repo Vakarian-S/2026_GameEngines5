@@ -17,8 +17,8 @@ namespace
 }
 
 DrawPickRaySystem::DrawPickRaySystem(World& world) :
-    System("DrawPickRay", COMPONENTS::MaskOf<PHYSICS::PickRay>(), 0),
-    pickRays(world, COMPONENTS::MaskOf<PHYSICS::PickRay>())
+    System("DrawPickRay", COMPONENTS::MaskOf<PHYSICS::PickRayComponent>(), 0),
+    pickRays(world, COMPONENTS::MaskOf<PHYSICS::PickRayComponent>())
 {
 }
 
@@ -29,7 +29,7 @@ void DrawPickRaySystem::Run(const SystemContext& context)
 
     pickRays.ForEachChunk([&](const ChunkView chunk)
     {
-        const PHYSICS::PickRay* pickRayComponents = chunk.Column<PHYSICS::PickRay>();
+        const PHYSICS::PickRayComponent* pickRayComponents = chunk.Column<PHYSICS::PickRayComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

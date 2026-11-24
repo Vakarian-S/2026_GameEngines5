@@ -140,7 +140,7 @@ int main()
 
     /* ===== Ray against sphere ===== */
 
-    const PHYSICS::SphereCollider unitSphere{1.0f};
+    const PHYSICS::SphereColliderComponent unitSphere{1.0f};
 
     std::cout << "\nTEST CASE: a ray from the front hits a sphere of radius 1\n";
     {
@@ -167,7 +167,7 @@ int main()
     std::cout << "\nTEST CASE: the default collider has radius 0.5\n";
     {
         const PHYSICS::Ray ray{MATH::Vec3(0.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
-        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::SphereCollider{});
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::SphereColliderComponent{});
 
         Check("t is 4.5", hit && Near(hit->t, 4.5f));
     }
@@ -221,7 +221,7 @@ int main()
     /* ===== Ray against box ===== */
 
     /* A different half size per axis, so a mixed up axis shows */
-    const PHYSICS::BoxCollider box{MATH::Vec3(1.0f, 0.5f, 2.0f)};
+    const PHYSICS::BoxColliderComponent box{MATH::Vec3(1.0f, 0.5f, 2.0f)};
 
     std::cout << "\nTEST CASE: a ray along -z hits the front face of a box\n";
     {
@@ -269,7 +269,7 @@ int main()
     std::cout << "\nTEST CASE: the default box has half size 0.5\n";
     {
         const PHYSICS::Ray ray{MATH::Vec3(0.0f, 0.0f, 5.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
-        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::BoxCollider{});
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::BoxColliderComponent{});
 
         Check("t is 4.5", hit && Near(hit->t, 4.5f));
     }
@@ -343,7 +343,7 @@ int main()
     /* ===== Ray against can ===== */
 
     /* Radius 1, caps at y = -2 and y = 2 */
-    const PHYSICS::CylinderCollider can{1.0f, 2.0f};
+    const PHYSICS::CylinderColliderComponent can{1.0f, 2.0f};
 
     std::cout << "\nTEST CASE: a ray from the side hits the wall of a can\n";
     {
@@ -369,7 +369,7 @@ int main()
     std::cout << "\nTEST CASE: the default can has radius 0.5\n";
     {
         const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
-        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::CylinderCollider{});
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::CylinderColliderComponent{});
 
         Check("t is 4.5", hit && Near(hit->t, 4.5f));
     }
@@ -511,7 +511,7 @@ int main()
     /* ===== Ray against capsule ===== */
 
     /* Radius 1, sphere caps centred at y = -2 and y = 2, so it runs from y = -3 to y = 3 */
-    const PHYSICS::CapsuleCollider capsule{1.0f, 2.0f};
+    const PHYSICS::CapsuleColliderComponent capsule{1.0f, 2.0f};
 
     std::cout << "\nTEST CASE: a ray from the side hits the wall of a capsule\n";
     {
@@ -537,7 +537,7 @@ int main()
     std::cout << "\nTEST CASE: the default capsule has radius 0.5\n";
     {
         const PHYSICS::Ray ray{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
-        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::CapsuleCollider{});
+        const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(ray, PHYSICS::CapsuleColliderComponent{});
 
         Check("t is 4.5", hit && Near(hit->t, 4.5f));
     }
@@ -719,7 +719,7 @@ int main()
     std::cout << "\nTEST CASE: a default transform leaves the ray as it is\n";
     {
         const PHYSICS::Ray world{MATH::Vec3(1.0f, 2.0f, 3.0f), MATH::Vec3(0.0f, 0.0f, -2.0f)};
-        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, Transform{});
+        const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, TransformComponent{});
 
         Check("the origin is unchanged", Near(local.origin, world.origin));
         Check("the direction is unchanged", Near(local.direction, world.direction));
@@ -728,7 +728,7 @@ int main()
     std::cout << "\nTEST CASE: a moved shape changes the origin, never the direction\n";
     {
         const PHYSICS::Ray world{MATH::Vec3(4.0f, 2.0f, 3.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
-        const Transform transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        const TransformComponent transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
         const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
 
         Check("the origin is measured from the shape, (3, 0, 0)", Near(local.origin, MATH::Vec3(3.0f, 0.0f, 0.0f)));
@@ -738,7 +738,7 @@ int main()
     std::cout << "\nTEST CASE: a scaled shape divides both the origin and the direction\n";
     {
         const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, 10.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
-        const Transform transform{.scale = MATH::Vec3(2.0f, 2.0f, 2.0f)};
+        const TransformComponent transform{.scale = MATH::Vec3(2.0f, 2.0f, 2.0f)};
         const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
 
         Check("the origin is (0, 0, 5)", Near(local.origin, MATH::Vec3(0.0f, 0.0f, 5.0f)));
@@ -749,7 +749,7 @@ int main()
     {
         /* The turn takes the shape's +x to the world's -z, so the world's -z is the shape's +x */
         const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, -5.0f), MATH::Vec3(0.0f, 0.0f, 1.0f)};
-        const Transform transform{.orientation = MATH::QMath::angleAxisRotation(90.0f, yAxis)};
+        const TransformComponent transform{.orientation = MATH::QMath::angleAxisRotation(90.0f, yAxis)};
         const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
 
         Check("the origin is (5, 0, 0)", Near(local.origin, MATH::Vec3(5.0f, 0.0f, 0.0f)));
@@ -759,7 +759,7 @@ int main()
     std::cout << "\nTEST CASE: ModelMatrix takes a local ray's points back to the world ray's points\n";
     {
         /* Moved, scaled and turned about a slanted axis, so no term can cancel by luck */
-        const Transform transform{
+        const TransformComponent transform{
             .position = MATH::Vec3(1.0f, -2.0f, 3.0f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f),
             .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(1.0f, 2.0f, 3.0f))
         };
@@ -777,7 +777,7 @@ int main()
     std::cout << "\nTEST CASE: a moved, scaled sphere gives the same t as the world's numbers\n";
     {
         /* World radius 2 at z = -10, so the near surface is at z = -8 */
-        const Transform transform{.position = MATH::Vec3(0.0f, 0.0f, -10.0f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f)};
+        const TransformComponent transform{.position = MATH::Vec3(0.0f, 0.0f, -10.0f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f)};
         const PHYSICS::Ray world{MATH::Vec3(0.0f, 0.0f, 0.0f), MATH::Vec3(0.0f, 0.0f, -1.0f)};
         const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(PHYSICS::ToLocalRay(world, transform), unitSphere);
 
@@ -793,7 +793,7 @@ int main()
     {
         /* The turn puts the box's z half size of 2 along the world's x. At scale 2 that is 4, so the near face is at
          * x = 6. Without the turn it would be the x half size, and t would be 8 */
-        const Transform transform{
+        const TransformComponent transform{
             .position = MATH::Vec3(10.0f, 0.0f, 0.0f), .scale = MATH::Vec3(2.0f, 2.0f, 2.0f),
             .orientation = MATH::QMath::angleAxisRotation(90.0f, yAxis)
         };
@@ -809,7 +809,7 @@ int main()
     {
         /* Turned 90 degrees about z, their y axis lies along the world's x. The can's cap faces the ray at x = 2,
          * the capsule's sphere cap reaches x = 3 */
-        const Transform transform{.orientation = MATH::QMath::angleAxisRotation(90.0f, zAxis)};
+        const TransformComponent transform{.orientation = MATH::QMath::angleAxisRotation(90.0f, zAxis)};
         const PHYSICS::Ray world{MATH::Vec3(5.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
         const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
         const std::optional<PHYSICS::RayHit> canHit = PHYSICS::Intersect(local, can);
@@ -888,7 +888,7 @@ int main()
         /* World radius 2 at the origin and a camera at z = 10, so the near surface is 8 metres away */
         Camera camera;
         camera.view = MATH::MMath::lookAt(MATH::Vec3(0.0f, 0.0f, 10.0f), MATH::Vec3(0.0f, 0.0f, 0.0f), yAxis);
-        const Transform transform{.scale = MATH::Vec3(2.0f, 2.0f, 2.0f)};
+        const TransformComponent transform{.scale = MATH::Vec3(2.0f, 2.0f, 2.0f)};
         const PHYSICS::Ray world = PHYSICS::MakePickRay(MATH::Vec2(400.0f, 300.0f), window, camera);
         const std::optional<PHYSICS::RayHit> hit = PHYSICS::Intersect(PHYSICS::ToLocalRay(world, transform), unitSphere);
 
@@ -940,12 +940,12 @@ int main()
         constexpr float deltaTime = 1.0f / 60.0f;
         /* kBeta in RigidBody.cpp */
         constexpr float beta = 0.15f;
-        const Transform transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        const TransformComponent transform{.position = MATH::Vec3(1.0f, 2.0f, 3.0f)};
         const auto length = [](const MATH::Vec3& v) { return std::sqrt(MATH::VMath::dot(v, v)); };
 
         /* Mass 1, identity inertia and no gap: the slides' form must give the handout's answer.
          * r = (1, 0, 0), so Meff is diag(1, 2, 2). Worked by hand */
-        const PHYSICS::MassProperties unit{};
+        const PHYSICS::MassPropertiesComponent unit{};
         const MATH::Vec3 arm(1.0f, 0.0f, 0.0f);
         const MATH::Vec3 knownVelocity(0.0f, -1.0f, 0.0f);
         const MATH::Vec3 knownSpin(0.0f, 0.0f, 0.0f);
@@ -957,8 +957,8 @@ int main()
               Near(known.angular - knownSpin, MATH::Vec3(0.0f, 0.0f, 0.5f)));
 
         /* A real body with a gap: after the change, JV + b = 0 */
-        const PHYSICS::BoxCollider box{MATH::Vec3(0.5f, 1.0f, 0.25f)};
-        const PHYSICS::MassProperties heavyBox{2.0f, PHYSICS::InertiaTensor(box, 2.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))};
+        const PHYSICS::BoxColliderComponent box{MATH::Vec3(0.5f, 1.0f, 0.25f)};
+        const PHYSICS::MassPropertiesComponent heavyBox{2.0f, PHYSICS::InertiaTensor(box, 2.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))};
         const MATH::Vec3 localPoint(0.5f, 1.0f, 0.25f);
         const MATH::Vec3 target = transform.position + localPoint + MATH::Vec3(0.2f, -0.1f, 0.3f);
         const MATH::Vec3 velocity(1.0f, -2.0f, 0.5f);
@@ -977,8 +977,8 @@ int main()
         Check("r = 0, no gap: the angular velocity stays the same", Near(centre.angular, angularVelocity));
 
         /* More mass with the same inertia: sliding gets harder, so less of the fix is a slide */
-        const PHYSICS::MassProperties light{1.0f, MATH::Matrix3()};
-        const PHYSICS::MassProperties dense{10.0f, MATH::Matrix3()};
+        const PHYSICS::MassPropertiesComponent light{1.0f, MATH::Matrix3()};
+        const PHYSICS::MassPropertiesComponent dense{10.0f, MATH::Matrix3()};
         const PHYSICS::BodyVelocity lightAfter = PHYSICS::MouseConstraint(
             transform, localPoint, target, light, velocity, angularVelocity, deltaTime);
         const PHYSICS::BodyVelocity denseAfter = PHYSICS::MouseConstraint(
@@ -998,7 +998,7 @@ int main()
         turnedTensor[8] = z;
         turnedTensor[1] = (a - b) * c * s;
         turnedTensor[3] = (a - b) * c * s;
-        const Transform rolled{
+        const TransformComponent rolled{
             .position = transform.position,
             .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
         };
@@ -1016,7 +1016,7 @@ int main()
          * No grip, no cap and no angular drag yet */
         for (const bool moving : {false, true})
         {
-            Transform body{};
+            TransformComponent body{};
             MATH::Vec3 v, w;
             float worst = 0.0f;
             float last = 0.0f;
@@ -1081,11 +1081,11 @@ int main()
 
         /* The held step as MouseConstraintSystem runs it: grip, solve, limit. A 1 kg pill held at its tip,
          * the mouse jerked 3 m sideways at once, then still for 10 s */
-        const PHYSICS::CapsuleCollider pill{0.6f, 0.7f};
-        const PHYSICS::MassProperties pillMass{1.0f, PHYSICS::InertiaTensor(pill, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))};
+        const PHYSICS::CapsuleColliderComponent pill{0.6f, 0.7f};
+        const PHYSICS::MassPropertiesComponent pillMass{1.0f, PHYSICS::InertiaTensor(pill, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f))};
         const MATH::Vec3 tip(0.0f, 1.3f, 0.0f);
         const MATH::Vec3 mouse = tip + MATH::Vec3(3.0f, 0.0f, 0.0f);
-        Transform body{};
+        TransformComponent body{};
         MATH::Vec3 v, w;
         float fastest = 0.0f;
         for (int step = 0; step < 600; ++step)
@@ -1116,39 +1116,39 @@ int main()
                 Near(tensor[5], 0.0f) && Near(tensor[6], 0.0f) && Near(tensor[7], 0.0f);
         };
 
-        const PHYSICS::BoxCollider box{MATH::Vec3(1.0f, 2.0f, 3.0f)};
+        const PHYSICS::BoxColliderComponent box{MATH::Vec3(1.0f, 2.0f, 3.0f)};
         Check("box: m/3 times the other two half sizes squared",
               diagonalIs(PHYSICS::InertiaTensor(box, 3.0f, MATH::Vec3(1.0f, 1.0f, 1.0f)), MATH::Vec3(13.0f, 10.0f, 5.0f)));
 
-        const PHYSICS::SphereCollider sphere{1.0f};
+        const PHYSICS::SphereColliderComponent sphere{1.0f};
         Check("sphere: 2/5 m r^2 on every axis",
               diagonalIs(PHYSICS::InertiaTensor(sphere, 2.0f, MATH::Vec3(1.0f, 1.0f, 1.0f)), MATH::Vec3(0.8f, 0.8f, 0.8f)));
         Check("scale 2 multiplies it by 4",
               diagonalIs(PHYSICS::InertiaTensor(sphere, 2.0f, MATH::Vec3(2.0f, 2.0f, 2.0f)), MATH::Vec3(3.2f, 3.2f, 3.2f)));
 
-        const PHYSICS::CylinderCollider can{1.0f, 1.0f};
+        const PHYSICS::CylinderColliderComponent can{1.0f, 1.0f};
         Check("can: m (3r^2 + 4h^2) / 12 across, m r^2 / 2 along Y",
               diagonalIs(PHYSICS::InertiaTensor(can, 12.0f, MATH::Vec3(1.0f, 1.0f, 1.0f)), MATH::Vec3(7.0f, 6.0f, 7.0f)));
-        const MATH::Matrix3 longCan = PHYSICS::InertiaTensor(PHYSICS::CylinderCollider{0.7f, 1.3f}, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f));
+        const MATH::Matrix3 longCan = PHYSICS::InertiaTensor(PHYSICS::CylinderColliderComponent{0.7f, 1.3f}, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f));
         Check("a long can turns most easily about its long Y axis", longCan[4] < longCan[0]);
 
-        const MATH::Matrix3 flatPill = PHYSICS::InertiaTensor(PHYSICS::CapsuleCollider{1.0f, 0.0f}, 2.0f, MATH::Vec3(1.0f, 1.0f, 1.0f));
+        const MATH::Matrix3 flatPill = PHYSICS::InertiaTensor(PHYSICS::CapsuleColliderComponent{1.0f, 0.0f}, 2.0f, MATH::Vec3(1.0f, 1.0f, 1.0f));
         Check("a pill with no tube is a sphere", diagonalIs(flatPill, MATH::Vec3(0.8f, 0.8f, 0.8f)));
 
         /* Expected values from 2,000,000 random points inside this pill, so the tolerance is wider */
-        const MATH::Matrix3 pill = PHYSICS::InertiaTensor(PHYSICS::CapsuleCollider{0.6f, 0.7f}, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f));
+        const MATH::Matrix3 pill = PHYSICS::InertiaTensor(PHYSICS::CapsuleColliderComponent{0.6f, 0.7f}, 1.0f, MATH::Vec3(1.0f, 1.0f, 1.0f));
         Check("pill matches sampling across (0.5066)", std::abs(pill[0] - 0.5066f) < 0.002f);
         Check("pill matches sampling along Y (0.1669)", std::abs(pill[4] - 0.1669f) < 0.002f);
 
         /* A unit box scaled (1, 2, 3) is the box with half sizes (1, 2, 3) above, so the tensor matches */
-        const PHYSICS::BoxCollider unitBox{MATH::Vec3(1.0f, 1.0f, 1.0f)};
+        const PHYSICS::BoxColliderComponent unitBox{MATH::Vec3(1.0f, 1.0f, 1.0f)};
         Check("box scaled per axis: each half size takes its own axis's scale",
               diagonalIs(PHYSICS::InertiaTensor(unitBox, 3.0f, MATH::Vec3(1.0f, 2.0f, 3.0f)),
                          MATH::Vec3(13.0f, 10.0f, 5.0f)));
 
         /* A can scaled (2, 3, 2) is the can with twice the radius and three times the half height */
         const MATH::Matrix3 stretchedCan = PHYSICS::InertiaTensor(can, 12.0f, MATH::Vec3(2.0f, 3.0f, 2.0f));
-        const MATH::Matrix3 biggerCan = PHYSICS::InertiaTensor(PHYSICS::CylinderCollider{2.0f, 3.0f}, 12.0f,
+        const MATH::Matrix3 biggerCan = PHYSICS::InertiaTensor(PHYSICS::CylinderColliderComponent{2.0f, 3.0f}, 12.0f,
                                                                MATH::Vec3(1.0f, 1.0f, 1.0f));
         Check("can stretched along Y: x scales the radius, y the height",
               Near(stretchedCan[0], biggerCan[0]) && Near(stretchedCan[4], biggerCan[4]) &&
@@ -1170,13 +1170,13 @@ int main()
     {
         /* Scale 4 along x makes the unit box's x face, at 0.5, land at x = 2 in the world */
         const PHYSICS::Ray world{MATH::Vec3(10.0f, 0.0f, 0.0f), MATH::Vec3(-1.0f, 0.0f, 0.0f)};
-        const Transform transform{.scale = MATH::Vec3(4.0f, 1.0f, 1.0f)};
+        const TransformComponent transform{.scale = MATH::Vec3(4.0f, 1.0f, 1.0f)};
         const PHYSICS::Ray local = PHYSICS::ToLocalRay(world, transform);
         Check("the origin is divided only along x, (2.5, 0, 0)", Near(local.origin, MATH::Vec3(2.5f, 0.0f, 0.0f)));
         Check("the direction is divided only along x, (-0.25, 0, 0)",
               Near(local.direction, MATH::Vec3(-0.25f, 0.0f, 0.0f)));
 
-        const auto hit = PHYSICS::Intersect(local, PHYSICS::BoxCollider{MATH::Vec3(0.5f, 0.5f, 0.5f)});
+        const auto hit = PHYSICS::Intersect(local, PHYSICS::BoxColliderComponent{MATH::Vec3(0.5f, 0.5f, 0.5f)});
         Check("the ray hits the box", hit.has_value());
         Check("t is 8, the world distance from x = 10 to x = 2", hit.has_value() && Near(hit->t, 8.0f));
     }
@@ -1188,7 +1188,7 @@ int main()
         const MATH::Vec3 alongSurface(1.0f, -1.0f, 0.0f);
 
         /* Squashed to a quarter along y and turned, as the flat floor box is squashed */
-        const Transform squashed{
+        const TransformComponent squashed{
             .scale = MATH::Vec3(1.0f, 0.25f, 1.0f),
             .orientation = MATH::QMath::angleAxisRotation(30.0f, MATH::VMath::normalize(MATH::Vec3(1.0f, 2.0f, 3.0f)))
         };
@@ -1201,7 +1201,7 @@ int main()
         Check("the cofactor matrix keeps it perpendicular", Near(MATH::VMath::dot(fixedNormal, worldAlong), 0.0f));
 
         /* Under uniform scale the cofactor matrix points the same way as the plain 3x3 */
-        const Transform uniform{
+        const TransformComponent uniform{
             .scale = MATH::Vec3(3.0f, 3.0f, 3.0f),
             .orientation = MATH::QMath::angleAxisRotation(70.0f, MATH::Vec3(0.0f, 1.0f, 0.0f))
         };
@@ -1211,13 +1211,13 @@ int main()
                    MATH::VMath::normalize(MATH::Matrix3(uniformModel) * normal)));
 
         /* A mirror along x flips the surface, so the +x face's outward normal must point to -x */
-        const Transform mirrored{.scale = MATH::Vec3(-1.0f, 1.0f, 1.0f)};
+        const TransformComponent mirrored{.scale = MATH::Vec3(-1.0f, 1.0f, 1.0f)};
         Check("a mirroring scale still points normals outward",
               Near(MATH::VMath::normalize(NormalMatrix(ModelMatrix(mirrored)) * MATH::Vec3(1.0f, 0.0f, 0.0f)),
                    MATH::Vec3(-1.0f, 0.0f, 0.0f)));
 
         /* A tiny object: the library's Matrix3 inverse throws here in Debug; the cofactor matrix has no division */
-        const Transform tiny{.scale = MATH::Vec3(0.001f, 0.001f, 0.001f)};
+        const TransformComponent tiny{.scale = MATH::Vec3(0.001f, 0.001f, 0.001f)};
         Check("a tiny scale still gives the normal's direction",
               Near(MATH::VMath::normalize(NormalMatrix(ModelMatrix(tiny)) * normal), normal));
     }
@@ -1247,32 +1247,32 @@ int main()
 
     std::cout << "\nTEST CASE: two spheres overlap\n";
     {
-        const PHYSICS::SphereCollider half{.radius = 0.5f};
-        const Transform origin{};
+        const PHYSICS::SphereColliderComponent half{.radius = 0.5f};
+        const TransformComponent origin{};
         const auto at = [](const float x)
         {
-            return Transform{.position = MATH::Vec3(x, 0.0f, 0.0f)};
+            return TransformComponent{.position = MATH::Vec3(x, 0.0f, 0.0f)};
         };
 
         Check("0.9 apart, radii 0.5 and 0.5, they overlap", PHYSICS::Overlap(origin, half, at(0.9f), half));
         Check("1.1 apart, they do not", !PHYSICS::Overlap(origin, half, at(1.1f), half));
         Check("exactly touching, 1.0 apart, does not count", !PHYSICS::Overlap(origin, half, at(1.0f), half));
-        Check("one inside the other overlaps", PHYSICS::Overlap(origin, PHYSICS::SphereCollider{.radius = 2.0f},
+        Check("one inside the other overlaps", PHYSICS::Overlap(origin, PHYSICS::SphereColliderComponent{.radius = 2.0f},
                                                                 at(0.5f), half));
         Check("the same centre overlaps", PHYSICS::Overlap(origin, half, origin, half));
         Check("the order of the two spheres does not matter",
               PHYSICS::Overlap(at(0.9f), half, origin, half) == PHYSICS::Overlap(origin, half, at(0.9f), half));
 
         /* Scale multiplies the radius: 0.5 at scale 3 is 1.5 */
-        const Transform scaled{.scale = MATH::Vec3(3.0f, 3.0f, 3.0f)};
+        const TransformComponent scaled{.scale = MATH::Vec3(3.0f, 3.0f, 3.0f)};
         Check("scale 3 reaches 1.9 away", PHYSICS::Overlap(scaled, half, at(1.9f), half));
         Check("scale 3 does not reach 2.1 away", !PHYSICS::Overlap(scaled, half, at(2.1f), half));
 
-        const Transform diagonal{.position = MATH::Vec3(0.5f, 0.5f, 0.5f)};
+        const TransformComponent diagonal{.position = MATH::Vec3(0.5f, 0.5f, 0.5f)};
         Check("distance counts every axis: (0.5, 0.5, 0.5) is 0.87 away",
               PHYSICS::Overlap(origin, half, diagonal, half) &&
-              !PHYSICS::Overlap(origin, PHYSICS::SphereCollider{.radius = 0.2f}, diagonal,
-                                PHYSICS::SphereCollider{.radius = 0.2f}));
+              !PHYSICS::Overlap(origin, PHYSICS::SphereColliderComponent{.radius = 0.2f}, diagonal,
+                                PHYSICS::SphereColliderComponent{.radius = 0.2f}));
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

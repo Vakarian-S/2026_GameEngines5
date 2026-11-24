@@ -22,8 +22,8 @@ namespace
 }
 
 WrapIntoBoxSystem::WrapIntoBoxSystem(World& world, const float boxHalfWidth_) :
-    System("WrapIntoBox", 0, COMPONENTS::MaskOf<Transform>()),
-    movers(world, COMPONENTS::MaskOf<Transform, PHYSICS::Velocity>()),
+    System("WrapIntoBox", 0, COMPONENTS::MaskOf<TransformComponent>()),
+    movers(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::VelocityComponent>()),
     boxHalfWidth(boxHalfWidth_)
 {
 }
@@ -33,7 +33,7 @@ void WrapIntoBoxSystem::Run(const SystemContext& context)
     const float halfWidth = boxHalfWidth;
     movers.ForEachChunk([&](ChunkView chunk)
     {
-        Transform* transforms = chunk.Column<Transform>();
+        TransformComponent* transforms = chunk.Column<TransformComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

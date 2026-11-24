@@ -10,15 +10,15 @@
 ApplyForcesSystem::ApplyForcesSystem(World& world) :
     System("ApplyForces",
            COMPONENTS::MaskOf<
-               PHYSICS::Velocity,
-               PHYSICS::AngularVelocity,
-               PHYSICS::MassProperties,
-               PHYSICS::Falling
+               PHYSICS::VelocityComponent,
+               PHYSICS::AngularVelocityComponent,
+               PHYSICS::MassPropertiesComponent,
+               PHYSICS::FallingTag
            >()
-           , COMPONENTS::MaskOf<PHYSICS::Velocity, PHYSICS::AngularVelocity>()),
+           , COMPONENTS::MaskOf<PHYSICS::VelocityComponent, PHYSICS::AngularVelocityComponent>()),
     entities(
         world,
-        COMPONENTS::MaskOf<PHYSICS::Velocity, PHYSICS::AngularVelocity, PHYSICS::MassProperties, PHYSICS::Falling>())
+        COMPONENTS::MaskOf<PHYSICS::VelocityComponent, PHYSICS::AngularVelocityComponent, PHYSICS::MassPropertiesComponent, PHYSICS::FallingTag>())
 {
 }
 
@@ -27,9 +27,9 @@ void ApplyForcesSystem::Run(const SystemContext& context)
     const float deltaTime = context.Get<DeltaTime>().seconds;
     entities.ForEachChunk([&](ChunkView chunk)
     {
-        PHYSICS::Velocity* velocities = chunk.Column<PHYSICS::Velocity>();
-        PHYSICS::AngularVelocity* angularVelocities = chunk.Column<PHYSICS::AngularVelocity>();
-        const PHYSICS::MassProperties* massProperties = chunk.Column<PHYSICS::MassProperties>();
+        PHYSICS::VelocityComponent* velocities = chunk.Column<PHYSICS::VelocityComponent>();
+        PHYSICS::AngularVelocityComponent* angularVelocities = chunk.Column<PHYSICS::AngularVelocityComponent>();
+        const PHYSICS::MassPropertiesComponent* massProperties = chunk.Column<PHYSICS::MassPropertiesComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

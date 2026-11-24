@@ -30,8 +30,8 @@ namespace
                    const MATH::Vec3& low, const MATH::Vec3& high)
     {
         world.CreateEntity(
-            Transform{.position = (low + high) * 0.5f, .scale = high - low},
-            Renderable{cube, material}
+            TransformComponent{.position = (low + high) * 0.5f, .scale = high - low},
+            RenderableComponent{cube, material}
         );
     }
 
@@ -105,12 +105,12 @@ bool Scene1::OnCreate(AssetLoader& assetLoader)
 
     /* Eirene in the middle of the room */
     world.CreateEntity(
-        Transform{
+        TransformComponent{
             .position = MATH::Vec3(0.0f, kFloorTop - kEireneBottom * kEireneScale, 0.0f),
             .scale = MATH::Vec3(kEireneScale, kEireneScale, kEireneScale),
             .orientation = MATH::QMath::angleAxisRotation(90.0f, MATH::Vec3(0.0f, 1.0f, 0.0f))
         },
-        Renderable{EireneMesh, statueMaterial}
+        RenderableComponent{EireneMesh, statueMaterial}
     );
 
     /*
@@ -156,11 +156,11 @@ bool Scene1::OnCreate(AssetLoader& assetLoader)
         for (const float z : {-4.0f, -0.5f, 3.0f})
         {
             world.CreateEntity(
-                Transform{
+                TransformComponent{
                     .position = MATH::Vec3(x, kFloorTop - kColumnBottom * kColumnScale, z),
                     .scale = MATH::Vec3(kColumnScale, kColumnScale, kColumnScale)
                 },
-                Renderable{columnMesh, columnMaterial}
+                RenderableComponent{columnMesh, columnMaterial}
             );
         }
 
@@ -188,13 +188,13 @@ bool Scene1::OnCreate(AssetLoader& assetLoader)
          })
     {
         world.CreateEntity(
-            Transform{
+            TransformComponent{
                 .position = MATH::Vec3(fallen.place.x, kFloorTop + fallenRest, fallen.place.z),
                 .scale = MATH::Vec3(fallenScale, fallenScale, fallenScale),
                 .orientation = MATH::QMath::angleAxisRotation(fallen.yaw, MATH::Vec3(0.0f, 1.0f, 0.0f)) *
                 MATH::QMath::angleAxisRotation(90.0f, MATH::Vec3(0.0f, 0.0f, 1.0f))
             },
-            Renderable{columnMesh, columnMaterial}
+            RenderableComponent{columnMesh, columnMaterial}
         );
     }
 
@@ -213,12 +213,12 @@ bool Scene1::OnCreate(AssetLoader& assetLoader)
          })
     {
         world.CreateEntity(
-            Transform{
+            TransformComponent{
                 .position = MATH::Vec3(block.place.x, kFloorTop + block.size.y * 0.5f, block.place.z),
                 .scale = block.size,
                 .orientation = MATH::QMath::angleAxisRotation(block.yaw, MATH::Vec3(0.0f, 1.0f, 0.0f))
             },
-            Renderable{cubeMesh, floorMaterial}
+            RenderableComponent{cubeMesh, floorMaterial}
         );
     }
 

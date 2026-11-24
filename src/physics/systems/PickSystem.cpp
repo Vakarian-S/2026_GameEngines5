@@ -21,23 +21,23 @@ PickSystem::PickSystem(World& world) :
     System(
         "Pick",
         COMPONENTS::MaskOf<
-            Transform,
-            PHYSICS::BoxCollider,
-            PHYSICS::SphereCollider,
-            PHYSICS::CylinderCollider,
-            PHYSICS::CapsuleCollider
+            TransformComponent,
+            PHYSICS::BoxColliderComponent,
+            PHYSICS::SphereColliderComponent,
+            PHYSICS::CylinderColliderComponent,
+            PHYSICS::CapsuleColliderComponent
         >(),
         COMPONENTS::MaskOf<
-            PHYSICS::Picked,
-            PHYSICS::PickRay,
-            PHYSICS::Falling>()
+            PHYSICS::PickedComponent,
+            PHYSICS::PickRayComponent,
+            PHYSICS::FallingTag>()
     ),
-    boxColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::BoxCollider>()),
-    sphereColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::SphereCollider>()),
-    cylinderColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::CylinderCollider>()),
-    capsuleColliderEntities(world, COMPONENTS::MaskOf<Transform, PHYSICS::CapsuleCollider>()),
-    pickedEntities(world, COMPONENTS::MaskOf<PHYSICS::Picked>()),
-    pickRays(world, COMPONENTS::MaskOf<PHYSICS::PickRay>())
+    boxColliderEntities(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::BoxColliderComponent>()),
+    sphereColliderEntities(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::SphereColliderComponent>()),
+    cylinderColliderEntities(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::CylinderColliderComponent>()),
+    capsuleColliderEntities(world, COMPONENTS::MaskOf<TransformComponent, PHYSICS::CapsuleColliderComponent>()),
+    pickedEntities(world, COMPONENTS::MaskOf<PHYSICS::PickedComponent>()),
+    pickRays(world, COMPONENTS::MaskOf<PHYSICS::PickRayComponent>())
 {
 }
 
@@ -62,16 +62,16 @@ void PickSystem::Run(const SystemContext& context)
             const uint32_t rows = chunk.Count();
             for (uint32_t row = 0; row < rows; ++row)
             {
-                context.commands.RemoveComponent<PHYSICS::Picked>(owners[row]);
+                context.commands.RemoveComponent<PHYSICS::PickedComponent>(owners[row]);
             }
         });
     }
     else
     {
-        /* Update the Picked entity to have an updated position based on the mouse */
+        /* Update the PickedComponent entity to have an updated position based on the mouse */
         pickedEntities.ForEachChunk([&](ChunkView chunk)
         {
-            PHYSICS::Picked* pickedComponents = chunk.Column<PHYSICS::Picked>();
+            PHYSICS::PickedComponent* pickedComponents = chunk.Column<PHYSICS::PickedComponent>();
             const uint32_t rows = chunk.Count();
             for (uint32_t row = 0; row < rows; ++row)
             {
@@ -88,8 +88,8 @@ void PickSystem::Run(const SystemContext& context)
 
     boxColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::BoxCollider* colliders = chunk.Column<PHYSICS::BoxCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::BoxColliderComponent* colliders = chunk.Column<PHYSICS::BoxColliderComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
@@ -106,8 +106,8 @@ void PickSystem::Run(const SystemContext& context)
     });
     sphereColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::SphereCollider* colliders = chunk.Column<PHYSICS::SphereCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::SphereColliderComponent* colliders = chunk.Column<PHYSICS::SphereColliderComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
@@ -124,8 +124,8 @@ void PickSystem::Run(const SystemContext& context)
     });
     cylinderColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::CylinderCollider* colliders = chunk.Column<PHYSICS::CylinderCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::CylinderColliderComponent* colliders = chunk.Column<PHYSICS::CylinderColliderComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
@@ -142,8 +142,8 @@ void PickSystem::Run(const SystemContext& context)
     });
     capsuleColliderEntities.ForEachChunk([&](const ChunkView chunk)
     {
-        const Transform* transforms = chunk.Column<Transform>();
-        const PHYSICS::CapsuleCollider* colliders = chunk.Column<PHYSICS::CapsuleCollider>();
+        const TransformComponent* transforms = chunk.Column<TransformComponent>();
+        const PHYSICS::CapsuleColliderComponent* colliders = chunk.Column<PHYSICS::CapsuleColliderComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {
@@ -163,18 +163,18 @@ void PickSystem::Run(const SystemContext& context)
     if (hasHit)
     {
         auto colliderName = "CapsuleCollider";
-        if (context.world.HasComponent<PHYSICS::BoxCollider>(pickedEntity)) colliderName = "BoxCollider";
-        else if (context.world.HasComponent<PHYSICS::SphereCollider>(pickedEntity)) colliderName = "SphereCollider";
-        else if (context.world.HasComponent<PHYSICS::CylinderCollider>(pickedEntity)) colliderName = "CylinderCollider";
+        if (context.world.HasComponent<PHYSICS::BoxColliderComponent>(pickedEntity)) colliderName = "BoxCollider";
+        else if (context.world.HasComponent<PHYSICS::SphereColliderComponent>(pickedEntity)) colliderName = "SphereCollider";
+        else if (context.world.HasComponent<PHYSICS::CylinderColliderComponent>(pickedEntity)) colliderName = "CylinderCollider";
 
-        context.commands.AddComponent<PHYSICS::Picked>(
+        context.commands.AddComponent<PHYSICS::PickedComponent>(
             pickedEntity,
             {
                 .localPoint = finalRayHit.intersectionPosition,
                 .grabT = finalRayHit.t,
                 .mouseTarget = mouseRay.PointAt(finalRayHit.t)
             });
-        context.commands.AddComponent<PHYSICS::Falling>(pickedEntity);
+        context.commands.AddComponent<PHYSICS::FallingTag>(pickedEntity);
         
         /* Expected Format Picked entity 4 (BoxCollider): t = 7.31, world point (1.20, 0.50, -0.38) */
         const MATH::Vec3 worldPoint = mouseRay.PointAt(finalRayHit.t);
@@ -189,7 +189,7 @@ void PickSystem::Run(const SystemContext& context)
     /* A miss draws the ray out to the far plane */
     pickRays.ForEachChunk([&](ChunkView chunk)
     {
-        PHYSICS::PickRay* pickRayComponents = chunk.Column<PHYSICS::PickRay>();
+        PHYSICS::PickRayComponent* pickRayComponents = chunk.Column<PHYSICS::PickRayComponent>();
         const uint32_t rows = chunk.Count();
         for (uint32_t row = 0; row < rows; ++row)
         {

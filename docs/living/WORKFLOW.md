@@ -1,6 +1,6 @@
 # Workflow
 
-**Last updated:** 2026-11-21.
+**Last updated:** 2026-11-24.
 
 How Vakarian and Claude work on this engine: the stages a feature goes through, who does what in each,
 and the rules for code and design. Every Claude session reads this before design or build work.
@@ -97,11 +97,15 @@ settled, and delete them. Name each deleted file in the commit message.
 7. Name a class or function for what it is, not for what it is used for: `TemporaryCommandBuffers`,
    not `OneTimeCommands`.
 8. One job per class.
+9. An ECS name ends in what kind of thing it is, as Unreal Mass names its fragments and tags. A
+   system ends in `System` (`ShootSystem`), a component with data in `Component`
+   (`HealthComponent`), and an empty component in `Tag` (`BossTag`). The name in front still
+   follows rule 7. The suffix lets a search for one kind find all of it.
 
 **Constants**
 
-9. A constant goes in its `.cpp`'s anonymous namespace, and in the class only when header code or
-   another file reads it. Changing a header constant rebuilds every file that includes the header.
+10. A constant goes in its `.cpp`'s anonymous namespace, and in the class only when header code or
+    another file reads it. Changing a header constant rebuilds every file that includes the header.
 
 ## Design judgement
 

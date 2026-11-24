@@ -9,7 +9,7 @@
 
 BossDeathSystem::BossDeathSystem(World& world) :
     System("BossDeath", COMPONENTS::MaskOf<HealthComponent>(), 0),
-    entities(world, COMPONENTS::MaskOf<BossComponent, HealthComponent>())
+    entities(world, COMPONENTS::MaskOf<BossTag, HealthComponent>())
 {
 }
 
