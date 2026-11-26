@@ -33,6 +33,7 @@
 #include "net/ClientTable.h"
 #include "net/Components.h"
 #include "net/ConnectionEvents.h"
+#include "net/Messages.h"
 #include "net/NetworkLibrary.h"
 #include "net/ServerSocket.h"
 
@@ -123,12 +124,16 @@ namespace
      * Polls GNS, hands every event to every side, and runs each side, once per frame
      * @return true once done() returns true, false after kMaxFrames frames
      */
+    /** Every event the test has polled, so a bare ClientConnection with no World can be checked too */
+    std::vector<NET::ConnectionEvent> seenEvents;
+
     template <typename Done>
     bool Pump(NET::NetworkLibrary& library, const std::vector<Side*>& sides, Done done)
     {
         for (int frame = 0; frame < kMaxFrames; ++frame)
         {
             const std::span<const NET::ConnectionEvent> events = library.PollConnectionEvents();
+            seenEvents.insert(seenEvents.end(), events.begin(), events.end());
             for (Side* side : sides)
             {
                 auto& queue = side->world.GetResources().Get<NET::ConnectionEventQueue>();
@@ -148,6 +153,26 @@ namespace
         Query players(world, COMPONENTS::MaskOf<NET::NetworkIdComponent>());
         players.ForEachChunk([&count](ChunkView chunk) { count += chunk.Count(); });
         return count;
+    }
+
+    /** @return the first polled event that moved connection into state, or null */
+    const NET::ConnectionEvent* FindEvent(const std::uint32_t connection, const NET::ConnectionState state)
+    {
+        for (const NET::ConnectionEvent& event : seenEvents)
+        {
+            if (event.connection == connection && event.state == state) return &event;
+        }
+        return nullptr;
+    }
+
+    /** @return true when every ClientTable slot is free */
+    bool AllSlotsFree(const NET::ClientTable& table)
+    {
+        for (const NET::ClientSlot& slot : table.slots)
+        {
+            if (slot.connection != 0) return false;
+        }
+        return true;
     }
 }
 
@@ -201,6 +226,66 @@ int main()
         const bool bGone = Pump(library, {server.get()}, [&] { return table.PlayerCount() == 0; });
         Check("the server drops to zero players", bGone && CountPlayers(server->world) == 0);
         Check("the server logged client 2 leaving", server->Count("client 2 left") == 1);
+
+        std::cout << "\nTEST CASE: a Hello with the wrong protocol version is turned away\n";
+        {
+            /* A bare connection with no World, so the test chooses what it sends */
+            NET::ClientConnection stranger("127.0.0.1:" + std::to_string(kPort));
+            const bool connected = Pump(library, {server.get()}, [&]
+            {
+                return FindEvent(stranger.GetConnection(), NET::ConnectionState::Connected) != nullptr;
+            });
+            Check("the stranger connects", connected);
+            Check("the stranger's Hello with version 2 is sent",
+                  stranger.Send(NET::Write(NET::HelloMessage{NET::kProtocolVersion + 1})));
+            const bool closed = Pump(library, {server.get()}, [&]
+            {
+                return FindEvent(stranger.GetConnection(), NET::ConnectionState::ClosedByPeer) != nullptr;
+            });
+            const NET::ConnectionEvent* close = FindEvent(stranger.GetConnection(), NET::ConnectionState::ClosedByPeer);
+            Check("the server closes the stranger", closed);
+            Check("the close says why: wrong protocol version",
+                  close && std::string(close->endMessage.data()).find("wrong protocol version") != std::string::npos);
+            Check("no player was spawned for it", table.PlayerCount() == 0 && CountPlayers(server->world) == 0);
+            Check("its slot is free again", AllSlotsFree(table));
+        }
+
+        std::cout << "\nTEST CASE: a ninth client is turned away while 8 are in\n";
+        {
+            std::vector<std::unique_ptr<Side>> full;
+            std::vector<Side*> sides{server.get()};
+            for (std::size_t i = 0; i < NET::kMaxClients; ++i)
+            {
+                full.push_back(MakeClient());
+                sides.push_back(full.back().get());
+            }
+            const bool allIn = Pump(library, sides, [&]
+            {
+                for (const auto& client : full)
+                {
+                    if (client->Count("[Client] welcome") != 1) return false;
+                }
+                return true;
+            });
+            Check("8 clients are welcomed", allIn);
+            Check("the server holds 8 players", table.PlayerCount() == 8 && CountPlayers(server->world) == 8);
+
+            NET::ClientConnection ninth("127.0.0.1:" + std::to_string(kPort));
+            const bool refused = Pump(library, sides, [&]
+            {
+                return FindEvent(ninth.GetConnection(), NET::ConnectionState::ClosedByPeer) != nullptr;
+            });
+            const NET::ConnectionEvent* close = FindEvent(ninth.GetConnection(), NET::ConnectionState::ClosedByPeer);
+            Check("the ninth client is closed", refused);
+            Check("the close says why: server full",
+                  close && std::string(close->endMessage.data()).find("server full") != std::string::npos);
+            Check("the server logged turning it away", server->Count("turned a client away: full") == 1);
+            Check("the server still holds 8 players", table.PlayerCount() == 8 && CountPlayers(server->world) == 8);
+
+            full.clear();
+            const bool empty = Pump(library, {server.get()}, [&] { return table.PlayerCount() == 0; });
+            Check("all 8 leave, and the server drops to zero", empty && CountPlayers(server->world) == 0 && AllSlotsFree(table));
+        }
     }
     catch (const std::exception& error)
     {

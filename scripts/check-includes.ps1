@@ -42,6 +42,7 @@ $allowedOutside = @{
 $standardOnlyFiles = @(
     "include/net/ByteWriter.h", "src/net/ByteWriter.cpp",
     "include/net/ByteReader.h", "src/net/ByteReader.cpp",
+    "include/net/Messages.h", "src/net/Messages.cpp",
     "include/net/Components.h"
 )
 

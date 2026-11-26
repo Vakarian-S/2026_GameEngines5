@@ -1,6 +1,6 @@
 # Plan
 
-**Last updated:** 2026-11-25.
+**Last updated:** 2026-11-26.
 
 This plan builds the Boss Fight Scene: a headless server runs a small boss fight, and clients connect
 to it through Valve's GameNetworkingSockets (GNS). Joins and leaves go as reliable messages, input and
@@ -15,7 +15,7 @@ networking topic comes along with it. It came from ROADMAP.md, Networking, Boss 
 |---|---|---|---|
 | 1 | A headless mode: the engine starts with a server flag, opens no window, and the Fixed phase still ticks | A server run prints its tick count, opens no window, and closes clean | done (d58e448) |
 | 2 | The Boss Fight Scene offline: a boss on a pattern, a player that moves and shoots, in one process | The scene plays in one window, with no network | done (cacd49e, 1d06049) |
-| 3 | Join and leave over GNS: the server hands the client an ID, and spawns or despawns its player | Two clients join and leave, and the server's player count follows | designed |
+| 3 | Join and leave over GNS: the server hands the client an ID, and spawns or despawns its player | Two clients join and leave, and the server's player count follows | done (b8b2036, 51c2ac0) |
 | 4 | Input as unreliable messages: WASD on a client moves its player on the server | The server logs each player moving from its own client's keys | outline |
 | 5 | Snapshots as unreliable messages, mirrored on the client through `NetworkIdMap` and drawn raw | Both clients show the boss and both players, with visible jitter | outline |
 | 6 | Interpolation from a `SnapshotBuffer`, drawn about 100 ms in the past | The jitter from step 5 is gone | outline |
@@ -754,6 +754,25 @@ asserts on a second call (`src/steamnetworkingsockets/clientlib/csteamnetworking
     the entities with a `NetworkIdComponent`; B hears that player 1 left; the server logs both
     leaves. It sits after the ECS targets in `CMakeLists.txt`, not in the engine's x64 branch,
     because it needs `ECS_SOURCES`.
+  - **2026-11-26: the two untested paths.** NetTests grew to 26 checks. A bare `ClientConnection`
+    sends a Hello with version 2: the server closes it with "wrong protocol version", spawns no
+    player and frees its slot. With 8 clients in, a ninth is closed with "server full", the
+    server logs it, and the 8 players stay.
+  - **2026-11-26: what networking costs, measured.** A scratch script ran the Release exe in 3
+    rounds: a client offline for 12 s, the server alone for 1,200 ticks, and the server with two
+    connected clients for 12 s. On a client, `ClientReceiveSystem` averages 0.001 ms a frame.
+    `Record` (0.035 to 0.056 ms offline, 0.036 to 0.042 ms connected) and the frame average (6.20 to
+    6.28 ms offline, 6.11 to 6.13 ms connected) do not move beyond run-to-run noise; the frame is
+    the display's refresh. Process CPU time over 12 s: 1.38 to 1.75 s offline, 1.48 to 1.83 s
+    connected, inside the noise. The server's CPU time over 1,200 ticks: 0.50 to 1.28 s alone,
+    1.00 to 1.28 s with two clients, also inside the noise. The exact counters: a connected client
+    makes 112 to 118 more allocations than an offline one over the run, and its peak live bytes are
+    2,952 higher; the server with two clients makes 204 to 206 more than alone, with a peak about
+    22 KB higher. Neither grows with frames or ticks. No run printed `[WARNING]` or `[ERROR]`, and
+    nothing fell to the heap.
+  - **A gap the measuring found.** `ServerApplication::Run` never calls `Profiler::BeginFrame` and
+    `EndFrame`, so a server's profile report says "no frames recorded", and its systems' times
+    cannot be read. Step 4 or a small fix adds them around each tick.
   - **Wiring.** Both have an `add_test` line, NetTests only where its target exists, and
     `scripts\run-tests.bat` builds them.
 - **Decision p, 2026-11-25: `scripts/check-join.ps1`.** Starts the Debug server with `--ticks
@@ -769,6 +788,25 @@ asserts on a second call (`src/steamnetworkingsockets/clientlib/csteamnetworking
   Win32. `check-join.ps1` as above.
 
 ## 4. Input as unreliable messages
+
+**Carried over from step 3.** Raised while building step 3, for this step's design to settle:
+
+- **Split `ServerReceiveSystem`.** Today it reads the socket, checks the version and spawns: three
+  jobs. Only one system may call `ServerSocket::Receive`, because one call takes every waiting
+  message. The likely shape: `ServerReceiveSystem` only sorts messages by type into per-type inbox
+  resources, and one system per kind of work reads its inbox, `JoinSystem` for Hello and an input
+  system for this step. The client side gets the same split in step 5.
+- **How input finds its player.** An input message arrives with a connection number. With only the
+  `ClientTable`, the server looks up the slot, then scans players by NetworkId. A
+  `ConnectionComponent { connection, clientId }` on the player, as Overwatch does (its GDC 2017 ECS
+  talk), makes it one query. The table stays for the 8-slot cap and for clients before their Hello.
+- **Unreliable sends.** Both `Send` functions pass `k_nSteamNetworkingSend_Reliable` only. Input
+  needs `k_nSteamNetworkingSend_Unreliable`: a second parameter, or a second function.
+- **Spawning by role.** The server still spawns the offline Mario and its own boss, and each client
+  spawns its own Mario and boss. The server's network players have no gun and no renderable. Which
+  role spawns what is decided here or in step 5.
+- **Late joiners.** A client that joins late does not learn about the players already there.
+  Step 5's snapshots fix that.
 
 ## 5. Snapshots as unreliable messages
 

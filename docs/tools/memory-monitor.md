@@ -43,6 +43,13 @@ holds a check value, a link into a list of every live block, and the file and li
 Nothing needs setting up. Compile `src/utils/MemoryMonitor.cpp` into the program and it watches
 from before `main` starts.
 
+The engine prints its leak report after `main` returns, not at its end. A library may keep global
+objects until the program's globals are destroyed: GNS keeps three global vectors, and a report at
+the end of `main` lists them as leaks. `Main.cpp` holds a global `LeakReportAtExit` whose destructor
+calls `ReportLeaks`. `#pragma init_seg(lib)` at the top of `Main.cpp` builds that file's globals in
+the library stage, before ordinary globals such as GNS's, and globals are destroyed in reverse order,
+so the report runs after GNS has freed its vectors. `main` still sets the baseline at its start.
+
 ```cpp
 const MemoryStats start = MemoryMonitor::GetStats();
 int* kept = MEMMON_NEW int(42);       /* never deleted, on purpose */
@@ -74,6 +81,11 @@ MemoryMonitor::ReportLeaks(start);    /* lists kept, with its file and line */
   called from. `MEMMON_MAKE_UNIQUE` does the same for `std::make_unique`.
 - **One lock for all the bookkeeping.** Several threads can allocate at once. The lock keeps every
   count, every log line and the leak list whole. The heap itself still runs in parallel.
+- **The engine's leak report runs at process exit.** Once the engine linked GNS, the
+  report at the end of `main` listed GNS's three global vectors as leaks. They were not leaks: their
+  owner had not been destroyed yet. Moving the report into a global's destructor, built early with
+  `init_seg(lib)`, makes it run after every other global is gone. `MSVC` warns (C4073) whenever the
+  library stage is used; `Main.cpp` turns that one warning off, with a comment.
 - **The test program is built without `/sdl`.** `/sdl` overwrites a deleted pointer with a junk
   address, and the double-free test deletes the same pointer twice on purpose.
 

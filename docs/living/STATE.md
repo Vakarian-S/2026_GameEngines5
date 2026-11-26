@@ -1,6 +1,6 @@
 # State
 
-**Last updated:** 2026-11-25.
+**Last updated:** 2026-11-26.
 
 What the engine has today, and the architecture rules that hold everywhere. Read this first.
 
@@ -21,7 +21,8 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 | Vulkan rendering | done 2026-10-20, all 8 milestones | dev-notes/vulkan-renderer.md |
 | Physics course work, moved into this engine | done 2026-11-03 | dev-notes/dangle-physics.md |
 | Shadows, with ray queries | done 2026-11-14 | dev-notes/ray-query-shadows.md |
-| Concurrency, controller, audio, file I/O, DLLs, frustum culling, networking | not started | ROADMAP.md, "Course topics" |
+| Networking | in progress: steps 1 to 3 of 8 done (headless server, boss fight, join and leave over GNS) | PLAN.md |
+| Concurrency, controller, audio, file I/O, DLLs, frustum culling | not started | ROADMAP.md, "Course topics" |
 
 ## What exists
 
