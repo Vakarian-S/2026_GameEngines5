@@ -70,6 +70,8 @@ struct RenderableComponent
 {
     MeshHandle meshHandle;
     MaterialHandle materialHandle;
+    /** False keeps the entity out of the shadow rays, so it casts no shadow but still receives them */
+    bool castsShadow = true;
 };
 
 /** Gives the entity a fixed lifespan before being deleted*/

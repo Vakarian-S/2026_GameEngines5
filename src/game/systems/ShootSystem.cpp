@@ -8,7 +8,8 @@
 #include "physics/Components.h"
 
 ShootSystem::ShootSystem(World& world) :
-    System("Shoot", COMPONENTS::MaskOf<TransformComponent, PlayerCommandComponent>(), COMPONENTS::MaskOf<GunComponent>()),
+    System("Shoot", COMPONENTS::MaskOf<TransformComponent, PlayerCommandComponent>(),
+           COMPONENTS::MaskOf<GunComponent>()),
     entities(world, COMPONENTS::MaskOf<TransformComponent, GunComponent, PlayerCommandComponent>())
 {
 }
@@ -31,7 +32,10 @@ void ShootSystem::Run(const SystemContext& context)
             if ((aim.x == 0.0f && aim.z == 0.0f) || ticks < gun.readyTick) continue;
 
             commandBuffer.CreateEntity(
-                TransformComponent{.position = transforms[row].position},
+                TransformComponent{
+                    .position = transforms[row].position,
+                    .scale = MATH::Vec3(gun.projectileScale, gun.projectileScale, gun.projectileScale)
+                },
                 PHYSICS::VelocityComponent{.metresPerSecond = aim * gun.projectileSpeed},
                 LifespanComponent{.ticksLeft = gun.lifetimeTicks},
                 gun.projectileRenderable,

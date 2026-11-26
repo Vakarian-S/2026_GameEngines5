@@ -25,6 +25,8 @@
 #include "core/TimestampMath.h"
 #include "core/AlignUp.h"
 #include "core/Components.h"
+#include "core/DrawList.h"
+#include "core/systems/DrawRenderablesSystem.h"
 #include "core/systems/LifespanSystem.h"
 #include "game/Components.h"
 #include "game/systems/BossDeathSystem.h"
@@ -1901,6 +1903,25 @@ int main()
         Check("a boss below 0 health is gone too", !deathWorld.DoesEntityExist(overkilledBoss));
         Check("a boss at 1 health stays", deathWorld.DoesEntityExist(aliveBoss));
         Check("0 health without the boss tag stays", deathWorld.DoesEntityExist(notABoss));
+    }
+
+    std::cout << "\n-- DrawRenderablesSystem --\n";
+    {
+        World drawWorld;
+        SystemRegistry drawRegistry(drawWorld);
+        drawRegistry.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(drawWorld));
+
+        drawWorld.CreateEntity(TransformComponent{}, RenderableComponent{MeshHandle{}, MaterialHandle{}});
+        drawWorld.CreateEntity(TransformComponent{}, RenderableComponent{MeshHandle{}, MaterialHandle{}, false});
+
+        DrawList drawList;
+        drawWorld.GetResources().Insert<DrawListTarget>(DrawListTarget{&drawList});
+        drawRegistry.RunPhase(Phase::Extract, 1.0f / 60.0f);
+
+        const auto shadowCasters = std::count_if(drawList.begin(), drawList.end(),
+                                                 [](const DrawItem& item) { return item.castsShadow; });
+        Check("both renderables make a draw item", drawList.size() == 2);
+        Check("a renderable casts a shadow unless told not to", shadowCasters == 1);
     }
 
     std::cout << "\n" << (failures ? Fail : Pass)

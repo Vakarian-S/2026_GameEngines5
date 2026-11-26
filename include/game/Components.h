@@ -69,6 +69,8 @@ struct GunComponent
     std::uint64_t cooldownTicks;
     /** Damage the projectile deals */
     std::int32_t projectileDamage;
+    /** Size of the projectile shot on every axis. It scales the mesh and the sphere collider together */
+    float projectileScale = 1.0f;
     /** The renderable for the mesh */
     RenderableComponent projectileRenderable;
     

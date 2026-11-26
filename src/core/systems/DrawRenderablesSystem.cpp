@@ -15,7 +15,8 @@ DrawRenderablesSystem::DrawRenderablesSystem(World& world) :
 
 void DrawRenderablesSystem::Run(const SystemContext& context)
 {
-    assert(context.Get<DrawListTarget>().list != nullptr && "DrawRenderables runs in Extract, which hands it a draw list");
+    assert(
+        context.Get<DrawListTarget>().list != nullptr && "DrawRenderables runs in Extract, which hands it a draw list");
     DrawList& drawList = *context.Get<DrawListTarget>().list;
 
     uint32_t total = 0;
@@ -32,7 +33,10 @@ void DrawRenderablesSystem::Run(const SystemContext& context)
         for (uint32_t row = 0; row < rows; ++row)
         {
             const MATH::Matrix4 modelMatrixTransform = ModelMatrix(transforms[row]);
-            drawList.push_back({renderables[row].meshHandle, renderables[row].materialHandle, modelMatrixTransform});
+            drawList.push_back({
+                renderables[row].meshHandle, renderables[row].materialHandle, modelMatrixTransform,
+                renderables[row].castsShadow
+            });
         }
     });
 }

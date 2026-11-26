@@ -393,6 +393,8 @@ add_executable(EcsTests
         include/core/systems/LifespanSystem.h
         src/game/systems/BossDeathSystem.cpp
         include/game/systems/BossDeathSystem.h
+        src/core/systems/DrawRenderablesSystem.cpp
+        include/core/systems/DrawRenderablesSystem.h
         ${ECS_SOURCES}
         ${ECS_HEADERS}
 )

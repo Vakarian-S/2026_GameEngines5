@@ -23,7 +23,7 @@
 
 namespace
 {
-    /** Bytes of scratch memory one frame may use. 1 MB holds about 14,000 draw items at 72 bytes each; Scene0's 1,000 take 72,000 */
+    /** Bytes of scratch memory one frame may use. 1 MB holds about 13,800 draw items at 76 bytes each; Scene0's 1,000 take 76,000 */
     constexpr std::size_t kFrameArenaBytes = 1024 * 1024;
 
     /** The present mode the game starts in. Falls back to FIFO when the GPU lacks it */

@@ -27,6 +27,8 @@ void TopLevelAccelerationStructures::Fill(const uint32_t slotIndex, const DrawLi
     if (capacity != slots[slotIndex].capacity) CreateSlot(slots[slotIndex], capacity);
     for (auto& drawItem : drawList)
     {
+        /* Shadow rays only hit what is in the structure, so an item left out casts no shadow */
+        if (!drawItem.castsShadow) continue;
         const float* m = drawItem.transform;
         VkTransformMatrixKHR transform{};
         /* column major to row major */
