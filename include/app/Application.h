@@ -9,6 +9,9 @@
 #include "utils/Arena.h"
 #include "utils/ArenaResource.h"
 #include "vulkan/VulkanRenderer.h"
+#include "net/NetworkLibrary.h"
+
+#include <optional>
 
 union SDL_Event;
 
@@ -34,6 +37,13 @@ public:
     void Run();
 
 private:
+    /**
+     * Starts GNS for a client only. As the first member it is destroyed after every other member, so no
+     * World outlives it, even though the constructor body fills it
+     */
+    std::optional<NET::NetworkLibrary> networkLibrary;
+    /** The command line's network part. Built before sceneManager, which takes a copy */
+    NetworkSettings networkSettings;
     /** Window class that holds the surface */
     Window window;
     /** Vulkan renderer used to present the graphics */

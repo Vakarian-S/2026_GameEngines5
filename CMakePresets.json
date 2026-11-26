@@ -9,29 +9,34 @@
     {
       "name": "x64",
       "displayName": "x64",
-      "description": "64 bit. Visual Studio 2022 generator, v143 toolset, Debug and Release in one tree.",
-      "generator": "Visual Studio 17 2022",
+      "description": "64 bit. Visual Studio 2026 generator, v145 toolset, Debug and Release in one tree.",
+      "generator": "Visual Studio 18 2026",
       "architecture": {
         "value": "x64",
         "strategy": "set"
       },
       "toolset": {
-        "value": "v143",
+        "value": "v145",
         "strategy": "set"
       },
-      "binaryDir": "${sourceDir}/build/cmake-x64"
+      "binaryDir": "${sourceDir}/build/cmake-x64",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "VCPKG_HOST_TRIPLET": "x64-windows-static-md"
+      }
     },
     {
       "name": "Win32",
       "displayName": "Win32",
       "description": "32 bit. Same generator and toolset as x64. SDL3 calls this folder x86.",
-      "generator": "Visual Studio 17 2022",
+      "generator": "Visual Studio 18 2026",
       "architecture": {
         "value": "Win32",
         "strategy": "set"
       },
       "toolset": {
-        "value": "v143",
+        "value": "v145",
         "strategy": "set"
       },
       "binaryDir": "${sourceDir}/build/cmake-Win32"

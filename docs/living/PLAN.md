@@ -1,6 +1,6 @@
 # Plan
 
-**Last updated:** 2026-11-24.
+**Last updated:** 2026-11-25.
 
 This plan builds the Boss Fight Scene: a headless server runs a small boss fight, and clients connect
 to it through Valve's GameNetworkingSockets (GNS). Joins and leaves go as reliable messages, input and
@@ -373,15 +373,28 @@ asserts on a second call (`src/steamnetworkingsockets/clientlib/csteamnetworking
   `USE_CRYPTO=BCrypt`, as the engine fetches SDL. Our own `vcpkg.json` lists only `protobuf`, so
   OpenSSL is never built, which saves about 4.2 min per cold x64 configure. vcpkg's GNS package was
   rejected: it lists OpenSSL as a hard dependency.
-- **b. Where vcpkg comes from.** `VCPKG_ROOT` points at an installed vcpkg, as `VULKAN_SDK` points at
-  the Vulkan SDK, and only the x64 presets set its toolchain file. The engine already needs one
-  installed SDK. A git submodule was rejected: it adds 181 MB to every clone.
-- **c. The two extra DLLs.** The build tries the `x64-windows-static-md` triplet, so protobuf and
-  Abseil link into the exe. If that fails, it copies `libprotobuf.dll` and `abseil_dll.dll` next to
-  the exe. Untested; the first build decides.
+- **b. Where vcpkg comes from.** Changed 2026-11-24 by the first build. vcpkg is the copy bundled
+  with Visual Studio Build Tools 2026 (the "vcpkg package manager" component), and `VCPKG_ROOT`
+  points at it, as `VULKAN_SDK` points at the Vulkan SDK. Only the x64 preset sets its toolchain
+  file, and `CMakeLists.txt` stops with a clear error when it is missing. Both presets move to the
+  `Visual Studio 18 2026` generator and the `v145` toolset, because vcpkg builds protobuf with the
+  newest compiler on the machine, and the engine must use the same one. A contributor installs
+  Build Tools 2026 with the C++ workload and vcpkg. A separate vcpkg clone was tried and dropped:
+  it built with `v145` while the engine used `v143`, and Rider loaded VS's environment, so Rider
+  and the terminal used different vcpkg copies. A git submodule was rejected: it adds 181 MB to
+  every clone.
+- **c. The two extra DLLs.** Settled 2026-11-24 by the build: the x64 preset sets both
+  `VCPKG_TARGET_TRIPLET` and `VCPKG_HOST_TRIPLET` to `x64-windows-static-md`, so protobuf and
+  Abseil link into the exe and no DLL of theirs ships. The host triplet matches because protobuf
+  needs itself as a host tool (`protoc`); a different host triplet builds protobuf twice.
+  `set(Protobuf_USE_STATIC_LIBS ON)` goes with the GNS options: with it off, GNS adds
+  `PROTOBUF_USE_DLLS` (its `CMakeLists.txt` lines 210 to 211) and cannot link static protobuf.
 - **d. The `net` module.** `include/net` and `src/net`, with the standard library and the GNS headers
-  only. Those headers pull in no `windows.h` and no protobuf. `game` and `app` may include `net`;
-  `core`, `physics` and `ecs` never do. Rule 2 gains that line.
+  only. Those headers pull in no `windows.h` and no protobuf. `game`, `scenes` and `app` may include
+  `net`; `core`, `physics` and `ecs` never do. `scenes` joined the list on 2026-11-25, because a
+  scene inserts the `ClientTable` resource (decision l). Rule 2 gains that line. `ByteWriter`,
+  `ByteReader` and `net/Components.h` include no GNS header, so targets without GNS can use them.
+  The folders arrive with decision e's first file.
 - **e. One GNS per program.** A `NetworkLibrary` in `net` calls `GameNetworkingSockets_Init` in its
   constructor and `GameNetworkingSockets_Kill` in its destructor. `Application` or `ServerApplication`
   owns it. Rule 12 gets a written exception: the library lives per program, and every connection, poll
@@ -432,6 +445,328 @@ asserts on a second call (`src/steamnetworkingsockets/clientlib/csteamnetworking
 - **p. The check.** A script starts the server, then client A, then client B, closes A, then B. The
   server prints player counts 1, 2, 1, 0, B prints "player A left", and every process exits with no
   `[WARNING]` or `[ERROR]` and 0 leaked blocks.
+
+**What the build checked.** x64 Debug and Release, one entry per decision as it lands.
+
+- **Decision a, 2026-11-24.** `vcpkg.json` at the repo root lists only `protobuf`, with
+  `builtin-baseline` at the prototype's vcpkg commit `74f5ea45`. In the x64 branch of
+  `CMakeLists.txt`, FetchContent pulls GNS `v1.6.1` with `SYSTEM`, after SDL. `USE_CRYPTO` is set
+  to `BCrypt` in the cache with `FORCE`: GNS declares it with `set(CACHE)` under CMake 3.15
+  policies, so a plain `set` loses on the first configure. `BUILD_SHARED_LIB`, `BUILD_EXAMPLES`,
+  `BUILD_TESTS` and `BUILD_TOOLS` are off, and `ENABLE_ICE` keeps its default, on. `GameEngines5`
+  links `GameNetworkingSockets::static`.
+  - **The 3a result: OpenSSL is skipped.** A cold configure into `build/check-3a`, with an empty
+    `VCPKG_DEFAULT_BINARY_CACHE`, the prototype's vcpkg as the toolchain and the `x64-windows`
+    triplet, took 323 s (`Measure-Command { cmake -S . -B build\check-3a ... }`). The prototype's
+    took 454 s. vcpkg built protobuf in 2.8 min, Abseil in 52 s and utf8-range in 8.9 s, from its
+    "Elapsed time to handle" lines. The rest, about 94 s, is the SDL and GNS clones and CMake's
+    checks. The log has no line with "openssl", and GNS prints
+    `Crypto library for AES/SHA256: BCrypt`.
+  - **The build.** Debug in 111 s and Release in 106 s, both from cold, with 0 compiler warnings.
+    `GameNetworkingSockets_s.lib` is 27.5 MB in Debug and 10.7 MB in Release.
+    `dumpbin /dependents GameEngines5.exe` lists no protobuf or Abseil DLL. Nothing calls GNS yet,
+    so the linker leaves it out, and 3c waits for the first call, at decision e.
+  - **Tests.** `ctest` on `build/check-3a` passes all 5 suites in x64 Debug and Release.
+    `scripts\run-tests.bat` passes in Win32 Debug and Release; that configure takes 18.7 s and
+    never runs vcpkg.
+  - **The game.** `scripts\run-game.ps1 -Scene 0`, F2 to F5: the last screenshot shows the Boss
+    Fight Scene. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0 leaked blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 300`: exit 0, no window, "Ran for 300 ticks", 0 leaked
+    blocks.
+  - **Until decision b.** `build/cmake-x64` has no vcpkg toolchain, so its next configure fails to
+    find protobuf.
+- **Decision b, 2026-11-24.** `VCPKG_ROOT` is
+  `C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\vcpkg`, vcpkg tool 2026-07-27.
+  The x64 preset sets `toolchainFile` to `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake` and
+  `VCPKG_TARGET_TRIPLET` to `x64-windows`. Both presets use `Visual Studio 18 2026` and `v145`.
+  `CMakeLists.txt` stops with "vcpkg was not loaded" when `VCPKG_TOOLCHAIN` is not set.
+  - **The missing toolchain.** A configure with no toolchain stops at `CMakeLists.txt:139` with that
+    message.
+  - **Bugs the first runs found.** A vcpkg clone in `D:\dev\vcpkg` built protobuf with MSVC 19.51
+    (`v145`), while the engine built with 19.43 (`v143`). Rider loads VS 2022's environment, which
+    set `VCPKG_ROOT` to VS 2022's bundled vcpkg, so Rider configured `build/cmake-x64` with a
+    second vcpkg. Rider also configures that folder on its own, and twice it ran at the same time
+    as a terminal configure: GNS's BCrypt test then linked with `-lbcrypt.lib` and failed, and once
+    the GNS clone failed. The same configure in a folder Rider does not use passed.
+  - **The configure.** Cold, in a fresh folder with VS 2026 and the bundled vcpkg: 264 s. vcpkg
+    built Abseil in 28 s and protobuf in 2 min; a new compiler means no cache hits. Protobuf's build
+    logs name only `MSVC/14.51.36231`. `build/cmake-x64` with protobuf already installed: 49 s. A
+    `--fresh` configure on a tree with every package installed: 23.5 s.
+  - **The build.** x64 Debug in 160 s and Release in 159 s, 0 warnings, 0 errors.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations; `GpuTests` 9 of 9 on x64.
+  - **The demo output.** `scripts/capture-output.sh v145`: all four outputs match `baselines/vulkan`
+    line for line, so the `v143` to `v145` move changed nothing the demo prints.
+  - **The game.** `scripts\run-game.ps1 -Scene 0`, F2 to F5: the last screenshot shows the Boss
+    Fight Scene at 240 fps. Exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0 asserts, 0 leaked blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 300`: exit 0, no window, "Ran for 300 ticks", 0 leaked
+    blocks.
+- **Decision c, 2026-11-24.** The x64 preset sets `VCPKG_TARGET_TRIPLET` and `VCPKG_HOST_TRIPLET` to
+  `x64-windows-static-md`, and `CMakeLists.txt` sets `Protobuf_USE_STATIC_LIBS` to `ON` with the
+  other GNS options.
+  - **The 3c result: no protobuf or Abseil DLL ships.** `vcpkg_installed/x64-windows-static-md` has
+    no DLL in `bin` or `debug/bin`, and holds `libprotobuf.lib` (231 MB) and 91 Abseil libs. vcpkg
+    built protobuf once, in 2.6 min in all.
+  - **A bug the first probe found.** With `Protobuf_USE_STATIC_LIBS` off, GNS compiled with
+    `PROTOBUF_USE_DLLS`, and a program calling GNS failed to link: 30 unresolved
+    `__declspec(dllimport) google::protobuf::...` symbols. With it on, GNS's project file has no
+    `PROTOBUF_USE_DLLS`.
+  - **The probe.** `GameEngines5` does not call GNS yet, so a scratch program outside the repo
+    links the tree's `GameNetworkingSockets_s.lib` with static protobuf and Abseil, calls
+    `GameNetworkingSockets_Init`, opens a listen socket on port 27099, closes it and calls
+    `GameNetworkingSockets_Kill`. Debug (8.4 MB) and Release (2.1 MB) print "init ok, listen socket
+    made" and "kill ok" and exit 0. `dumpbin /dependents` lists only Windows and C++ runtime DLLs.
+  - **The build.** x64 Debug in 50 s and Release in 46 s after the change, 0 warnings, 0 errors.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+  - **The game.** `scripts\run-game.ps1 -Scene 0`, F2 to F5: exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0
+    asserts, 0 leaked blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 300`: exit 0, no window, "Ran for 300 ticks", 0 leaked
+    blocks.
+- **Decision d, 2026-11-25.** Nothing to compile. `include/net` and `src/net` exist, empty until
+  decision e's first file; git tracks them from then. `scenes` joined the modules that may include
+  `net`.
+  - **The include check.** `scripts\check-includes.ps1` reads every `#include` under `include/`,
+    `src/` and `Main.cpp` against three tables: the modules each module may include, the modules
+    that may include `<steam/...>` (`net`) and `<vulkan/...>` (`vulkan`), and the files that must
+    include neither (`ByteWriter`, `ByteReader`, `net/Components.h`). It prints each break as
+    file:line and exits 1. The tables came from today's includes, so `utils` and `ecs` may include
+    each other: `Profiler.h` includes `ecs/WorldFrameStats.h`. It is not in `run-tests.bat` yet.
+  - **Tests.** On the repo: 184 files, exit 0. On a scratch tree with four planted breaks (`core`
+    including `net`, `physics` including `<steam/...>` and `game`, `<steam/...>` in `ByteWriter.h`):
+    all four reported, the allowed includes passed, exit 1.
+- **Decision e, 2026-11-25.** `NET::NetworkLibrary` in `net/NetworkLibrary.h` and `.cpp` calls
+  `GameNetworkingSockets_Init(nullptr, ...)` in its constructor, throws `std::runtime_error` with
+  GNS's message when it fails, and calls `GameNetworkingSockets_Kill` in its destructor. It cannot
+  be copied or moved, and its header includes no GNS header. `Application` and `ServerApplication`
+  hold one as their first member, so it starts before the scenes and stops after them. Offline
+  runs start GNS too, until decision i adds the role.
+  - **GNS in the exe.** `dumpbin /dependents GameEngines5.exe` now lists `WS2_32.dll`,
+    `IPHLPAPI.DLL` and `bcrypt.dll`, and still no protobuf or Abseil DLL: 3c holds in the real exe.
+    The Release exe grew from 0.67 MB to 2.7 MB.
+  - **A leak report the first run found.** The Debug game and server reported 3 leaked blocks,
+    848 bytes (8, 504 and 336). A scratch probe with only `Init` and `Kill` left the same 848
+    bytes, and three rounds left no more. A second probe recorded a call stack per allocation:
+    the blocks are the buffers of three global `std::vector`s in GNS's `csteamnetworkingsockets.cpp`,
+    `s_vecConfigValueTable` (line 145), `s_vecConnectionConfigValueTable` (line 146) and
+    `CSteamNetworkingSockets::s_vecSteamNetworkingSocketsInstances` (line 425). A global's
+    destructor runs after `main` returns, and the leak report ran at the end of `main`.
+  - **The fix: the leak report runs at process exit.** `Main.cpp` starts with
+    `#pragma init_seg(lib)` (warning 4073 turned off), so its globals are built before the
+    program's and GNS's and destroyed after them. `LeakReportAtExit` holds the baseline that `main`
+    sets, and its destructor calls `MemoryMonitor::ReportLeaks`. `MemoryMonitor::Report` stays at
+    the end of `main` and still shows 848 live bytes. A scratch probe tried it first: 0 leaked
+    blocks after `Init` and `Kill`.
+  - **`[ERROR]` on exceptions.** `main`'s `std::exception` catch prints `[ERROR] ` before the
+    message, so `run-game.ps1` counts it. `--server --scene 99` printed `[ERROR] no scene "99"`,
+    exited 1, and the leak report still ran, with 0 leaked blocks.
+  - **The build.** x64 Debug and Release, 0 warnings, 0 errors. `check-includes.ps1`: 186 files,
+    exit 0.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+  - **The game.** `scripts\run-game.ps1 -Scene 0`, F2 to F5, Debug: exit 0, 0 `[WARNING]`, 0
+    `[ERROR]`, 0 asserts, 0 leaked blocks. `-Scene 4`, Release: exit 0, 0 `[WARNING]`, 0 `[ERROR]`.
+  - **The server.** `-Server -Scene 4 -Ticks 300`, Debug and Release: exit 0, no window, "Ran for
+    300 ticks", 0 leaked blocks in Debug.
+- **Decision f, 2026-11-25.** `net/ConnectionEvents.h` holds `NET::ConnectionState` (None,
+  Connecting, Connected, ClosedByPeer, ProblemDetectedLocally, Other), `NET::ConnectionEvent`
+  (connection and listen socket as `std::uint32_t`, old and new state, end reason, a 128-char end
+  message) and `NET::ConnectionEventQueue`, all with no GNS header. `NetworkLibrary.cpp` registers
+  `OnStatusChanged` with `SetGlobalCallback_SteamNetConnectionStatusChanged`; the callback copies
+  each change into the library's list through `statusEvents`, a pointer in the file's anonymous
+  namespace, set after `Init` and cleared after `Kill`. `PollConnectionEvents()` clears the list,
+  calls `RunCallbacks()` and returns a span. `Application::Run` and `ServerApplication::Run` call it
+  once per frame, before the phases, and append the events to the current World's
+  `ConnectionEventQueue` only when the World holds one. The World's system empties it, so a frame
+  with 0 Fixed steps loses no event.
+  - **A warning the first build found.** `ToConnectionState` listed every GNS state with no return
+    after the switch: C4715 in both builds. A return of `Other` after the switch fixed it.
+  - **The events test.** A scratch program compiles `NetworkLibrary.cpp`, opens a listen socket on
+    port 27098 and connects to it over loopback in one process. 12 of 12 checks: the server side
+    gets Connecting on its listen socket (65536), then Connected after `AcceptConnection`; the
+    client side's events carry listen socket 0; after the client closes with reason 1000 and "client
+    says goodbye", the server side gets ClosedByPeer with that reason and text; a poll with nothing
+    new returns no events. Decision o moves it into `NetTests`.
+  - **Decision g rides on this entry: nothing to build.** GNS's service thread stays on. A scratch
+    test with `NetworkLibrary.cpp` and the engine's `MemoryMonitor.cpp` counted the process's
+    threads with a Toolhelp snapshot: 4 before `Init`, 5 after `Init`, still 5 with a listen socket
+    and a loopback connection, 4 after `Kill`. A connection plus 200 reliable messages made 1,880
+    allocations the monitor counted from both threads, and the leak report at process exit showed 0
+    leaked blocks. The monitor's numbers include GNS's thread from now on.
+  - **A finding for decisions k and m.** The side that closes its own connection still gets one
+    event, Connected to None. The prototype notes said it gets none. Systems ignore events whose
+    new state is None.
+  - **The build.** x64 Debug and Release, 0 warnings, 0 errors. `check-includes.ps1`: 187 files,
+    exit 0.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+  - **The game.** `scripts\run-game.ps1 -Scene 0`, F2 to F5: exit 0, 0 `[WARNING]`, 0 `[ERROR]`, 0
+    asserts, 0 leaked blocks.
+  - **The server.** `-Server -Scene 4 -Ticks 300`: exit 0, no window, "Ran for 300 ticks", 0 leaked
+    blocks.
+- **Decision h, 2026-11-25.** `net/ReceivedMessage.h` holds a connection number and a copy of the
+  bytes. `NET::ServerSocket(port)` opens a listen socket on every local address and a poll group, and
+  throws `std::runtime_error` when the listen socket fails; its destructor closes the listen socket,
+  then the poll group. `Accept(connection)` calls `AcceptConnection` and `SetConnectionPollGroup`.
+  `NET::ClientConnection(address)` calls `ConnectByIPAddress`; its destructor calls `CloseConnection`.
+  Both `Receive(out)` calls read in batches of 64, copy each message, `Release` it at once, and stop
+  when a batch comes back short. Neither header includes a GNS header, and neither class can be
+  copied or moved. No scene uses them until decisions k and m.
+  - **Bugs the first read found.** A stray `}` at the end of `ServerSocket.h` stopped the build.
+    `ClientConnection::Receive` had no `Release`, and its count and return sat inside the `for`, so
+    a call with nothing waiting would loop forever.
+  - **A finding: GNS accepts an address with no port.** `ParseString("127.0.0.1")` returns true with
+    port 0, and `ConnectByIPAddress` then returns a real handle. The constructor also throws
+    `std::invalid_argument` when the port is 0.
+  - **A finding for decision i: a busy port does not throw.** Two processes each listened on port
+    27095 with no error. `Get-NetUDPEndpoint` showed the first on `::` and the second on `0.0.0.0`:
+    Windows lets an IPv4-only socket share a port with a dual-stack one. A second server on the same
+    port starts silently.
+  - **The receive test.** A scratch program compiles `NetworkLibrary.cpp`, `ServerSocket.cpp`,
+    `ClientConnection.cpp` and `MemoryMonitor.cpp`, with a server on port 27096 and a client over
+    loopback in one process. 13 of 13 checks: `Accept` returns true and both sides reach Connected;
+    `Receive` with nothing waiting returns 0; three messages arrive in order with the right bytes and
+    the server-side connection number; 200 messages, past three batches of 64, arrive in order; the
+    server's reply reaches the client; an address with no port throws; a second `ServerSocket` on
+    the same port opens. The leak report at process exit shows 0 leaked blocks. Decision o moves it
+    into `NetTests`.
+  - **The build.** x64 Debug and Release, 0 warnings, 0 errors. `check-includes.ps1`: 192 files,
+    exit 0.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+  - **The game.** `scripts\run-game.ps1 -Scene 0`, F2 to Scene 1: exit 0, 0 `[WARNING]`, 0 `[ERROR]`,
+    0 asserts, 0 leaked blocks.
+  - **The server.** `-Server -Scene 0 -Ticks 120`: exit 0, no window, "Ran for 120 ticks", 0 leaked
+    blocks.
+- **Decision i, 2026-11-25.** `NET::kDefaultPort` is 27020, in `net/Ports.h`. `core/NetworkSettings.h`
+  holds `NetworkRole` (Offline, Server, Client) and `NetworkSettings { role, host, port }`, with no
+  namespace, as other `core` types. `app/NetworkArguments` reads `--server`, `--port P` and
+  `--connect host[:P]`: the port follows the last colon, a missing port is the default, and a port
+  must be 1 to 65535. `--server` with `--connect`, and `--port` without `--server`, throw.
+  `SceneManager` takes the settings in its constructor and `Set`s them on each new World before
+  `OnCreate`. Both applications build the settings before `sceneManager` and print one line with
+  the role. `Application` holds `std::optional<NET::NetworkLibrary>` as its first member and fills it
+  only for a client, so offline runs no longer start GNS; `Run` polls only when it is filled.
+  `ServerApplication` keeps a plain `NetworkLibrary`.
+  - **The flags.** Debug exe, run directly: `--server --ticks 60` printed "server on port 27020",
+    `--server --port 27030` printed 27030, `--connect 127.0.0.1 --scene 4` printed "client for
+    127.0.0.1:27020", and `--connect 127.0.0.1:27031` printed 27031. `--port 5`, `--server --connect
+    x`, ports `0`, `70000` and `abc`, `--connect :27020`, a bare `--connect` and a bare `--port` each
+    printed their own `[ERROR]` line and exited 1. Every run showed 0 leaked blocks.
+  - **GNS off when offline: measured, inside noise.** Boss fight windows after 4 s: every client run
+    had 70 threads; offline runs had 69, 69 and 70. The GPU driver's threads move the count by about
+    1. .NET's thread start addresses all point into Windows' loader, so they could not single out
+    GNS's thread.
+  - **The build.** x64 Debug and Release, 0 warnings, 0 errors. `check-includes.ps1`: 196 files,
+    exit 0.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+  - **The game.** `--scene 4` offline and as a client both ran `BossFightScene::OnCreate` and closed
+    with 0 `[WARNING]`, 0 `[ERROR]` and 0 leaked blocks. A `run-game.ps1 -Scene 0` run exited 0 with 0
+    leaked blocks, but its F5 never reached the window: another window held focus.
+  - **The server.** `-Server -Scene 4 -Ticks 300`: exit 0, no window, "server on port 27020", "Ran
+    for 300 ticks", 0 leaked blocks.
+- **Decision j, 2026-11-25.** `net/ByteWriter` appends `u8`, `u16` and `u32` high byte first, and
+  hands the bytes back with `GetBytes` or `TakeBytes`. `net/ByteReader` reads them back from a span.
+  A read past the end returns 0 and marks the reader invalid, and every later read fails too.
+  `net/Messages.h` numbers `MessageType` from 1 (Hello, Welcome, PlayerJoined, PlayerLeft), so a
+  zeroed byte is never a type, and sets `kProtocolVersion` to 1. Each message has a `Write` overload
+  and a `Read...` function that returns no value for a wrong type, a short message or leftover
+  bytes. `PeekMessageType` returns the first byte's type, or no value. `ServerSocket::Send(connection,
+  bytes)` and `ClientConnection::Send(bytes)` send reliably and return false when GNS refuses. None
+  of these files includes a GNS header except the two `.cpp` files that send.
+  - **A bug the test found.** `ReadU32` with three bytes left returned `0x01020000`, not 0: the
+    first `ReadU16` passed and only the second failed. Messages were still rejected, because the
+    reader was invalid. `ReadU32` now checks for four bytes first.
+  - **A finding: Send before Connected succeeds.** A Hello sent while the client was still
+    connecting reached the server once the connection came up; GNS holds it until then. `Send`
+    returns false for a bad or closed connection, a message over GNS's size limit, or a full send
+    queue (`isteamnetworkingsockets.h`, line 259).
+  - **The message test.** A scratch program with the three standard-only `.cpp` files, built for
+    x64 and Win32 with `/W4`: 28 of 28 checks on both. The writer puts the high byte first; numbers,
+    0 and the maximums round-trip; a failed read sticks. Welcome `{0x01020304, 5}` is `02 01 02 03
+    04 00 00 00 05`, and Hello, PlayerJoined and PlayerLeft match their bytes. Every cut-short
+    Welcome, one with an extra byte and one read as the wrong type give no value. `PeekMessageType`
+    rejects an empty span and types 0, 5 and 255, and accepts 1 to 4. Decision o moves it into a
+    test target.
+  - **The loopback test.** Server on port 27097 and a client in one process: 8 of 8 checks. The
+    server reads the client's Hello from the right connection, the client reads Welcome `{7, 99}`,
+    and `Send` to connection 0 or to an unknown connection returns false. 0 leaked blocks at exit.
+  - **The build.** x64 Debug and Release, 0 warnings, 0 errors. `check-includes.ps1`: 202 files,
+    exit 0.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+  - **The server.** `-Server -Scene 4 -Ticks 300`: exit 0, no window, "Ran for 300 ticks", 0
+    leaked blocks. The game was not run: nothing in it calls this code yet.
+- **Decisions k, l, m and n, 2026-11-25.** Built together, because none can run alone.
+  `BossFightScene::OnCreate` reads `NetworkSettings`. A server World inserts a `ServerSocket`, a
+  `ClientTable` and a `ConnectionEventQueue`, and runs `AcceptClientsSystem` and then
+  `ServerReceiveSystem` in Fixed. A client World inserts a `ClientConnection` and a
+  `ConnectionEventQueue`, and runs `ClientReceiveSystem` in Update. Offline adds nothing.
+  - **Three changes to the plan.** The server spawns the player on a Hello with the right version,
+    not on Connected, so the version check comes first (k). A slot holds the player's NetworkId, not
+    its Entity: `CommandBuffer::CreateEntity` returns a placeholder that only lasts its pass, so
+    `AcceptClientsSystem` finds the player to despawn by querying `NET::NetworkIdComponent` (l). The
+    slots are a `std::array` of 8, because the cap is fixed (l).
+  - **What each part does.** `ClientTable` has 8 `ClientSlot { connection, clientId,
+    playerNetworkId }`, two counters from 1, `Find(connection)` (`Find(0)` gives a free slot) and
+    `PlayerCount()`. `ServerSocket::Close(connection, reason)` calls `CloseConnection`. On
+    Connecting, `AcceptClientsSystem` accepts into a free slot, or closes with "server full". On
+    ClosedByPeer or ProblemDetectedLocally, it closes the handle (GNS keeps it until then,
+    `steamnetworkingtypes.h` lines 403 to 416), queues the player's despawn, sends `PlayerLeft` to
+    the others and frees the slot. `ServerReceiveSystem` answers a Hello with a player, `Welcome`
+    and `PlayerJoined` to the others; a wrong version closes the connection and frees the slot.
+    `ClientReceiveSystem` prints "connecting", sends Hello on Connected, prints Welcome,
+    PlayerJoined and PlayerLeft, and throws when the server connection ends (m).
+  - **A bug the build found.** `ClientReceiveSystem`'s constructor did not call `System`'s, which
+    has no default: C2512.
+  - **The join test.** A scratch script started the Debug server with `--ticks 2400`, client A at
+    2 s and client B at 9 s, closed A at 16 s and B at 19 s, then started client C at 22 s. The
+    server printed players 1, 2, 1, 0, then 1 for C. A printed "player 2 joined", and B printed
+    "player 1 left". A, B and the server exited 0. Every process showed 0 leaked blocks, no
+    `[WARNING]` or `[ERROR]` before shutdown, and 0 world allocations that fell to the heap.
+  - **A gap the test found: the server leaves without a word.** The server exited at 40.3 s. C
+    printed `[ERROR] lost the server: Connection dropped` and exited 1 at 53.1 s, 12.8 s later,
+    after a timeout. The likely cause, not yet measured: the process ends before GNS's thread
+    sends the close. The next decision closes each client with a reason before GNS stops.
+  - **Not tested.** The server-full path and the wrong-version path. A late joiner does not learn
+    about the players already there; step 5's snapshots cover that.
+  - **The build.** x64 Debug and Release, 0 warnings, 0 errors. `check-includes.ps1`: 211 files,
+    exit 0.
+  - **Tests.** `scripts\run-tests.bat` passes in all four configurations.
+- **Decision q, 2026-11-25: the server closes its clients before it stops.** Added after the join
+  test. GNS's header names the cause of the 12.8 s wait: `CloseListenSocket` closes every accepted
+  connection "ungracefully" (`isteamnetworkingsockets.h`, line 193), so no close reaches the client.
+  `ServerApplication::CloseClients` runs after the loop in `Run`. It calls `ServerSocket::Close` on
+  every slot in the `ClientTable` with the reason "server closed", frees each slot, then polls GNS
+  for `kCloseWait`, 200 ms, so GNS's thread can send the closes before the program ends.
+  `ServerSocket::Close` now passes linger as true, so GNS tries to send queued reliable messages
+  before it closes (line 184). The close lives in `Run`, not in `~ServerSocket`, because the socket
+  does not know its connections; the `ClientTable` does.
+  - **Measured.** In `check-join.ps1`, client C wrote `[ERROR] lost the server: server closed` at
+    23:31:05.673, and the server finished its log at 05.744: C heard the close inside the 200 ms
+    wait. Before q it took 12.8 s. Loopback only: a real network adds its trip time.
+- **Decision o, 2026-11-25: two test programs.**
+  - **`MessageTests`**, built for x64 and Win32, compiles only `ByteWriter`, `ByteReader` and
+    `Messages`. 29 checks: the high byte first, round trips of every width with 0 and the
+    maximums, a read past the end returning 0 and staying failed, the exact bytes of all four
+    messages, the four round trips, every cut-short Welcome, an extra byte, the wrong type, and
+    `PeekMessageType` on an empty span and types 0, 5, 255 and 1 to 4.
+  - **`NetTests`**, x64 only, holds a server World and two client Worlds in one program over
+    loopback on port 27098, each built as `BossFightScene` builds it. Every World gets every
+    event, as the applications hand them over, and each World's prints go to its own log. 13
+    checks: A is welcomed as client 1 with NetworkId 1; B as client 2; A hears that player 2
+    joined and B hears nothing about itself; each client sent one Hello though every World saw
+    every event; the server holds 1, 2, 1, then 0 players, counted in both the `ClientTable` and
+    the entities with a `NetworkIdComponent`; B hears that player 1 left; the server logs both
+    leaves. It sits after the ECS targets in `CMakeLists.txt`, not in the engine's x64 branch,
+    because it needs `ECS_SOURCES`.
+  - **Wiring.** Both have an `add_test` line, NetTests only where its target exists, and
+    `scripts\run-tests.bat` builds them.
+- **Decision p, 2026-11-25: `scripts/check-join.ps1`.** Starts the Debug server with `--ticks
+  1800`, client A at 2 s, client B at 9 s, closes A at 16 s and B at 19 s, starts client C at
+  21 s, and lets the server stop on its own. It reads each process's log and passes when the
+  server prints players 1, 2, 1, 0, 1, A hears that player 2 joined, B that player 1 left, C
+  prints "lost the server: server closed" within 2 s of the server's exit and exits 1, the server,
+  A and B exit 0, and all four show 0 leaked blocks and no `[WARNING]`.
+  - **The first run.** 15 of 15 checks passed, with C's exit 0.0 s after the server's.
+- **What the build checked, for q, o and p.** x64 Debug and Release, 0 warnings, 0 errors.
+  `check-includes.ps1`: 211 files, exit 0. `scripts\run-tests.bat` passes in all four
+  configurations: 7 of 7 programs on x64 (NetTests 13 of 13, MessageTests 29 of 29) and 5 of 5 on
+  Win32. `check-join.ps1` as above.
 
 ## 4. Input as unreliable messages
 

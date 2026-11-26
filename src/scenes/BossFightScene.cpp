@@ -7,16 +7,24 @@
 #include "core/AssetLoader.h"
 #include "core/Components.h"
 #include "core/InputState.h"
+#include "core/NetworkSettings.h"
 #include "core/systems/DrawRenderablesSystem.h"
 #include "core/systems/LifespanSystem.h"
 #include "game/Components.h"
+#include "game/systems/AcceptClientsSystem.h"
 #include "game/systems/BossDeathSystem.h"
 #include "game/systems/FigureEightPathSystem.h"
 #include "game/systems/ClampToArenaSystem.h"
+#include "game/systems/ClientReceiveSystem.h"
 #include "game/systems/PlayerCommandSystem.h"
 #include "game/systems/PlayerMoveSystem.h"
 #include "game/systems/ProjectileHitSystem.h"
+#include "game/systems/ServerReceiveSystem.h"
 #include "game/systems/ShootSystem.h"
+#include "net/ClientConnection.h"
+#include "net/ClientTable.h"
+#include "net/ConnectionEvents.h"
+#include "net/ServerSocket.h"
 #include "physics/Components.h"
 #include "physics/systems/DrawCollidersSystem.h"
 #include "physics/systems/UpdatePositionSystem.h"
@@ -126,6 +134,25 @@ bool BossFightScene::OnCreate(AssetLoader& assetLoader)
     systems.Add(Phase::Update, std::make_unique<PlayerCommandSystem>(world));
     systems.Add(Phase::Extract, std::make_unique<DrawRenderablesSystem>(world));
     systems.Add(Phase::Extract, std::make_unique<DrawCollidersSystem>(world));
+    
+    /* ======== Network ======== */
+    const NetworkSettings& network = world.GetResources().Get<NetworkSettings>();
+    if (network.role == NetworkRole::Server)
+    {
+        world.GetResources().Insert<NET::ServerSocket>(network.port);
+        world.GetResources().Insert<NET::ClientTable>();
+        world.GetResources().Insert<NET::ConnectionEventQueue>();
+        systems.Add(Phase::Fixed, std::make_unique<AcceptClientsSystem>(world));
+        systems.Add(Phase::Fixed, std::make_unique<ServerReceiveSystem>(world));
+    }
+    else if (network.role == NetworkRole::Client)
+    {
+        const std::string address = network.host + ":" + std::to_string(network.port);
+        std::cout << "[Client] connecting to " << address << "\n";
+        world.GetResources().Insert<NET::ClientConnection>(address);
+        world.GetResources().Insert<NET::ConnectionEventQueue>();
+        systems.Add(Phase::Update, std::make_unique<ClientReceiveSystem>(world));
+    }
 
     return true;
 }

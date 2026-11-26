@@ -9,6 +9,13 @@
 #include "utils/Profiler.h"
 #include "core/Components.h"
 #include "ecs/Query.h"
+#include "app/NetworkArguments.h"
+#include "core/time/FixedTickCount.h"
+#include "ecs/World.h"
+#include "game/Components.h"
+#include "net/ClientTable.h"
+#include "net/ServerSocket.h"
+
 
 #include <optional>
 #include <span>
@@ -16,19 +23,20 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <chrono>
+#include <thread>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 
-#include "core/time/FixedTickCount.h"
-#include "ecs/World.h"
-#include "game/Components.h"
 
 namespace
 {
     /** Ticks the server runs each second. One tick is one fixed step */
     constexpr double kTicksPerSecond = 60.0;
+    /** How long the server polls GNS after closing its clients. */
+    constexpr std::chrono::milliseconds kCloseWait{200};
 
     /** True when Ctrl+Q is waiting in the console's input. Reads and drops every other record */
     bool IsCloseCommandTriggered()
@@ -75,8 +83,10 @@ namespace
 }
 
 ServerApplication::ServerApplication(int argc, char* argv[]) :
-    sceneManager(Scenes(), assetLoader)
+    networkSettings(ReadNetworkSettings(argc, argv)),
+    sceneManager(Scenes(), assetLoader, networkSettings)
 {
+    PrintNetworkSettings(networkSettings);
     tickLifespan = GetTickLifespan(argc, argv);
     frameCap.SetFramesPerSecond(kTicksPerSecond);
     const std::size_t sceneIndex = PickScene(argc, argv);
@@ -85,20 +95,27 @@ ServerApplication::ServerApplication(int argc, char* argv[]) :
 
 void ServerApplication::Run()
 {
-    auto query = Query(sceneManager.GetCurrentScene().GetWorld(), COMPONENTS::MaskOf<TransformComponent, FixedStepRowTag>());
-    
+    auto query = Query(sceneManager.GetCurrentScene().GetWorld(),
+                       COMPONENTS::MaskOf<TransformComponent, FixedStepRowTag>());
+
     while (
         (!tickLifespan || tickCount < *tickLifespan) &&
         !IsCloseCommandTriggered()
     )
     {
         SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
+        /* GNS's connection changes go to the World only when its scene asked for them with a queue */
+        const std::span<const NET::ConnectionEvent> connectionEvents = networkLibrary.PollConnectionEvents();
+        if (auto* queue = sceneManager.GetCurrentScene().GetWorld().GetResources().TryGet<NET::ConnectionEventQueue>())
+        {
+            queue->events.insert(queue->events.end(), connectionEvents.begin(), connectionEvents.end());
+        }
         {
             PROFILE_SCOPE("[Server]: Fixed Update");
             tickCount++;
             sceneManager.GetCurrentScene().GetWorld().GetResources().Set<FixedTickCount>({.ticks = tickCount});
             systems.RunPhase(Phase::Fixed, FixedStep::kFixedTimeStep);
-            
+
             if (tickCount % static_cast<int>(kTicksPerSecond) == 0)
             {
                 /* The query matches only the bottom row, so one Mario from the first chunk is enough */
@@ -117,5 +134,29 @@ void ServerApplication::Run()
             frameCap.Wait();
         }
     }
+    CloseClients();
     std::cout << "Ran for " << tickCount << " ticks" << std::endl;
+}
+
+void ServerApplication::CloseClients()
+{
+    Resources& resources = sceneManager.GetCurrentScene().GetWorld().GetResources();
+    auto* table = resources.TryGet<NET::ClientTable>();
+    auto* server = resources.TryGet<NET::ServerSocket>();
+    if (!table || !server) return;
+
+    for (NET::ClientSlot& slot : table->slots)
+    {
+        if (slot.connection == 0) continue;
+        server->Close(slot.connection, "server closed");
+        slot = {};
+    }
+    
+    /* GNS sends on its own thread, so give it time before GNS stops */
+    const auto end = std::chrono::steady_clock::now() + kCloseWait;
+    while (std::chrono::steady_clock::now() < end)
+    {
+        networkLibrary.PollConnectionEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 }

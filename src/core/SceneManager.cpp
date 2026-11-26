@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "ecs/SystemRegistry.h"
 
@@ -47,9 +48,11 @@ namespace
     }
 }
 
-SceneManager::SceneManager(const std::span<const SceneEntry> scenes_, AssetLoader& loader_) :
+SceneManager::SceneManager(const std::span<const SceneEntry> scenes_, AssetLoader& loader_,
+                           NetworkSettings networkSettings_) :
     scenes(scenes_),
-    loader(loader_)
+    loader(loader_),
+    networkSettings(std::move(networkSettings_))
 {
 }
 
@@ -71,6 +74,8 @@ void SceneManager::Start(const std::size_t sceneIndex)
 
     currentScene = scenes[sceneIndex].build();
     currentSceneIndex = sceneIndex;
+    /* Before OnCreate, so the scene can pick its systems from the role */
+    currentScene->GetWorld().GetResources().Set(networkSettings);
     if (!currentScene->OnCreate(loader))
     {
         throw std::runtime_error(std::string(scenes[sceneIndex].name) + "::OnCreate failed");

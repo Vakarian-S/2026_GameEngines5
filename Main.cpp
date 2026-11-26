@@ -1,3 +1,10 @@
+/*
+ * Globals in this file are built in the library stage, before the program's globals and GNS's, so
+ * they are destroyed after them. Warning 4073 only says the library stage is in use, as it is meant to be.
+ */
+#pragma warning(disable : 4073)
+#pragma init_seg(lib)
+
 #include <exception>
 #include <iostream>
 
@@ -70,6 +77,21 @@ namespace
             return arg == std::string_view("--server");
         });
     }
+
+    /**
+     * Prints the leak report when the process ends, after every other global is destroyed. GNS
+     * keeps three global vectors until then, so a report at the end of main lists them as leaks.
+     */
+    struct LeakReportAtExit
+    {
+        /** The counters when main started. main sets it, so the runtime's allocations before main are not counted */
+        MemoryStats baseline{};
+
+        ~LeakReportAtExit() { MemoryMonitor::ReportLeaks(baseline); }
+    };
+
+    /** The one leak report, destroyed last of all the program's globals */
+    LeakReportAtExit leakReportAtExit;
 }
 
 
@@ -86,7 +108,7 @@ int main(const int argc, char* argv[])
      * compiled straight into this program now, so the replacements are always here and the
      * line is only what it looks like: a starting point to measure from.
      */
-    const MemoryStats baseline = MemoryMonitor::GetStats();
+    leakReportAtExit.baseline = MemoryMonitor::GetStats();
 
     std::cout << "GameEngines5\n";
     try
@@ -104,7 +126,7 @@ int main(const int argc, char* argv[])
     }
     catch (const std::exception& error)
     {
-        std::cerr << error.what() << std::endl;
+        std::cerr << "[ERROR] " << error.what() << std::endl;
         return 1;
     }
     catch (const std::string& error)
@@ -119,8 +141,6 @@ int main(const int argc, char* argv[])
     }
 
     Profiler::Report();
-    MemoryMonitor::Report(baseline);
-    MemoryMonitor::ReportLeaks(baseline);
-
+    MemoryMonitor::Report(leakReportAtExit.baseline);
     return 0;
 }

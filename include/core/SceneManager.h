@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 
+#include "NetworkSettings.h"
 #include "Scene.h"
 
 class AssetLoader;
@@ -28,9 +29,11 @@ public:
     /**
      * @param scenes_ the table of scenes. It must outlive this object
      * @param loader_ hands each new scene its assets. It must outlive this object
+     * @param networkSettings_ set on each new World before OnCreate
      */
-    SceneManager(std::span<const SceneEntry> scenes_, AssetLoader& loader_);
-    
+    SceneManager(std::span<const SceneEntry> scenes_, AssetLoader& loader_, NetworkSettings networkSettings_);
+
+
     /** Closes the running scene, so its OnDestroy and its report always run */
     ~SceneManager();
 
@@ -66,6 +69,8 @@ private:
     std::span<const SceneEntry> scenes;
     /** Lends each new scene the asset functions in OnCreate */
     AssetLoader& loader;
+    /** The command line's network part. Start sets it on each new World before OnCreate */
+    NetworkSettings networkSettings;
     /** The switch to run at the next ApplyPendingSwitch. Empty when none is asked for */
     std::optional<std::size_t> pendingScene;
     /** The running scene */

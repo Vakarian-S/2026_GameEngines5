@@ -10,9 +10,10 @@
 #   cmake --build --preset x64-Debug
 #
 # CMakePresets.json holds the generator, the toolset and the build directory, so an IDE picks
-# the same ones the scripts do. The toolset is pinned on purpose: a machine with more than one
-# set of Build Tools installed will otherwise take whichever is newest, and the saved demo
-# output was captured with v143.
+# the same ones the scripts do. The toolset is pinned to v145, Visual Studio 2026, on purpose: a
+# machine with more than one set of Build Tools installed will otherwise take whichever is
+# newest. vcpkg builds protobuf with the newest compiler it finds, and a library built by a
+# newer compiler than the engine's may not link, so the two must match.
 
 cmake_minimum_required(VERSION 3.25)
 
@@ -133,6 +134,15 @@ if (GE5_PLATFORM STREQUAL "x64")
                 "The Vulkan SDK was found at ${Vulkan_INCLUDE_DIR} but glslc.exe was not. Shaders "
                 "cannot be compiled without it. A full SDK install ships it under Bin.")
     endif ()
+    # vcpkg builds protobuf, which GNS needs. The x64 preset loads vcpkg's toolchain file from
+    # VCPKG_ROOT, and that file sets VCPKG_TOOLCHAIN. Without it, protobuf is never built.
+    if (NOT VCPKG_TOOLCHAIN)
+        message(FATAL_ERROR
+                "vcpkg was not loaded. Clone https://github.com/microsoft/vcpkg, run its "
+                "bootstrap-vcpkg.bat, set VCPKG_ROOT to its folder, then open a new terminal and "
+                "configure with the x64 preset on a fresh build tree.\n"
+                "Only GameEngines5 needs it. The Win32 preset builds without vcpkg.")
+    endif ()
 
     # SDL3 is built from source at a pinned tag rather than vendored as binaries, so a fresh
     # clone of this repository builds without a prepared machine. Shared, because that is how
@@ -151,11 +161,30 @@ if (GE5_PLATFORM STREQUAL "x64")
             GIT_PROGRESS TRUE
     )
     FetchContent_MakeAvailable(SDL3)
-
     # No step here copies SDL3.dll next to the exe, and none is needed. SDL is brought in as a
     # subdirectory after CMAKE_RUNTIME_OUTPUT_DIRECTORY is set above, so its own targets inherit
     # it and SDL3.dll is built straight into bin/<platform>/<configuration>/. Scope those output
     # directories per target one day and the dll stops arriving, and the engine will not start.
+
+    # Valve's GameNetworkingSockets (GNS), built from source as a static lib. Its one outside
+    # need, protobuf, comes from vcpkg through vcpkg.json. BCrypt is the crypto built into
+    # Windows, so OpenSSL is never built. USE_CRYPTO is a cache variable in GNS, so it must be
+    # set in the cache too, or the first configure falls back to OpenSSL.
+    set(USE_CRYPTO "BCrypt" CACHE STRING "" FORCE)
+    set(BUILD_SHARED_LIB OFF)
+    set(BUILD_STATIC_LIB ON)
+    set(BUILD_EXAMPLES OFF)
+    set(BUILD_TESTS OFF)
+    set(BUILD_TOOLS OFF)
+    set(Protobuf_USE_STATIC_LIBS ON)
+    FetchContent_Declare(GameNetworkingSockets
+            GIT_REPOSITORY https://github.com/ValveSoftware/GameNetworkingSockets.git
+            GIT_TAG v1.6.1
+            GIT_SHALLOW TRUE
+            GIT_PROGRESS TRUE
+            SYSTEM
+    )
+    FetchContent_MakeAvailable(GameNetworkingSockets)
 
     # Everything under src/ and include/ is the engine. Add a file anywhere in either tree and
     # the next build picks it up, with no edit here. CONFIGURE_DEPENDS is what makes CMake look
@@ -175,7 +204,7 @@ if (GE5_PLATFORM STREQUAL "x64")
     # warnings stay out of our build output.
     target_include_directories(GameEngines5 SYSTEM PRIVATE external/stb)
     target_include_directories(GameEngines5 SYSTEM PRIVATE external/tinyobjloader)
-    target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3 Vulkan::Vulkan)
+    target_link_libraries(GameEngines5 PRIVATE MathLibrary SDL3::SDL3 Vulkan::Vulkan GameNetworkingSockets::static)
 
     # glm defaults to the OpenGL depth range of -1 to 1. Vulkan's is 0 to 1, and a projection
     # matrix built for the wrong one is wrong quietly: things still draw, at the wrong depth.
@@ -286,7 +315,7 @@ if (GE5_PLATFORM STREQUAL "x64")
     ge5_apply_common_settings(GpuTests)
     add_custom_command(TARGET GpuTests POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_directory
-                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/assets" "${GE5_OUTPUT_DIR}/tests/assets"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/assets" "${GE5_OUTPUT_DIR}/tests/assets"
             VERBATIM
     )
 
@@ -407,6 +436,44 @@ target_include_directories(PhysicsTests PRIVATE include)
 target_link_libraries(PhysicsTests PRIVATE MathLibrary)
 ge5_apply_common_settings(PhysicsTests)
 
+# ============================== MessageTests ==============================
+#
+# ByteWriter, ByteReader and the messages. They include no GNS header, so this builds for both
+# platforms and checks the byte layout on each.
+
+add_executable(MessageTests
+        tests/MessageTests.cpp
+        src/net/ByteWriter.cpp
+        src/net/ByteReader.cpp
+        src/net/Messages.cpp
+        include/net/ByteWriter.h
+        include/net/ByteReader.h
+        include/net/Messages.h
+)
+target_include_directories(MessageTests PRIVATE include)
+ge5_apply_common_settings(MessageTests)
+
+# ============================== NetTests ==============================
+#
+# A server World and two client Worlds in one program, over loopback. x64 only, because GNS is
+# built only there. It sits here, not in the engine's x64 branch, because it needs ECS_SOURCES.
+
+if (GE5_PLATFORM STREQUAL "x64")
+    file(GLOB NET_SOURCES CONFIGURE_DEPENDS "src/net/*.cpp")
+    add_executable(NetTests
+            tests/NetTests.cpp
+            ${NET_SOURCES}
+            src/game/systems/AcceptClientsSystem.cpp
+            src/game/systems/ServerReceiveSystem.cpp
+            src/game/systems/ClientReceiveSystem.cpp
+            ${ECS_SOURCES}
+            ${ECS_HEADERS}
+    )
+    target_include_directories(NetTests PRIVATE include)
+    target_link_libraries(NetTests PRIVATE MathLibrary GameNetworkingSockets::static)
+    ge5_apply_common_settings(NetTests)
+endif ()
+
 
 # ============================== ArenaDemo ==============================
 #
@@ -452,6 +519,11 @@ add_test(NAME MemoryMonitorTests COMMAND MemoryMonitorTests)
 add_test(NAME EcsTests COMMAND EcsTests)
 add_test(NAME ArenaTests COMMAND ArenaTests)
 add_test(NAME PhysicsTests COMMAND PhysicsTests)
+add_test(NAME MessageTests COMMAND MessageTests)
+# NetTests exists only where GNS builds, which is x64
+if (TARGET NetTests)
+    add_test(NAME NetTests COMMAND NetTests)
+endif ()
 # GpuTests exists only where the engine builds, which is x64
 if (TARGET GpuTests)
     add_test(NAME GpuTests COMMAND GpuTests)

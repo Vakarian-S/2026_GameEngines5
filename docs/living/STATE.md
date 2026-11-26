@@ -1,6 +1,6 @@
 # State
 
-**Last updated:** 2026-11-19.
+**Last updated:** 2026-11-25.
 
 What the engine has today, and the architecture rules that hold everywhere. Read this first.
 
@@ -44,14 +44,16 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 | Frame timing | `Timer` counts nanoseconds with `SDL_GetTicksNS`. `FrameCap` holds a cap (off, 30, 60, 100, half the refresh rate, refresh minus 3) by sleeping with `SDL_DelayNS` to 1 ms before a fixed deadline, then spinning. `FrameTimeStats` sums the frame times once a second, and `Application` puts the line `FIFO \| cap off \| 239.8 fps \| 4.17 ms (min, max)`, plus the GPU times, in the window title and the console. With no cap, FIFO and the display pace the loop | `include/core/time` | dev-notes/frame-cap-and-timer.md, dev-notes/live-fps-and-pacing-scene.md |
 | Physics | Ray picking against four collider shapes, and rigid bodies held by a mouse constraint with inertia per shape. Boxes scale per axis; spheres and capsules need uniform scale, and cylinders x equal to z. Plain free functions in `PHYSICS`, called by the systems | `include/physics` | dev-notes/dangle-physics.md; picking in dev-notes/physics-scene.md |
 | Tools | `MemoryMonitor`, `Profiler`, `Arena` | `include/utils` | tools/ |
-| Tests | `MemoryMonitorTests`, `EcsTests` (with `FixedStep`, `FrameTimeStats`, the timestamp math, `AlignUp` and `Resources`), `ArenaTests`, `PhysicsTests` (with the per-axis scale math and `NormalMatrix`), in x64 and Win32, Debug and Release. `GpuTests` (`CubeMap` on a real GPU, with validation messages as failures), x64 only | `tests/` | tools/build-and-test.md |
+| Tests | `MemoryMonitorTests`, `EcsTests` (with `FixedStep`, `FrameTimeStats`, the timestamp math, `AlignUp` and `Resources`), `ArenaTests`, `PhysicsTests` (with the per-axis scale math and `NormalMatrix`), `MessageTests` (the byte layout of the network messages), in x64 and Win32, Debug and Release. `GpuTests` (`CubeMap` on a real GPU, with validation messages as failures) and `NetTests` (a server World and two client Worlds joining and leaving over loopback), x64 only. `scripts/check-join.ps1` runs a real server and three clients | `tests/`, `scripts/` | tools/build-and-test.md |
 
 ## Architecture rules
 
 1. **Layers.** Engine code never names a render backend's types. A backend may use core types. Only
    `app` sees every layer, and only `main` includes `app`. This keeps a second backend possible.
 2. **Modules depend downward only.** `physics` may include `core`, `game` may include both, and `core`
-   never includes `physics` or `game`.
+   never includes `physics` or `game`. `net` holds the only GNS includes; `game`, `scenes` and `app`
+   may include `net`, and `core`, `physics` and `ecs` never do. `net`'s `ByteWriter`, `ByteReader`,
+   `Messages` and `Components.h` include no GNS header, so targets without GNS can use them.
 3. **The ECS depends on the standard library only.** Its headers name no outside type. Per-World data
    such as input, the camera and the draw lists lives in `Resources`, which only the outer code names,
    so the ECS-only targets build without SDL, on Win32 too.
@@ -76,7 +78,11 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 11. **The ECS house rules** from Unreal Mass: ECS.md, appendix.
 12. **Resources live per World, never in a static.** A listen server runs two Worlds in one process.
     Use `Set` for a value the engine refreshes, and `Insert` for one that is created once. A system
-    reads one with `Get<T>()`, which asserts when it is missing.
+    reads one with `Get<T>()`, which asserts when it is missing. One exception: GNS allows one
+    instance per program, so `NET::NetworkLibrary` lives in the application, one per program, and
+    `NetworkLibrary.cpp` reaches its event list through one documented static pointer, because GNS's
+    status callback takes no context. Every socket, connection, client table and event queue still
+    lives per World.
 
 ## How to build and test
 

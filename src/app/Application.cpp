@@ -10,6 +10,7 @@
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_timer.h>
 
+#include "app/NetworkArguments.h"
 #include "core/Camera.h"
 #include "app/SceneIndex.h"
 #include "core/PresentMode.h"
@@ -30,12 +31,16 @@ namespace
 }
 
 Application::Application(const int argc, char* argv[]) :
+    networkSettings(ReadNetworkSettings(argc, argv)),
     window("GameEngines5", 1280, 720),
     renderer(window.GetSDLWindow(), kStartPresentMode),
-    sceneManager(Scenes(), renderer.GetAssetStore()),
+    sceneManager(Scenes(), renderer.GetAssetStore(), networkSettings),
     frameArena(kFrameArenaBytes),
     frameMemory(frameArena)
 {
+    /* Before the first scene starts, so a client scene can connect in OnCreate */
+    if (networkSettings.role == NetworkRole::Client) networkLibrary.emplace();
+    PrintNetworkSettings(networkSettings);
     const std::size_t sceneIndex = PickScene(argc, argv);
     /*
      * What a scene costs to start. The World takes one slab and every archetype, column
@@ -110,7 +115,16 @@ void Application::Run()
         }
 
         SystemRegistry& systems = sceneManager.GetCurrentScene().GetSystems();
-
+        /* GNS's connection changes go to the World only when its scene asked for them with a queue */
+        if (networkLibrary)
+        {
+            const std::span<const NET::ConnectionEvent> connectionEvents = networkLibrary->PollConnectionEvents();
+            if (auto* queue = sceneManager.GetCurrentScene().GetWorld().GetResources().TryGet<
+                NET::ConnectionEventQueue>())
+            {
+                queue->events.insert(queue->events.end(), connectionEvents.begin(), connectionEvents.end());
+            }
+        }
         if (window.ShouldClose()) break;
 
         timer.UpdateFrameTicks();
