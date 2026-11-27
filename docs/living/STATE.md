@@ -6,23 +6,9 @@ What the engine has today, and the architecture rules that hold everywhere. Read
 
 ## Contents
 
-- [The semester topics](#the-semester-topics)
 - [What exists](#what-exists)
 - [Architecture rules](#architecture-rules)
 - [How to build and test](#how-to-build-and-test)
-
-## The semester topics
-
-| topic | status | details |
-|---|---|---|
-| Memory Monitor | done | tools/memory-monitor.md |
-| Memory Manager (arena) | done 2026-10-01 | tools/arena.md, dev-notes/memory-manager.md |
-| Profiling | done 2026-09-30 | tools/profiler.md, dev-notes/profiling.md |
-| Vulkan rendering | done 2026-10-20, all 8 milestones | dev-notes/vulkan-renderer.md |
-| Physics course work, moved into this engine | done 2026-11-03 | dev-notes/dangle-physics.md |
-| Shadows, with ray queries | done 2026-11-14 | dev-notes/ray-query-shadows.md |
-| Networking | in progress: steps 1 to 3 of 8 done (headless server, boss fight, join and leave over GNS) | PLAN.md |
-| Concurrency, controller, audio, file I/O, DLLs, frustum culling | not started | ROADMAP.md, "Course topics" |
 
 ## What exists
 

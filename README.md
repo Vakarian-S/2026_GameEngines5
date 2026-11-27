@@ -1,6 +1,6 @@
 # GameEngines5
 
-A small C++20 game engine, built step by step for a semester of coursework.
+A small C++20 game engine, built step by step.
 
 ## What is in it
 
@@ -22,7 +22,7 @@ A small C++20 game engine, built step by step for a semester of coursework.
 | `MemoryMonitorTests`, `EcsTests`, `ArenaTests` | the test programs, under `tests/` |
 | `MemoryMonitorDemo`, `ArenaDemo` | demos, under `demo/` |
 | `EcsBench` | a benchmark load for the profiler, under `bench/` |
-| `MathLibrary` | the course math library, vendored under `external/` with glm 0.9.9 |
+| `MathLibrary` | Humber's math library, vendored under `external/` with glm 0.9.9 |
 
 Programs build to `bin/<platform>/<configuration>/`.
 

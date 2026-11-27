@@ -29,3 +29,6 @@ GameEngineLog.txt
 
 # Output snapshots from scripts/capture-output.sh
 baselines/
+
+# Personal Claude instructions
+CLAUDE.local.md

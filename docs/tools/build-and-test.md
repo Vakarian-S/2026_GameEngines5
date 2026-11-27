@@ -58,7 +58,8 @@ cmake --preset x64
 cmake --build --preset x64-Debug
 ```
 
-The presets are `x64` and `Win32`, and the build and test presets add the configuration:
+The engine target is x64 only: the Vulkan SDK ships no 32-bit `vulkan-1.lib`, so
+`find_package(Vulkan)` fails on Win32. The presets are `x64` and `Win32`, and the build and test presets add the configuration:
 `x64-Debug`, `x64-Release`, `Win32-Debug`, `Win32-Release`.
 
 `CMakePresets.json` pins the generator (`Visual Studio 18 2026`), the toolset (`v145`) and the
@@ -97,7 +98,7 @@ is not in version control. `CMakeLists.txt` is the file to edit.
 `external/` holds two libraries copied in whole, so the repository builds on any machine with
 Visual Studio and nothing else set up first:
 
-- `external/MathLibrary/` - the course math library, 48 files
+- `external/MathLibrary/` - Humber's math library, 48 files
 - `external/glm/` - glm 0.9.9, which the math library's `DebugUtlities` needs
 
 Neither folder came with a license file. Add glm's before this repository goes anywhere public.
@@ -197,8 +198,8 @@ even when nothing else changed. Release prints no file tags, so it stays a clean
 ## Running the game from a script
 
 `scripts/run-game.ps1` starts `GameEngines5.exe`, plays a list of steps into its window, closes it the
-way the X button does, and prints a summary. It is how a Claude session checks a change that shows on
-screen, instead of asking Vakarian to test it.
+way the X button does, and prints a summary. It checks a change that shows on screen without a
+person at the keys.
 
 ```powershell
 .\scripts\run-game.ps1 -Scene 0 -Steps "press F2","wait 1500","shot scene1"
@@ -216,6 +217,10 @@ screen, instead of asking Vakarian to test it.
 | `-StartWait` | milliseconds to wait for the window | 4000 |
 | `-Server` | runs the headless server, passing `--server` and `--ticks N` | off |
 | `-Ticks` | the server's tick limit, 60 ticks a second | 600 |
+
+The script runs whatever exe is in `bin`, and `run-tests.bat` does not rebuild the game, so run
+`cmake --build` first. The boss fight needs `-StartWait 6000`: with the default, the first held keys
+were sometimes lost while the window took focus.
 
 With `-Server`, the script skips `-Steps` and `-StartWait`. It waits for the server to exit, and kills
 it if it is still running 30 s after its ticks should end. The summary adds whether a window opened,

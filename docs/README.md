@@ -1,6 +1,6 @@
 # Docs
 
-**Last updated:** 2026-11-05.
+**Last updated:** 2026-11-26.
 
 A doc's folder says what kind of doc it is. Nothing inside a doc needs to say it again.
 
@@ -9,12 +9,11 @@ A doc's folder says what kind of doc it is. Nothing inside a doc needs to say it
 | living/STATE.md     | what exists, and the architecture rules. Read it first            |
 | living/ROADMAP.md   | the to-do list                                                    |
 | living/PLAN.md      | the deep work happening now                                       |
-| living/WORKFLOW.md  | how we work: the stages, the coding rules, the checks             |
+| living/WORKFLOW.md  | how anyone works on the engine: stages, coding rules, checks      |
 | living/ECS.md       | the ECS design, its invariants and its house rules                |
 | tools/              | how to use a tool, build the project, or run the tests            |
 | dev-notes/README.md | why a finished feature is the way it is, and what it measured     |
-| findings/           | the evidence behind a ROADMAP.md row                              |
-| templates/          | the template a new PLAN.md starts from                            |
+| templates/          | the templates PLAN.md and ROADMAP.md start from                   |
 
 The oldest snapshot sits outside the repo: `C:\Users\sebas\RiderProjects\2026_GameEngines5-docs-backup-2026-10-20`
 holds every doc as it was before the 2026-10-20 reorganization.
@@ -23,10 +22,7 @@ holds every doc as it was before the 2026-10-20 reorganization.
 
 - `living/`: yes. Out of date means wrong. Each starts with a "Last updated" line.
 - `tools/`: yes, when the code a manual lists under `## Files` changes.
-- `findings/`: no. The body stays as written. When every item in it is done or dropped, it is
-  deleted.
-- `dev-notes/`: no. Nobody updates them, not even to fix a link. Each starts with a "Legacy doc" line under its title, so a reader knows it may be out of date; add it to every new dev-note. They are deleted once settled (WORKFLOW.md,
-  Archive).
+- `dev-notes/`: no. WORKFLOW.md, under "Archive", has the rules.
 - `templates/`: when the way we work changes.
 
 How docs move between folders is in WORKFLOW.md, under "Archive".

@@ -3,8 +3,7 @@
 ## The problem
 
 Every time a container grew, the program asked the operating system's heap for memory. A World of
-1,000 entities made 74 separate requests. Nobody could say how much memory a scene used, and the
-course asks to show control over memory instead of leaving it all to the OS.
+1,000 entities made 74 separate requests. Nobody could say how much memory a scene used.
 
 ## Before and after
 

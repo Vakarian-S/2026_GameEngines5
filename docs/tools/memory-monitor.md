@@ -93,8 +93,8 @@ MemoryMonitor::ReportLeaks(start);    /* lists kept, with its file and line */
 
 ### Why not use a tool that already exists, such as Visual Studio's leak detection?
 
-Those tools work, and they find more. Building this one was the course task: show where memory
-goes and catch misuse, from inside the program. It also prints its counts while the game runs,
+Those tools work, and they find more. This one shows where memory goes and catches misuse from
+inside the program. It also prints its counts while the game runs,
 which fits the engine's other tools.
 
 ### Why are some checks Debug only?
